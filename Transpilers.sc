@@ -25,14 +25,32 @@ trait Module extends CrossJvmJs {
 
   final override def ivyDeps =
     Agg(ivy"org.scala-lang:scala-reflect:$scalaVersion", ivy"org.scala-lang:scala-compiler:$scalaVersion")
-
-  final override def deps = Seq(frontEndObject)
-
-  def frontEndObject: CrossJvmJs
 }
 
 object Module {
 
-  trait C extends Module
+  trait Common extends Module {
+
+    final override def deps = Seq(frontEndObject)
+
+    def frontEndObject: CrossJvmJs
+
+  }
+
+  trait C extends Module {
+
+    final override def deps = Seq(commonObject)
+
+    def commonObject: Common
+  }
+
+  trait Cli extends Module {
+
+    final override def deps = Seq(cObject, toolsObject)
+
+    def cObject: C
+
+    def toolsObject: CrossJvmJs
+  }
 
 }

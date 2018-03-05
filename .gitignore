@@ -1,6 +1,7 @@
 /runtime
 /slang
-/sireum-runtime-c
+/tools
+/runtime-c
 /out
 target
 /.idea

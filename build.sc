@@ -1,5 +1,6 @@
 import $file.runtime.Runtime
 import $file.slang.Slang
+import $file.tools.Tools
 import $file.Transpilers
 import ammonite.ops.up
 
@@ -29,7 +30,6 @@ object slang extends mill.Module {
 
   }
 
-
   object tipe extends Slang.Module.Tipe {
 
     final override def astObject = ast
@@ -46,12 +46,27 @@ object slang extends mill.Module {
 
 }
 
+object tools extends Tools.Module {
+
+  override val frontEndObject = slang.frontend
+
+}
+
 object transpilers extends mill.Module {
 
   final override def millSourcePath = super.millSourcePath / up
 
-  object c extends Transpilers.Module.C {
+  object common extends Transpilers.Module.Common {
     override val frontEndObject = slang.frontend
+  }
+
+  object c extends Transpilers.Module.C {
+    override val commonObject = common
+  }
+
+  object cli extends Transpilers.Module.Cli {
+    override val cObject = c
+    override val toolsObject = tools
   }
 
 }
