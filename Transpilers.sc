@@ -22,9 +22,6 @@ trait Module extends CrossJvmJs {
   final override def jvmTestFrameworks = Seq("org.scalatest.tools.Framework")
 
   final override def jsTestFrameworks = jvmTestFrameworks
-
-  final override def ivyDeps =
-    Agg(ivy"org.scala-lang:scala-reflect:$scalaVersion", ivy"org.scala-lang:scala-compiler:$scalaVersion")
 }
 
 object Module {
@@ -35,11 +32,14 @@ object Module {
 
     def frontEndObject: CrossJvmJs
 
+    final override def ivyDeps = Agg.empty
   }
 
   trait C extends Module {
 
     final override def deps = Seq(commonObject)
+
+    final override def ivyDeps = Agg.empty
 
     def commonObject: Common
   }
@@ -47,6 +47,8 @@ object Module {
   trait Cli extends Module {
 
     final override def deps = Seq(cObject, toolsObject)
+
+    final override def ivyDeps = Agg(ivy"com.lihaoyi::ammonite-ops:$ammoniteOpsVersion")
 
     def cObject: C
 
