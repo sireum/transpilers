@@ -1,0 +1,9 @@
+/runtime
+/slang
+/sireum-runtime-c
+/out
+target
+/.idea
+/.idea_modules
+/versions.properties
+/mill
