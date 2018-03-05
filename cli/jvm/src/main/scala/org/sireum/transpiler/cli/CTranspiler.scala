@@ -164,7 +164,7 @@ object CTranspiler {
         val data: ISZ[U8] = {
           val gis = new GZIPInputStream(new FileInputStream(loadFile))
           try {
-            toIS(gis.readAllBytes())
+            toIS(gis.bytes)
           } catch {
             case e: IOException =>
               eprintln(s"Could not load file: ${e.getMessage}")
@@ -344,7 +344,7 @@ object CTranspiler {
   }
 
   implicit class GZIS(val gzis: GZIPInputStream) extends AnyVal {
-    def readAllBytes(): Array[Byte] = {
+    def bytes: Array[Byte] = {
       val bos = new ByteArrayOutputStream
       val buffer = new Array[Byte](16384)
       var n = gzis.read(buffer)
