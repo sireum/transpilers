@@ -2,7 +2,7 @@
 // @formatter:off
 
 /*
- Copyright (c) 2017, Robby, Kansas State University
+ Copyright (c) 2018, Robby, Kansas State University
  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
@@ -26,9 +26,9 @@
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-// This file is auto-generated from CliConfig.sc
+// This file is auto-generated from cli.sc
 
-package org.sireum.transpiler.cli
+package org.sireum.transpiler
 
 import org.sireum._
 

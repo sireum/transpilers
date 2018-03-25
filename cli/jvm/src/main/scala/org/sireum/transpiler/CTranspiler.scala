@@ -1,20 +1,21 @@
-package org.sireum.transpiler.cli
+package org.sireum.transpiler
 
 import _root_.java.io._
 import _root_.java.nio.charset._
 import _root_.java.nio.file._
 import _root_.java.util.zip._
 
+import ammonite.ops._
 import org.sireum._
 import org.sireum.lang.FrontEnd
 import org.sireum.lang.ast.TopUnit
 import org.sireum.lang.parser.Parser
 import org.sireum.lang.tipe._
 import org.sireum.message._
-import org.sireum.transpiler.cli.Cli._
-import ammonite.ops._
 
 import scala.collection.JavaConverters._
+
+import Cli._
 
 object CTranspiler {
 
