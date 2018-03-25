@@ -1,6 +1,5 @@
 import mill._
 import mill.scalalib._
-import ammonite.ops.up
 import org.sireum.mill.SireumModule._
 
 trait Module extends CrossJvmJs {
@@ -44,11 +43,23 @@ object Module {
     def commonObject: Common
   }
 
-  trait Cli extends Module {
+  trait Cli extends JvmOnly {
 
-    final override def deps = Seq(cObject, toolsObject)
+    final override def deps = Seq()
+
+    final override def testFrameworks = Seq()
+
+    final override def testIvyDeps = Agg.empty
+
+    final override def testScalacPluginIvyDeps = Agg.empty
+
+    final override def crossDeps = Seq(cObject, toolsObject)
 
     final override def ivyDeps = Agg(ivy"com.lihaoyi::ammonite-ops:$ammoniteOpsVersion")
+
+    final override def scalacPluginIvyDeps = Agg(ivy"org.sireum::scalac-plugin:$scalacPluginVersion")
+
+    final override def mainClass = Some("org.sireum.transpiler.Sireum")
 
     def cObject: C
 
