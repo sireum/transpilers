@@ -1,6 +1,6 @@
 #!/bin/bash -e
 if [[ -z $SIREUM_HOME ]]; then
-  echo "Please specify SIREUM_HOME env var."
+  echo "Please specify SIREUM_HOME env var to point to Sireum Kekinian."
   exit 1
 fi
 if [[ ! -d runtime ]]; then
