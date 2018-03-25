@@ -12,6 +12,9 @@ fi
 if [[ ! -d tools ]]; then
   ln -s $SIREUM_HOME/tools
 fi
+if [[ ! -f versions.properties ]]; then
+  ln -s $SIREUM_HOME/versions.properties
+fi
 if [[ ! -d runtime-c ]]; then
   RUNTIME_C=$SIREUM_HOME/../sireum-runtime-c
   if [[ -d $RUNTIME_C ]]; then
