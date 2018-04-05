@@ -7,4 +7,5 @@ import org.sireum._
 
   def string(s: String): String = $
 
+  def u32(s: String): U32 = $
 }
