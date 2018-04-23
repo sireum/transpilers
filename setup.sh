@@ -12,6 +12,9 @@ fi
 if [[ ! -d tools ]]; then
   ln -s $SIREUM_HOME/tools
 fi
+if [[ ! -d alir ]]; then
+  ln -s $SIREUM_HOME/alir
+fi
 if [[ ! -f versions.properties ]]; then
   ln -s $SIREUM_HOME/versions.properties
 fi
