@@ -1,6 +1,6 @@
 import $file.runtime.Runtime
 import $file.slang.Slang
-import $file.tools.Tools
+import $file.alir.Alir
 import $file.Transpilers
 import ammonite.ops.up
 
@@ -10,7 +10,7 @@ object runtime extends mill.Module {
 
   object library extends Runtime.Module.Library {
 
-    final override def macrosObject = macros
+    final override val macrosObject = macros
 
   }
 
@@ -20,7 +20,7 @@ object slang extends mill.Module {
 
   object ast extends Slang.Module.Ast {
 
-    override val libraryObject = runtime.library
+    final override val libraryObject = runtime.library
 
   }
 
@@ -32,21 +32,21 @@ object slang extends mill.Module {
 
   object tipe extends Slang.Module.Tipe {
 
-    final override def astObject = ast
+    final override val astObject = ast
 
   }
 
   object frontend extends Slang.Module.FrontEnd {
 
-    final override def parserObject = parser
+    final override val parserObject = parser
 
-    final override def tipeObject = tipe
+    final override val tipeObject = tipe
 
   }
 
 }
 
-object tools extends Tools.Module {
+object alir extends Alir.Module {
 
   override val frontEndObject = slang.frontend
 
@@ -54,7 +54,7 @@ object tools extends Tools.Module {
 
 object transpilers extends mill.Module {
 
-  final override def millSourcePath = super.millSourcePath / up
+  final override val millSourcePath = super.millSourcePath / up
 
   object common extends Transpilers.Module.Common {
     override val frontEndObject = slang.frontend
@@ -62,11 +62,11 @@ object transpilers extends mill.Module {
 
   object c extends Transpilers.Module.C {
     override val commonObject = common
+    override val alirObject = alir
   }
 
   object cli extends Transpilers.Module.Cli {
     override val cObject = c
-    override val toolsObject = tools
   }
 
 }

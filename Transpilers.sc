@@ -36,11 +36,13 @@ object Module {
 
   trait C extends Module {
 
-    final override def deps = Seq(commonObject)
+    final override def deps = Seq(commonObject, alirObject)
 
     final override def ivyDeps = Agg.empty
 
     def commonObject: Common
+
+    def alirObject: CrossJvmJs
   }
 
   trait Cli extends JvmOnly {
@@ -53,7 +55,7 @@ object Module {
 
     final override def testScalacPluginIvyDeps = Agg.empty
 
-    final override def crossDeps = Seq(cObject, toolsObject)
+    final override def crossDeps = Seq(cObject)
 
     final override def ivyDeps = Agg(ivy"com.lihaoyi::ammonite-ops:$ammoniteOpsVersion")
 
@@ -62,8 +64,6 @@ object Module {
     final override def mainClass = Some("org.sireum.transpiler.Sireum")
 
     def cObject: C
-
-    def toolsObject: CrossJvmJs
   }
 
 }

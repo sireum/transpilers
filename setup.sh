@@ -9,9 +9,6 @@ fi
 if [[ ! -d slang ]]; then
   ln -s $SIREUM_HOME/slang
 fi
-if [[ ! -d tools ]]; then
-  ln -s $SIREUM_HOME/tools
-fi
 if [[ ! -d alir ]]; then
   ln -s $SIREUM_HOME/alir
 fi
