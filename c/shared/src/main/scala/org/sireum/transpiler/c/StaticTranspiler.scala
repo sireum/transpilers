@@ -66,7 +66,7 @@ import StaticTranspiler._
       case _ => (ISZ(), ISZ())
     }
     cclassMap = cclassMap + owner ~> cclass(
-      header = cclass.header(headers = cclass.header.headers + id ~> (headers :+ header)),
+      header = cclass.header(headers = cclass.header.headers + id ~> (headers :+ st"$header;")),
       impl = cclass.impl(impls = cclass.impl.impls + id ~> (impls :+ impl)))
   }
 
