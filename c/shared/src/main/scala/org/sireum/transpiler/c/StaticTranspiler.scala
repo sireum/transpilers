@@ -29,6 +29,18 @@ object StaticTranspiler {
   val empty: ST = st""
   val trueLit: ST = st"T"
   val falseLit: ST = st"T"
+  val i8Min: Z = conversions.Z8.toZ(Z8.Min)
+  val i16Min: Z = conversions.Z16.toZ(Z16.Min)
+  val i32Min: Z = conversions.Z32.toZ(Z32.Min)
+  val i64Min: Z = conversions.Z64.toZ(Z64.Min)
+  val i8Max: Z = conversions.Z8.toZ(Z8.Max)
+  val i16Max: Z = conversions.Z16.toZ(Z16.Max)
+  val i32Max: Z = conversions.Z32.toZ(Z32.Max)
+  val i64Max: Z = conversions.Z64.toZ(Z64.Max)
+  val u8Max: Z = conversions. N8.toZ( N8.Max)
+  val u16Max: Z = conversions.N16.toZ(N16.Max)
+  val u32Max: Z = conversions.N32.toZ(N32.Max)
+  val u64Max: Z = conversions.N64.toZ(N64.Max)
 }
 
 import StaticTranspiler._
@@ -78,14 +90,14 @@ import StaticTranspiler._
     var stmts = ISZ[ST]()
     var nextTempNum = _nextTempNum
 
-    def freshTemp(isClone: B, tpe: AST.Typed, expOpt: Option[ST]): ST = {
+    def freshTemp(isClone: B, t: ST, expOpt: Option[ST]): ST = {
       val p = freshTempName(nextTempNum)
       nextTempNum = p._2
       val rhs: ST = expOpt match {
         case Some(e) => if (isClone) st" = *($e)" else st" = $e"
         case _ => st""
       }
-      stmts = stmts :+ st"${transpileType(tpe, isClone)} ${p._1}$rhs;"
+      stmts = stmts :+ st"$t ${p._1}$rhs;"
       return p._1
     }
 
@@ -98,23 +110,74 @@ import StaticTranspiler._
     }
 
     def transLitZ(exp: AST.Exp.LitZ): ST = {
-      halt("TODO") // TODO
+      val n = exp.value
+      var ok = T
+      config.defaultBitWidth match {
+        case z"8" =>
+          if (!(i8Min <= n && n <= i8Max)) {
+            ok = F
+          }
+        case z"16" =>
+          if (!(i16Min <= n && n <= i16Max)) {
+            ok = F
+          }
+        case z"32" =>
+          if (!(i32Min <= n && n <= i32Max)) {
+            ok = F
+          }
+        case z"64" =>
+          if (!(i64Min <= n && n <= i64Max)) {
+            ok = F
+          }
+        case _ => halt("Infeasible")
+      }
+      if (!ok) {
+        reporter.error(exp.posOpt, transKind, s"Invalid ${config.defaultBitWidth}-bit Z literal '$n'.")
+      }
+      return st"Z_C($n)"
     }
 
     def transLitF32(exp: AST.Exp.LitF32): ST = {
-      halt("TODO") // TODO
+      return st"${exp.value.string}F"
     }
 
     def transLitF64(exp: AST.Exp.LitF64): ST = {
-      halt("TODO") // TODO
+      return st"${exp.value.string}"
     }
 
     def transLitR(exp: AST.Exp.LitR): ST = {
-      halt("TODO") // TODO
+      return st"${exp.string}L"
     }
 
     def transLitString(exp: AST.Exp.LitString): ST = {
-      halt("TODO") // TODO
+      def escape(c: C): String = {
+        if (c <= '\u00FF') {
+          c.native match {
+            case '\u0000' => return "\\0"
+            case '\'' => return "\\'"
+            case '\u0022' => return "\\\\u0022"
+            case '?' => return "\\?"
+            case '\\' => return "\\\\"
+            case '\u0007' => return "\\a"
+            case '\b' => return "\\b"
+            case '\f' => return "\\f"
+            case '\n' => return "\\n"
+            case '\r' => return "\\r"
+            case '\t' => return "\\t"
+            case '\u000B' => return "\\v"
+            case _ =>
+              if ('\u0032' <= c && c < '\u007F') {
+                return c.string
+              } else {
+                return s"\\X${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}"
+              }
+          }
+        } else {
+          reporter.error(exp.posOpt, transKind, "Static C translation does not support Unicode string.")
+          return "\\?"
+        }
+      }
+      return st"${(conversions.String.toCis(exp.value).map(escape), "")}"
     }
 
     def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
@@ -172,14 +235,14 @@ import StaticTranspiler._
       return t._1
     }
 
-    def freshTemp(isClone: B, tpe: AST.Typed, expOpt: Option[ST]): ST = {
+    def freshTemp(isClone: B, t: ST, expOpt: Option[ST]): ST = {
       val p = freshTempName(nextTempNum)
       nextTempNum = p._2
       val rhs: ST = expOpt match {
         case Some(e) => if (isClone) st" = *($e)" else st" = $e"
         case _ => st""
       }
-      stmts = stmts :+ st"${transpileType(tpe, isClone)} ${p._1}$rhs;"
+      stmts = stmts :+ st"$t ${p._1}$rhs;"
       return p._1
     }
 
