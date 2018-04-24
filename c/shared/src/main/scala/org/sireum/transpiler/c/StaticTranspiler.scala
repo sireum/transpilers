@@ -14,7 +14,12 @@ object StaticTranspiler {
 
   type SubstMap = HashMap[AST.Typed.TypeVar, AST.Typed]
 
-  @datatype class Config(defaultBitWidth: Z, defaultArraySize: Z, customArraySizes: HashMap[AST.Typed, Z])
+  @datatype class Config(
+    defaultBitWidth: Z,
+    defaultStringSize: Z,
+    defaultArraySize: Z,
+    customArraySizes: HashMap[AST.Typed, Z]
+  )
 
   @datatype class Header(headers: HashMap[String, ISZ[ST]], footer: ISZ[ST])
 
@@ -37,10 +42,44 @@ object StaticTranspiler {
   val i16Max: Z = conversions.Z16.toZ(Z16.Max)
   val i32Max: Z = conversions.Z32.toZ(Z32.Max)
   val i64Max: Z = conversions.Z64.toZ(Z64.Max)
-  val u8Max: Z = conversions. N8.toZ( N8.Max)
+  val u8Max: Z = conversions.N8.toZ(N8.Max)
   val u16Max: Z = conversions.N16.toZ(N16.Max)
   val u32Max: Z = conversions.N32.toZ(N32.Max)
   val u64Max: Z = conversions.N64.toZ(N64.Max)
+  val stringTypeId: U32 = Fingerprint.u32(dotName(AST.Typed.string.ids))
+
+  @pure def dotName(ids: QName): String = {
+    return st"${(ids, ".")}".render
+  }
+
+  @pure def freshTempName(nextTempNum: Z): (ST, Z) = {
+    return (st"t_$nextTempNum", nextTempNum + 1)
+  }
+
+  @pure def methodResolvedInfo(method: AST.Stmt.Method): AST.ResolvedInfo.Method = {
+    method.attr.resOpt.get match {
+      case res: AST.ResolvedInfo.Method => return res
+      case _ => halt("Infeasible")
+    }
+  }
+
+  @pure def methodName(method: AST.ResolvedInfo.Method): String = {
+    val tpe = method.tpeOpt.get
+    val ids = method.owner :+ method.name :+ Fingerprint.string(tpe.string)
+    return underscoreName(if (method.isInObject) ids else "I" +: ids)
+  }
+
+  @pure def localName(id: String): String = {
+    return st"l_${encodeName(id)}".render
+  }
+
+  @pure def underscoreName(ids: QName): String = {
+    return st"${(ids.map(encodeName), "_")}".render
+  }
+
+  @pure def encodeName(id: String): String = {
+    return id // TODO
+  }
 }
 
 import StaticTranspiler._
@@ -105,11 +144,11 @@ import StaticTranspiler._
       return if (exp.value) trueLit else falseLit
     }
 
-    def transLitC(exp: AST.Exp.LitC): ST = {
+    @pure def transLitC(exp: AST.Exp.LitC): ST = {
       halt("TODO") // TODO
     }
 
-    def transLitZ(exp: AST.Exp.LitZ): ST = {
+    @pure def transLitZ(exp: AST.Exp.LitZ): ST = {
       val n = exp.value
       var ok = T
       config.defaultBitWidth match {
@@ -137,19 +176,19 @@ import StaticTranspiler._
       return st"Z_C($n)"
     }
 
-    def transLitF32(exp: AST.Exp.LitF32): ST = {
+    @pure def transLitF32(exp: AST.Exp.LitF32): ST = {
       return st"${exp.value.string}F"
     }
 
-    def transLitF64(exp: AST.Exp.LitF64): ST = {
+    @pure def transLitF64(exp: AST.Exp.LitF64): ST = {
       return st"${exp.value.string}"
     }
 
-    def transLitR(exp: AST.Exp.LitR): ST = {
+    @pure def transLitR(exp: AST.Exp.LitR): ST = {
       return st"${exp.string}L"
     }
 
-    def transLitString(exp: AST.Exp.LitString): ST = {
+    @pure def transLitString(exp: AST.Exp.LitString): ST = {
       def escape(c: C): String = {
         if (c <= '\u00FF') {
           c.native match {
@@ -177,10 +216,12 @@ import StaticTranspiler._
           return "\\?"
         }
       }
-      return st"${(conversions.String.toCis(exp.value).map(escape), "")}"
+      val value = st""""${(conversions.String.toCis(exp.value).map(escape), "")}"""".render
+      val temp = freshTemp(F, st"", Some(st"""(String) { .size = Z_C(${value.size}), .value = "$value" }"""))
+      return temp
     }
 
-    def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
+    @pure def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
       halt("TODO") // TODO
     }
 
@@ -189,10 +230,6 @@ import StaticTranspiler._
     }
 
     def transUnary(exp: AST.Exp.Unary): ST = {
-      halt("TODO") // TODO
-    }
-
-    def transInvoke(exp: AST.Exp.Invoke): ST = {
       halt("TODO") // TODO
     }
 
@@ -251,9 +288,12 @@ import StaticTranspiler._
         case Some(tipe) => tipe.typedOpt.get
         case _ => init.typedOpt.get
       }
-      val isClone = isMutable(t)
-      val rhs = transExp(init.exp)
-      stmts = stmts :+ st"${transpileType(t, isClone)} ${localName(stmt.id.value)} = ${if (isClone) st"*($rhs)" else rhs};"
+      if (isScalar(t)) {
+        stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transExp(init.exp)};"
+      } else {
+        val temp = freshTemp(T, transpileType(t, F), Some(st"${transExp(init.exp)}"))
+        stmts = stmts :+ st"${transpileType(t, T)} ${localName(stmt.id.value)} = &$temp;"
+      }
     }
 
     def transVarComplex(stmt: AST.Stmt.Var): Unit = {
@@ -350,49 +390,23 @@ import StaticTranspiler._
     return stmts
   }
 
-  @pure def isMutable(t: AST.Typed): B = {
-    t match {
-      case t: AST.Typed.Name =>
-        if (t.ids == AST.Typed.msName) {
-          return T
-        } else {
-          th.typeMap.get(t.ids) match {
-            case Some(info: TypeInfo.Sig) => return !info.ast.isImmutable
-            case Some(info: TypeInfo.AbstractDatatype) => return !info.ast.isDatatype
-            case _ => return F
-          }
-        }
-      case t: AST.Typed.Tuple =>
-        var i = 0
-        val sz = t.args.size
-        while (i < sz) {
-          if (isMutable(t.args(i))) {
-            return T
-          }
-          i = i + 1
-        }
-        return F
-      case _ => return F
-    }
-  }
-
   @pure def methodHeader(method: AST.ResolvedInfo.Method): ST = {
     val name = methodName(method)
     val tpe = method.tpeOpt.get
-    val retType = transpileType(tpe.ret, T)
+    val retType = transpileType(tpe.ret, F)
     val params: ST =
       if (method.paramNames.isEmpty)
         unitType
       else
         st"${(
           for (p <- ops.ISZOps(tpe.args).zip(method.paramNames))
-            yield st"${transpileType(p._1, F)} ${localName(p._2)}",
+            yield st"${transpileType(p._1, T)} ${localName(p._2)}",
           ", "
         )}"
     return st"$retType $name($params)"
   }
 
-  @pure def transpileType(tpe: AST.Typed, isLValue: B): ST = {
+  @pure def transpileType(tpe: AST.Typed, isPtr: B): ST = {
     tpe match {
       case AST.Typed.unit => return unitType
       case AST.Typed.b => return bType
@@ -401,36 +415,21 @@ import StaticTranspiler._
     }
   }
 
-  @pure def freshTempName(nextTempNum: Z): (ST, Z) = {
-    return (st"t_$nextTempNum", nextTempNum + 1)
-  }
-
-  @pure def methodResolvedInfo(method: AST.Stmt.Method): AST.ResolvedInfo.Method = {
-    method.attr.resOpt.get match {
-      case res: AST.ResolvedInfo.Method => return res
-      case _ => halt("Infeasible")
+  @pure def isScalar(t: AST.Typed): B = {
+    t match {
+      case AST.Typed.b =>
+      case AST.Typed.c =>
+      case AST.Typed.z =>
+      case AST.Typed.f32 =>
+      case AST.Typed.f64 =>
+      case AST.Typed.r =>
+      case t: AST.Typed.Name if t.args.isEmpty =>
+        th.typeMap.get(t.ids) match {
+          case Some(_: TypeInfo.SubZ) =>
+          case _ => return F
+        }
+      case _ => return F
     }
-  }
-
-  @pure def methodName(method: AST.ResolvedInfo.Method): String = {
-    val tpe = method.tpeOpt.get
-    val ids = method.owner :+ method.name :+ Fingerprint.string(tpe.string)
-    return underscoreName(if (method.isInObject) ids else "I" +: ids)
-  }
-
-  @pure def localName(id: String): String = {
-    return st"l_${encodeName(id)}".render
-  }
-
-  @pure def underscoreName(ids: QName): String = {
-    return st"${(ids.map(encodeName), "_")}".render
-  }
-
-  @pure def dotName(ids: QName): String = {
-    return st"${(ids, ".")}".render
-  }
-
-  @pure def encodeName(id: String): String = {
-    return id // TODO
+    return T
   }
 }
