@@ -14,7 +14,7 @@ object StaticTranspiler {
 
   type SubstMap = HashMap[AST.Typed.TypeVar, AST.Typed]
 
-  @datatype class Config(defaultArraySize: Z, customArraySizes: HashMap[AST.Typed, Z])
+  @datatype class Config(defaultBitWidth: Z, defaultArraySize: Z, customArraySizes: HashMap[AST.Typed, Z])
 
   @datatype class Header(headers: HashMap[String, ISZ[ST]], footer: ISZ[ST])
 
@@ -22,11 +22,13 @@ object StaticTranspiler {
 
   @datatype class CClass(header: Header, impl: Impl)
 
-  val kind: String = "Static C Transpiler"
+  val transKind: String = "Static C Transpiler"
   val unitType: ST = st"void"
   val bType: ST = st"B"
   val zType: ST = st"Z"
   val empty: ST = st""
+  val trueLit: ST = st"T"
+  val falseLit: ST = st"T"
 }
 
 import StaticTranspiler._
@@ -41,7 +43,7 @@ import StaticTranspiler._
     val methodInfo: Info.Method = th.nameMap.get(method) match {
       case Some(info: Info.Method) => info
       case _ =>
-        reporter.error(None(), kind, st"'${dotName(method)}' is not a method".render)
+        reporter.error(None(), transKind, st"'${dotName(method)}' is not a method".render)
         return
     }
     assert(methodInfo.ast.sig.typeParams.isEmpty) // TODO: Specialize object method
@@ -87,32 +89,72 @@ import StaticTranspiler._
       return p._1
     }
 
-    def transLitB(exp: AST.Exp.LitB): ST = {
-      return st"?" // TODO
+    @pure def transLitB(exp: AST.Exp.LitB): ST = {
+      return if (exp.value) trueLit else falseLit
+    }
+
+    def transLitC(exp: AST.Exp.LitC): ST = {
+      halt("TODO") // TODO
     }
 
     def transLitZ(exp: AST.Exp.LitZ): ST = {
-      return st"?" // TODO
+      halt("TODO") // TODO
+    }
+
+    def transLitF32(exp: AST.Exp.LitF32): ST = {
+      halt("TODO") // TODO
+    }
+
+    def transLitF64(exp: AST.Exp.LitF64): ST = {
+      halt("TODO") // TODO
+    }
+
+    def transLitR(exp: AST.Exp.LitR): ST = {
+      halt("TODO") // TODO
+    }
+
+    def transLitString(exp: AST.Exp.LitString): ST = {
+      halt("TODO") // TODO
+    }
+
+    def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
+      halt("TODO") // TODO
     }
 
     def transBinary(exp: AST.Exp.Binary): ST = {
-      return st"?" // TODO
+      halt("TODO") // TODO
     }
 
     def transUnary(exp: AST.Exp.Unary): ST = {
-      return st"?" // TODO
+      halt("TODO") // TODO
     }
 
     def transInvoke(exp: AST.Exp.Invoke): ST = {
-      return st"?" // TODO
+      halt("TODO") // TODO
+    }
+
+    def isSubZLit(exp: AST.Exp.StringInterpolate): B = {
+      exp.attr.typedOpt.get match {
+        case t: AST.Typed.Name if t.args.isEmpty =>
+          th.typeMap.get(t.ids) match {
+            case Some(_: TypeInfo.SubZ) => return T
+            case _ => return F
+          }
+        case _ => return F
+      }
     }
 
     val expST: ST = exp match {
       case exp: AST.Exp.LitB => val r = transLitB(exp); r
+      case exp: AST.Exp.LitC => val r = transLitC(exp); r
       case exp: AST.Exp.LitZ => val r = transLitZ(exp); r
+      case exp: AST.Exp.LitF32 => val r = transLitF32(exp); r
+      case exp: AST.Exp.LitF64 => val r = transLitF64(exp); r
+      case exp: AST.Exp.LitR => val r = transLitR(exp); r
+      case exp: AST.Exp.StringInterpolate if isSubZLit(exp) => val r = transSubZLit(exp); r
+      case exp: AST.Exp.LitString => val r = transLitString(exp); r
       case exp: AST.Exp.Binary => val r = transBinary(exp); r
       case exp: AST.Exp.Unary => val r = transUnary(exp); r
-      case exp: AST.Exp.Invoke => val r = transInvoke(exp); r
       case _ => halt("TODO") // TODO
     }
 
@@ -155,16 +197,89 @@ import StaticTranspiler._
       halt("TODO") // TODO
     }
 
+    def transAssert(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transAssume(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transCprint(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transCprintln(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transEprint(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transEprintln(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transPrint(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transPrintln(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transHalt(exp: AST.Exp.Invoke): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def isBuiltInStmt(exp: AST.Exp.Invoke): B = {
+      exp.attr.resOpt match {
+        case Some(AST.ResolvedInfo.BuiltIn(kind)) =>
+          kind match {
+            case AST.ResolvedInfo.BuiltIn.Kind.Assert => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.Assume => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.Cprint => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.Cprintln => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.Eprint => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.Eprintln => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.Print => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.Println => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.Halt => return T
+            case _ => return F
+          }
+        case _ => return F
+      }
+    }
+
     stmts = stmts :+ empty
     stmt.posOpt match {
       case Some(pos) => stmts = stmts :+ st"// L${pos.beginLine}"
       case _ => stmts = stmts :+ st"// L?"
     }
+
     stmt match {
       case stmt: AST.Stmt.Var =>
         stmt.initOpt.get match {
           case init: AST.Stmt.Expr => transVar(stmt, init)
           case _ => transVarComplex(stmt)
+        }
+      case AST.Stmt.Expr(exp: AST.Exp.Invoke) if isBuiltInStmt(exp) =>
+        exp.attr.resOpt.get match {
+          case AST.ResolvedInfo.BuiltIn(kind) =>
+            kind match {
+              case AST.ResolvedInfo.BuiltIn.Kind.Assert => transAssert(exp)
+              case AST.ResolvedInfo.BuiltIn.Kind.Assume => transAssume(exp)
+              case AST.ResolvedInfo.BuiltIn.Kind.Cprint => transCprint(exp)
+              case AST.ResolvedInfo.BuiltIn.Kind.Cprintln => transCprintln(exp)
+              case AST.ResolvedInfo.BuiltIn.Kind.Eprint => transEprint(exp)
+              case AST.ResolvedInfo.BuiltIn.Kind.Eprintln => transEprintln(exp)
+              case AST.ResolvedInfo.BuiltIn.Kind.Print => transPrint(exp)
+              case AST.ResolvedInfo.BuiltIn.Kind.Println => transPrintln(exp)
+              case AST.ResolvedInfo.BuiltIn.Kind.Halt => transHalt(exp)
+              case _ => halt("Infeasible")
+            }
+          case _ => halt("Infeasible")
         }
       case _ => halt("TODO") // TODO
     }
