@@ -15,10 +15,10 @@ fi
 if [[ ! -f versions.properties ]]; then
   ln -s $SIREUM_HOME/versions.properties
 fi
-if [[ ! -d runtime-c ]]; then
+if [[ ! -d c/shared/src/main/scala/org/sireum/transpiler/c/runtime ]]; then
   RUNTIME_C=$SIREUM_HOME/../sireum-runtime-c
   if [[ -d $RUNTIME_C ]]; then
-    ln -s $RUNTIME_C runtime-c
+    ln -s $RUNTIME_C c/shared/src/main/scala/org/sireum/transpiler/c/runtime
   else
     echo "Could not find runtime-c."
     exit 1

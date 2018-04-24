@@ -2,7 +2,6 @@
 /runtime
 /slang
 /tools
-/runtime-c
 /out
 target
 /.idea
