@@ -6,11 +6,17 @@ import org.sireum.message._
 
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
-import org.sireum.lang.symbol.Resolver._
+import org.sireum.lang.symbol.Resolver.QName
 import org.sireum.lang.tipe._
 import org.sireum.transpiler.c.util.Fingerprint
 
 object StaticTranspiler {
+
+  @enum object TypeKind {
+    'Scalar
+    'Immutable
+    'Mutable
+  }
 
   type SubstMap = HashMap[AST.Typed.TypeVar, AST.Typed]
 
@@ -74,11 +80,20 @@ object StaticTranspiler {
   }
 
   @pure def underscoreName(ids: QName): String = {
-    return st"${(ids.map(encodeName), "_")}".render
+    return if (ids.size >= 2 && ids(0) == string"org" && ids(1) == string"sireum")
+      st"${(ops.ISZOps(ids).drop(2).map(encodeName), "_")}".render
+    else st"${(ids.map(encodeName), "_")}".render
   }
 
   @pure def encodeName(id: String): String = {
     return id // TODO
+  }
+
+  @pure def typeName(tOpt: Option[AST.Typed]): QName = {
+    tOpt.get match {
+      case t: AST.Typed.Name => return t.ids
+      case _ => halt("Infeasible")
+    }
   }
 }
 
@@ -145,13 +160,13 @@ import StaticTranspiler._
     }
 
     @pure def transLitC(exp: AST.Exp.LitC): ST = {
-      halt("TODO") // TODO
+      return st"'${escapeChar(exp.value)}'"
     }
 
-    @pure def transLitZ(exp: AST.Exp.LitZ): ST = {
-      val n = exp.value
+    def checkBitWidth(n: Z, bitWidth: Z): Unit = {
       var ok = T
-      config.defaultBitWidth match {
+      val bw: Z = if (bitWidth == z"0") config.defaultBitWidth else bitWidth
+      bw match {
         case z"8" =>
           if (!(i8Min <= n && n <= i8Max)) {
             ok = F
@@ -173,6 +188,11 @@ import StaticTranspiler._
       if (!ok) {
         reporter.error(exp.posOpt, transKind, s"Invalid ${config.defaultBitWidth}-bit Z literal '$n'.")
       }
+    }
+
+    def transLitZ(exp: AST.Exp.LitZ): ST = {
+      val n = exp.value
+      checkBitWidth(n, 0)
       return st"Z_C($n)"
     }
 
@@ -188,49 +208,117 @@ import StaticTranspiler._
       return st"${exp.string}L"
     }
 
-    @pure def transLitString(exp: AST.Exp.LitString): ST = {
-      def escape(c: C): String = {
-        if (c <= '\u00FF') {
-          c.native match {
-            case '\u0000' => return "\\0"
-            case '\'' => return "\\'"
-            case '\u0022' => return "\\\\u0022"
-            case '?' => return "\\?"
-            case '\\' => return "\\\\"
-            case '\u0007' => return "\\a"
-            case '\b' => return "\\b"
-            case '\f' => return "\\f"
-            case '\n' => return "\\n"
-            case '\r' => return "\\r"
-            case '\t' => return "\\t"
-            case '\u000B' => return "\\v"
-            case _ =>
-              if ('\u0032' <= c && c < '\u007F') {
-                return c.string
-              } else {
-                return s"\\X${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}"
-              }
-          }
-        } else {
-          reporter.error(exp.posOpt, transKind, "Static C translation does not support Unicode string.")
-          return "\\?"
+    def escapeChar(c : C): String = {
+      if (c <= '\u00FF') {
+        c.native match {
+          case '\u0000' => return "\\0"
+          case '\'' => return "\\'"
+          case '\u0022' => return "\\\\u0022"
+          case '?' => return "\\?"
+          case '\\' => return "\\\\"
+          case '\u0007' => return "\\a"
+          case '\b' => return "\\b"
+          case '\f' => return "\\f"
+          case '\n' => return "\\n"
+          case '\r' => return "\\r"
+          case '\t' => return "\\t"
+          case '\u000B' => return "\\v"
+          case _ =>
+            if ('\u0032' <= c && c < '\u007F') {
+              return c.string
+            } else {
+              return s"\\X${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}"
+            }
         }
+      } else {
+        reporter.error(exp.posOpt, transKind, "Static C translation does not support Unicode string.")
+        return "\\?"
       }
-      val value = st""""${(conversions.String.toCis(exp.value).map(escape), "")}"""".render
-      val temp = freshTemp(F, st"", Some(st"""(String) { .size = Z_C(${value.size}), .value = "$value" }"""))
+    }
+
+    def transLitString(exp: AST.Exp.LitString): ST = {
+      val cis = conversions.String.toCis(exp.value)
+      val value = MSZ.create[String](cis.size, "")
+      var i = 0
+      while (i < cis.size) {
+        value(i) = escapeChar(cis(i))
+        i = i + 1
+      }
+      val temp = freshTemp(F, st"", Some(st"""string("${(value, "")}")"""))
       return temp
     }
 
     @pure def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
-      halt("TODO") // TODO
+      val tname = typeName(exp.attr.typedOpt)
+      val info: TypeInfo.SubZ = th.typeMap.get(tname).get match {
+        case inf: TypeInfo.SubZ => inf
+        case _ => halt("Infeasible")
+      }
+      val n = Z(exp.lits(0).value).get
+      checkBitWidth(n, info.ast.bitWidth)
+      return st"${(dotName(tname), "")}_C"
     }
 
     def transBinary(exp: AST.Exp.Binary): ST = {
-      halt("TODO") // TODO
+      exp.attr.resOpt.get match {
+        case res: AST.ResolvedInfo.BuiltIn =>
+          val tname = typeName(exp.attr.typedOpt)
+          res.kind match {
+            case AST.ResolvedInfo.BuiltIn.Kind.BinaryImply =>
+              return st"(!(${transExp(exp.left)}) || ${transExp(exp.right)})"
+            case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondAnd =>
+              return st"(${transExp(exp.left)} && ${transExp(exp.right)})"
+            case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondOr =>
+              return st"(${transExp(exp.left)} || ${transExp(exp.right)})"
+            case AST.ResolvedInfo.BuiltIn.Kind.BinaryMapsTo => halt("TODO") // TODO
+            case _ =>
+              val op: String = res.kind match {
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryAdd => "_add"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinarySub => "_sub"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryMul => "_mul"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryDiv => "_div"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryRem => "_rem"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryEq => "_eq"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryNe => "_ne"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryLt => "_lt"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryLe => "_le"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryGt => "_gt"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryGe => "_ge"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryShl => "_shl"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryShr => "_shr"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryUshr => "_ushr"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryAnd => "_and"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryOr => "_or"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryXor => "_xor"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryAppend => "_append"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryPrepend => "_prepend"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryAppendAll => "_appendall"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryRemoveAll => "_removeall"
+                case _ => halt("TODO") // TODO
+              }
+              return st"${underscoreName(tname)}$op(${transExp(exp.left)}, ${transExp(exp.right)})"
+          }
+        case _ => halt("TODO") // TODO
+      }
     }
 
     def transUnary(exp: AST.Exp.Unary): ST = {
-      halt("TODO") // TODO
+      exp.attr.resOpt.get match {
+        case res: AST.ResolvedInfo.BuiltIn =>
+          if (res.kind == AST.ResolvedInfo.BuiltIn.Kind.UnaryNot) {
+            return st"!${transExp(exp.exp)}"
+          } else {
+            val tname = typeName(exp.typedOpt)
+            val op: String = res.kind match {
+              case AST.ResolvedInfo.BuiltIn.Kind.UnaryComplement => "_complement"
+              case AST.ResolvedInfo.BuiltIn.Kind.UnaryPlus => "_plus"
+              case AST.ResolvedInfo.BuiltIn.Kind.UnaryMinus => "_minus"
+              case _ => halt("Infeasible")
+            }
+            return st"${underscoreName(tname)}$op(${transExp(exp.exp)})"
+          }
+        case _ => halt("TODO") // TODO
+      }
     }
 
     def isSubZLit(exp: AST.Exp.StringInterpolate): B = {
@@ -244,20 +332,23 @@ import StaticTranspiler._
       }
     }
 
-    val expST: ST = exp match {
-      case exp: AST.Exp.LitB => val r = transLitB(exp); r
-      case exp: AST.Exp.LitC => val r = transLitC(exp); r
-      case exp: AST.Exp.LitZ => val r = transLitZ(exp); r
-      case exp: AST.Exp.LitF32 => val r = transLitF32(exp); r
-      case exp: AST.Exp.LitF64 => val r = transLitF64(exp); r
-      case exp: AST.Exp.LitR => val r = transLitR(exp); r
-      case exp: AST.Exp.StringInterpolate if isSubZLit(exp) => val r = transSubZLit(exp); r
-      case exp: AST.Exp.LitString => val r = transLitString(exp); r
-      case exp: AST.Exp.Binary => val r = transBinary(exp); r
-      case exp: AST.Exp.Unary => val r = transUnary(exp); r
-      case _ => halt("TODO") // TODO
+    def transExp(exp: AST.Exp): ST = {
+      exp match {
+        case exp: AST.Exp.LitB => val r = transLitB(exp); return r
+        case exp: AST.Exp.LitC => val r = transLitC(exp); return r
+        case exp: AST.Exp.LitZ => val r = transLitZ(exp); return r
+        case exp: AST.Exp.LitF32 => val r = transLitF32(exp); return r
+        case exp: AST.Exp.LitF64 => val r = transLitF64(exp); return r
+        case exp: AST.Exp.LitR => val r = transLitR(exp); return r
+        case exp: AST.Exp.StringInterpolate if isSubZLit(exp) => val r = transSubZLit(exp); return r
+        case exp: AST.Exp.LitString => val r = transLitString(exp); return r
+        case exp: AST.Exp.Binary => val r = transBinary(exp); return r
+        case exp: AST.Exp.Unary => val r = transUnary(exp); return r
+        case _ => halt("TODO") // TODO
+      }
     }
 
+    val expST = transExp(exp)
     return (expST, nextTempNum, stmts)
   }
 
@@ -288,11 +379,9 @@ import StaticTranspiler._
         case Some(tipe) => tipe.typedOpt.get
         case _ => init.typedOpt.get
       }
-      if (isScalar(t)) {
-        stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transExp(init.exp)};"
-      } else {
-        val temp = freshTemp(T, transpileType(t, F), Some(st"${transExp(init.exp)}"))
-        stmts = stmts :+ st"${transpileType(t, T)} ${localName(stmt.id.value)} = &$temp;"
+      typeKind(t) match {
+        case TypeKind.Scalar => stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transExp(init.exp)};"
+        case _ => halt("TODO") // TODO
       }
     }
 
@@ -415,7 +504,7 @@ import StaticTranspiler._
     }
   }
 
-  @pure def isScalar(t: AST.Typed): B = {
+  @pure def typeKind(t: AST.Typed): TypeKind.Type = {
     t match {
       case AST.Typed.b =>
       case AST.Typed.c =>
@@ -424,12 +513,24 @@ import StaticTranspiler._
       case AST.Typed.f64 =>
       case AST.Typed.r =>
       case t: AST.Typed.Name if t.args.isEmpty =>
-        th.typeMap.get(t.ids) match {
-          case Some(_: TypeInfo.SubZ) =>
-          case _ => return F
+        th.typeMap.get(t.ids).get match {
+          case _: TypeInfo.SubZ =>
+          case _: TypeInfo.Enum =>
+          case info: TypeInfo.AbstractDatatype =>
+            return if (info.ast.isDatatype) TypeKind.Immutable else TypeKind.Mutable
+          case info: TypeInfo.Sig =>
+            return if (info.ast.isImmutable) TypeKind.Immutable else TypeKind.Mutable
+          case _ => halt("Infeasible")
         }
-      case _ => return F
+      case t: AST.Typed.Tuple =>
+        for (targ <- t.args) {
+          if (typeKind(targ) == TypeKind.Mutable) {
+            return TypeKind.Mutable
+          }
+        }
+        return TypeKind.Immutable
+      case _ => return TypeKind.Immutable
     }
-    return T
+    return TypeKind.Scalar
   }
 }
