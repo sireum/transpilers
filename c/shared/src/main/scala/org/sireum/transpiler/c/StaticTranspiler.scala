@@ -21,6 +21,7 @@ object StaticTranspiler {
   type SubstMap = HashMap[AST.Typed.TypeVar, AST.Typed]
 
   @datatype class Config(
+    lineNumber: B,
     defaultBitWidth: Z,
     defaultStringSize: Z,
     defaultArraySize: Z,
@@ -446,7 +447,12 @@ import StaticTranspiler._
 
     stmts = stmts :+ empty
     stmt.posOpt match {
-      case Some(pos) => stmts = stmts :+ st"// L${pos.beginLine}"
+      case Some(pos) =>
+        if (config.lineNumber) {
+          stmts = stmts :+ st"sfUpdateLoc(${pos.beginLine});"
+        } else {
+          stmts = stmts :+ st"// L${pos.beginLine}"
+        }
       case _ => stmts = stmts :+ st"// L?"
     }
 
