@@ -54,6 +54,7 @@ object StaticTranspiler {
   val u16Max: Z = conversions.N16.toZ(N16.Max)
   val u32Max: Z = conversions.N32.toZ(N32.Max)
   val u64Max: Z = conversions.N64.toZ(N64.Max)
+  val abort: ST = st"abort();"
 
   @pure def dotName(ids: QName): String = {
     return st"${(ids, ".")}".render
@@ -344,14 +345,15 @@ import StaticTranspiler._
     }
   }
 
-  @pure def transpileStmt(stmt: AST.Stmt): ISZ[ST] = {
-    var stmts = ISZ[ST]()
-    var nextTempNum = z"0"
+  def transToString(exp: AST.Exp): ST = {
+    halt("TODO") // TODO
+  }
 
-    def transExp(exp: AST.Exp): ST = {
-      val r = transpileExp(exp)
-      return r
-    }
+  def transPrintH(isOut: ST, args: ISZ[AST.Exp]): Unit = {
+    halt("TODO") // TODO
+  }
+
+  @pure def transpileStmt(stmt: AST.Stmt): ISZ[ST] = {
 
     def transVar(stmt: AST.Stmt.Var, init: AST.Stmt.Expr): Unit = {
       val t: AST.Typed = stmt.tipeOpt match {
@@ -360,7 +362,7 @@ import StaticTranspiler._
       }
       typeKind(t) match {
         case TypeKind.Scalar =>
-          stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transExp(init.exp)};"
+          stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transpileExp(init.exp)};"
         case _ => halt("TODO") // TODO
       }
     }
@@ -370,39 +372,86 @@ import StaticTranspiler._
     }
 
     def transAssert(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
+        case AST.ResolvedInfo.BuiltIn(k) => k
+        case _ => halt("Infeasible")
+      }
+      val cond = transpileExp(exp.args(0))
+      if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assert) {
+        stmts = stmts :+ st"""if ($cond) sfAbort(sf, "Assertion failure");"""
+      } else {
+        assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssertMsg)
+        val oldStmts = stmts
+        stmts = ISZ()
+        val s = transpileExp(exp.args(1))
+        stmts = stmts :+
+          st"""if ($cond) {
+          |  ${(stmts, "\n")}
+          |  sfAbort(sf, ($s)->value);
+          |}"""
+        stmts = oldStmts
+      }
     }
 
     def transAssume(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
+        case AST.ResolvedInfo.BuiltIn(k) => k
+        case _ => halt("Infeasible")
+      }
+      val cond = transpileExp(exp.args(0))
+      if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assume) {
+        stmts = stmts :+ st"""if ($cond) sfAbort(sf, "Assumption does not hold");"""
+      } else {
+        assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg)
+        val oldStmts = stmts
+        stmts = ISZ()
+        val s = transpileExp(exp.args(1))
+        stmts = stmts :+
+          st"""if ($cond) {
+          |  ${(stmts, "\n")}
+          |  sfAbort(sf, ($s)->value);
+          |}"""
+        stmts = oldStmts
+      }
     }
 
     def transCprint(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      val t = transpileExp(exp.args(0))
+      transPrintH(t, ops.ISZOps(exp.args).drop(1))
     }
 
     def transCprintln(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      val t = transpileExp(exp.args(0))
+      val t2 = freshTemp(F, bType, Some(t))
+      transPrintH(t2, ops.ISZOps(exp.args).drop(1))
+      stmts = stmts :+ st"cprintln($t2);"
+      stmts = stmts :+ st"cflush($t2);"
     }
 
     def transEprint(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      transPrintH(falseLit, exp.args)
     }
 
     def transEprintln(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      transPrintH(falseLit, exp.args)
+      stmts = stmts :+ st"cprintln($falseLit);"
+      stmts = stmts :+ st"cflush($falseLit);"
     }
 
     def transPrint(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      transPrintH(trueLit, exp.args)
     }
 
     def transPrintln(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      transPrintH(trueLit, exp.args)
+      stmts = stmts :+ st"cprintln($trueLit);"
+      stmts = stmts :+ st"cflush($trueLit);"
     }
 
     def transHalt(exp: AST.Exp.Invoke): Unit = {
-      halt("TODO") // TODO
+      val s = transToString(exp.args(0))
+      stmts = stmts :+ st"sfAbort(sf, ($s)->value);"
+      stmts = stmts :+ abort
     }
 
     def isBuiltInStmt(exp: AST.Exp.Invoke): B = {
