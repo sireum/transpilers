@@ -106,6 +106,10 @@ import StaticTranspiler._
 
   var cclassMap: HashMap[QName, CClass] = HashMap.empty
 
+  var stmts: ISZ[ST] = ISZ()
+
+  var nextTempNum: Z = 0
+
   def transpileObjectMethod(method: QName, substMap: SubstMap): Unit = {
     val methodInfo: Info.Method = th.nameMap.get(method) match {
       case Some(info: Info.Method) => info
@@ -141,20 +145,18 @@ import StaticTranspiler._
     )
   }
 
-  @pure def transpileExp(exp: AST.Exp, _nextTempNum: Z): (ST, Z, ISZ[ST]) = {
-    var stmts = ISZ[ST]()
-    var nextTempNum = _nextTempNum
-
-    def freshTemp(isClone: B, t: ST, expOpt: Option[ST]): ST = {
-      val p = freshTempName(nextTempNum)
-      nextTempNum = p._2
-      val rhs: ST = expOpt match {
-        case Some(e) => if (isClone) st" = *($e)" else st" = $e"
-        case _ => st""
-      }
-      stmts = stmts :+ st"$t ${p._1}$rhs;"
-      return p._1
+  def freshTemp(isClone: B, t: ST, expOpt: Option[ST]): ST = {
+    val p = freshTempName(nextTempNum)
+    nextTempNum = p._2
+    val rhs: ST = expOpt match {
+      case Some(e) => if (isClone) st" = *($e)" else st" = $e"
+      case _ => st""
     }
+    stmts = stmts :+ st"$t ${p._1}$rhs;"
+    return p._1
+  }
+
+  @pure def transpileExp(exp: AST.Exp): ST = {
 
     @pure def transLitB(exp: AST.Exp.LitB): ST = {
       return if (exp.value) trueLit else falseLit
@@ -266,11 +268,11 @@ import StaticTranspiler._
           val tname = typeName(exp.attr.typedOpt)
           res.kind match {
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryImply =>
-              return st"(!(${transExp(exp.left)}) || ${transExp(exp.right)})"
+              return st"(!(${transpileExp(exp.left)}) || ${transpileExp(exp.right)})"
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondAnd =>
-              return st"(${transExp(exp.left)} && ${transExp(exp.right)})"
+              return st"(${transpileExp(exp.left)} && ${transpileExp(exp.right)})"
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondOr =>
-              return st"(${transExp(exp.left)} || ${transExp(exp.right)})"
+              return st"(${transpileExp(exp.left)} || ${transpileExp(exp.right)})"
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryMapsTo => halt("TODO") // TODO
             case _ =>
               val op: String = res.kind match {
@@ -297,7 +299,7 @@ import StaticTranspiler._
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryRemoveAll => "_removeall"
                 case _ => halt("TODO") // TODO
               }
-              return st"${underscoreName(tname)}$op(${transExp(exp.left)}, ${transExp(exp.right)})"
+              return st"${underscoreName(tname)}$op(${transpileExp(exp.left)}, ${transpileExp(exp.right)})"
           }
         case _ => halt("TODO") // TODO
       }
@@ -307,7 +309,7 @@ import StaticTranspiler._
       exp.attr.resOpt.get match {
         case res: AST.ResolvedInfo.BuiltIn =>
           if (res.kind == AST.ResolvedInfo.BuiltIn.Kind.UnaryNot) {
-            return st"!${transExp(exp.exp)}"
+            return st"!${transpileExp(exp.exp)}"
           } else {
             val tname = typeName(exp.typedOpt)
             val op: String = res.kind match {
@@ -316,7 +318,7 @@ import StaticTranspiler._
               case AST.ResolvedInfo.BuiltIn.Kind.UnaryMinus => "_minus"
               case _ => halt("Infeasible")
             }
-            return st"${underscoreName(tname)}$op(${transExp(exp.exp)})"
+            return st"${underscoreName(tname)}$op(${transpileExp(exp.exp)})"
           }
         case _ => halt("TODO") // TODO
       }
@@ -333,24 +335,19 @@ import StaticTranspiler._
       }
     }
 
-    def transExp(exp: AST.Exp): ST = {
-      exp match {
-        case exp: AST.Exp.LitB => val r = transLitB(exp); return r
-        case exp: AST.Exp.LitC => val r = transLitC(exp); return r
-        case exp: AST.Exp.LitZ => val r = transLitZ(exp); return r
-        case exp: AST.Exp.LitF32 => val r = transLitF32(exp); return r
-        case exp: AST.Exp.LitF64 => val r = transLitF64(exp); return r
-        case exp: AST.Exp.LitR => val r = transLitR(exp); return r
-        case exp: AST.Exp.StringInterpolate if isSubZLit(exp) => val r = transSubZLit(exp); return r
-        case exp: AST.Exp.LitString => val r = transLitString(exp); return r
-        case exp: AST.Exp.Binary => val r = transBinary(exp); return r
-        case exp: AST.Exp.Unary => val r = transUnary(exp); return r
-        case _ => halt("TODO") // TODO
-      }
+    exp match {
+      case exp: AST.Exp.LitB => val r = transLitB(exp); return r
+      case exp: AST.Exp.LitC => val r = transLitC(exp); return r
+      case exp: AST.Exp.LitZ => val r = transLitZ(exp); return r
+      case exp: AST.Exp.LitF32 => val r = transLitF32(exp); return r
+      case exp: AST.Exp.LitF64 => val r = transLitF64(exp); return r
+      case exp: AST.Exp.LitR => val r = transLitR(exp); return r
+      case exp: AST.Exp.StringInterpolate if isSubZLit(exp) => val r = transSubZLit(exp); return r
+      case exp: AST.Exp.LitString => val r = transLitString(exp); return r
+      case exp: AST.Exp.Binary => val r = transBinary(exp); return r
+      case exp: AST.Exp.Unary => val r = transUnary(exp); return r
+      case _ => halt("TODO") // TODO
     }
-
-    val expST = transExp(exp)
-    return (expST, nextTempNum, stmts)
   }
 
   @pure def transpileStmt(stmt: AST.Stmt): ISZ[ST] = {
@@ -358,21 +355,8 @@ import StaticTranspiler._
     var nextTempNum = z"0"
 
     def transExp(exp: AST.Exp): ST = {
-      val t = transpileExp(exp, nextTempNum)
-      nextTempNum = t._2
-      stmts = stmts ++ t._3
-      return t._1
-    }
-
-    def freshTemp(isClone: B, t: ST, expOpt: Option[ST]): ST = {
-      val p = freshTempName(nextTempNum)
-      nextTempNum = p._2
-      val rhs: ST = expOpt match {
-        case Some(e) => if (isClone) st" = *($e)" else st" = $e"
-        case _ => st""
-      }
-      stmts = stmts :+ st"$t ${p._1}$rhs;"
-      return p._1
+      val r = transpileExp(exp)
+      return r
     }
 
     def transVar(stmt: AST.Stmt.Var, init: AST.Stmt.Expr): Unit = {
@@ -453,7 +437,12 @@ import StaticTranspiler._
         } else {
           stmts = stmts :+ st"// L${pos.beginLine}"
         }
-      case _ => stmts = stmts :+ st"// L?"
+      case _ =>
+        if (config.lineNumber) {
+          stmts = stmts :+ st"sfUpdateLoc(0);"
+        } else {
+          stmts = stmts :+ st"// L?"
+        }
     }
 
     stmt match {
