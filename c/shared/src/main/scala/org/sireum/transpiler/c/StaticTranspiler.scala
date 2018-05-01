@@ -22,6 +22,7 @@ object StaticTranspiler {
 
   @datatype class Config(
     lineNumber: B,
+    fingerprintWidth: Z,
     defaultBitWidth: Z,
     defaultStringSize: Z,
     defaultArraySize: Z,
@@ -53,7 +54,6 @@ object StaticTranspiler {
   val u16Max: Z = conversions.N16.toZ(N16.Max)
   val u32Max: Z = conversions.N32.toZ(N32.Max)
   val u64Max: Z = conversions.N64.toZ(N64.Max)
-  val stringTypeId: U32 = Fingerprint.u32(dotName(AST.Typed.string.ids))
 
   @pure def dotName(ids: QName): String = {
     return st"${(ids, ".")}".render
@@ -68,12 +68,6 @@ object StaticTranspiler {
       case res: AST.ResolvedInfo.Method => return res
       case _ => halt("Infeasible")
     }
-  }
-
-  @pure def methodName(method: AST.ResolvedInfo.Method): String = {
-    val tpe = method.tpeOpt.get
-    val ids = method.owner :+ method.name :+ Fingerprint.string(tpe.string)
-    return underscoreName(if (method.isInObject) ids else "I" +: ids)
   }
 
   @pure def localName(id: String): String = {
@@ -211,7 +205,7 @@ import StaticTranspiler._
       return st"${exp.string}L"
     }
 
-    def escapeChar(c : C): String = {
+    def escapeChar(c: C): String = {
       if (c <= '\u00FF') {
         c.native match {
           case '\u0000' => return "\\0"
@@ -365,7 +359,8 @@ import StaticTranspiler._
         case _ => init.typedOpt.get
       }
       typeKind(t) match {
-        case TypeKind.Scalar => stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transExp(init.exp)};"
+        case TypeKind.Scalar =>
+          stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transExp(init.exp)};"
         case _ => halt("TODO") // TODO
       }
     }
@@ -527,5 +522,17 @@ import StaticTranspiler._
       case _ => return TypeKind.Immutable
     }
     return TypeKind.Scalar
+  }
+
+  @pure def methodName(method: AST.ResolvedInfo.Method): String = {
+    val tpe = method.tpeOpt.get
+    var ids = method.owner :+ method.name
+    if (config.fingerprintWidth != z"0" && (method.typeParams.nonEmpty || !method.isInObject)) {
+      ids = ids :+ Fingerprint.string(tpe.string, config.fingerprintWidth)
+    }
+    if (!method.isInObject) {
+      ids = "i" +: ids
+    }
+    return underscoreName(ids)
   }
 }
