@@ -330,12 +330,10 @@ import StaticTranspiler._
         } else if (t.args.isEmpty) {
           stmts = stmts :+ st"${mangleName(t.ids)}_string($tmp, $s);"
         } else {
-          stmts = stmts :+ st"${mangleName(t.ids)}_string_${Fingerprint
-            .string(t.args.string, config.fprintWidth)}(sf, $tmp, $s);"
+          stmts = stmts :+ st"${mangleName(t.ids)}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}(sf, $tmp, $s);"
         }
       case t: AST.Typed.Tuple =>
-        stmts = stmts :+ st"Tuple${t.args.size}_string_${Fingerprint
-          .string(t.args.string, config.fprintWidth)}(sf, $tmp, $s);"
+        stmts = stmts :+ st"Tuple${t.args.size}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}(sf, $tmp, $s);"
       case t: AST.Typed.Enum =>
         stmts = stmts :+ st"${mangleName(t.name)}_string(sf, $tmp, $s);"
       case t: AST.Typed.Fun =>
@@ -366,7 +364,68 @@ import StaticTranspiler._
     }
   }
 
-  @pure def transpileStmt(stmt: AST.Stmt): Unit = {
+  def transpileBlock(stmt: AST.Stmt.Block): Unit = {
+    val oldStmts = stmts
+    stmts = ISZ()
+    for (stmt <- stmt.body.stmts) {
+      transpileStmt(stmt)
+    }
+    stmts = oldStmts :+
+      st"""{
+      |  ${(stmts, "\n")}
+      |}"""
+  }
+
+  def transpileIf(stmt: AST.Stmt.If): Unit = {
+    val cond = transpileExp(stmt.cond)
+    val oldStmts = stmts
+    stmts = ISZ()
+    for (stmt <- stmt.thenBody.stmts) {
+      transpileStmt(stmt)
+    }
+    if (stmt.elseBody.stmts.isEmpty) {
+      stmts = oldStmts :+
+        st"""if ($cond) {
+        |  ${(stmts, "\n")}
+        |}"""
+    } else {
+      val tstmts = stmts
+      stmts = ISZ()
+      for (stmt <- stmt.thenBody.stmts) {
+        transpileStmt(stmt)
+      }
+      stmts = oldStmts :+
+        st"""if ($cond) {
+        |  ${(tstmts, "\n")}
+        |} else {
+        |  ${(stmts, "\n")}
+        |}"""
+    }
+  }
+
+  def transpileMatch(stmt: AST.Stmt.Match): Unit = {
+    halt("TODO") // TODO
+  }
+
+  def transpileStmt(stmt: AST.Stmt): Unit = {
+
+    def transpileLoc(stmt: AST.Stmt): Unit = {
+      stmts = stmts :+ empty
+      stmt.posOpt match {
+        case Some(pos) =>
+          if (config.lineNumber) {
+            stmts = stmts :+ st"sfUpdateLoc(${pos.beginLine});"
+          } else {
+            stmts = stmts :+ st"// L${pos.beginLine}"
+          }
+        case _ =>
+          if (config.lineNumber) {
+            stmts = stmts :+ st"sfUpdateLoc(0);"
+          } else {
+            stmts = stmts :+ st"// L?"
+          }
+      }
+    }
 
     def transVar(stmt: AST.Stmt.Var, init: AST.Stmt.Expr): Unit = {
       val t: AST.Typed = stmt.tipeOpt match {
@@ -381,6 +440,33 @@ import StaticTranspiler._
     }
 
     def transVarComplex(stmt: AST.Stmt.Var): Unit = {
+      halt("TODO") // TODO
+    }
+
+    def transAssign(stmt: AST.Stmt.Assign, rhs: AST.Stmt.Expr): Unit = {
+      val t = stmt.lhs.typedOpt.get
+      typeKind(t) match {
+        case TypeKind.Scalar =>
+          stmt.lhs match {
+            case lhs: AST.Exp.Ident =>
+              lhs.attr.resOpt.get match {
+                case res: AST.ResolvedInfo.LocalVar =>
+                  res.scope match {
+                    case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
+                    case _ => stmts = stmts :+ st"${localName(lhs.id.value)} = ${transpileExp(rhs.exp)};"
+                  }
+                case res: AST.ResolvedInfo.Var => halt("TODO") // TODO
+                case _ => halt("Infeasible")
+              }
+            case lhs: AST.Exp.Select => halt("TODO") // TODO
+            case lhs: AST.Exp.Invoke => halt("TODO") // TODO
+            case _ => halt("Infeasible")
+          }
+        case _ => halt("TODO") // TODO
+      }
+    }
+
+    def transAssignComplex(assign: AST.Stmt.Assign): Unit = {
       halt("TODO") // TODO
     }
 
@@ -499,27 +585,57 @@ import StaticTranspiler._
       }
     }
 
-    stmts = stmts :+ empty
-    stmt.posOpt match {
-      case Some(pos) =>
-        if (config.lineNumber) {
-          stmts = stmts :+ st"sfUpdateLoc(${pos.beginLine});"
-        } else {
-          stmts = stmts :+ st"// L${pos.beginLine}"
-        }
-      case _ =>
-        if (config.lineNumber) {
-          stmts = stmts :+ st"sfUpdateLoc(0);"
-        } else {
-          stmts = stmts :+ st"// L?"
-        }
+    def transpileWhile(stmt: AST.Stmt.While): Unit = {
+      val cond = transpileExp(stmt.cond)
+      val tmp: String = stmt.posOpt match {
+        case Some(pos) => s"t_${pos.beginLine}_${pos.beginColumn}"
+        case _ =>
+          var h = stmt.hash
+          if (h < 0) {
+            h = h * h
+          }
+          s"t__$h"
+      }
+      stmts = stmts :+ st"B $tmp = $cond;"
+      val oldStmts = stmts
+      stmts = ISZ()
+      for (stmt <- stmt.body.stmts) {
+        transpileStmt(stmt)
+      }
+      transpileLoc(stmt)
+      val cond2 = transpileExp(stmt.cond)
+      stmts = stmts :+ st"$tmp = $cond2;"
+      stmts = oldStmts :+
+        st"""while($tmp) {
+        |  ${(stmts, "\n")}
+        |}"""
     }
+
+    def transpileDoWhile(stmt: AST.Stmt.DoWhile): Unit = {
+      val oldStmts = stmts
+      stmts = ISZ()
+      for (stmt <- stmt.body.stmts) {
+        transpileStmt(stmt)
+      }
+      val cond = transpileExp(stmt.cond)
+      stmts = oldStmts :+
+        st"""{
+        |  ${(stmts, "\n")}
+        |} while($cond);"""
+    }
+
+    transpileLoc(stmt)
 
     stmt match {
       case stmt: AST.Stmt.Var =>
         stmt.initOpt.get match {
           case init: AST.Stmt.Expr => transVar(stmt, init)
           case _ => transVarComplex(stmt)
+        }
+      case stmt: AST.Stmt.Assign =>
+        stmt.rhs match {
+          case rhs: AST.Stmt.Expr => transAssign(stmt, rhs)
+          case _ => transAssignComplex(stmt)
         }
       case AST.Stmt.Expr(exp: AST.Exp.Invoke) if isBuiltInStmt(exp) =>
         exp.attr.resOpt.get match {
@@ -536,8 +652,13 @@ import StaticTranspiler._
               case AST.ResolvedInfo.BuiltIn.Kind.Halt => transHalt(exp)
               case _ => halt("Infeasible")
             }
-          case _ => halt("Infeasible")
+          case _ => halt("TODO") // TODO
         }
+      case stmt: AST.Stmt.Block => transpileBlock(stmt)
+      case stmt: AST.Stmt.If => transpileIf(stmt)
+      case stmt: AST.Stmt.While => transpileWhile(stmt)
+      case stmt: AST.Stmt.DoWhile => transpileDoWhile(stmt)
+      case stmt: AST.Stmt.Match => transpileMatch(stmt)
       case _ => halt("TODO") // TODO
     }
   }
@@ -581,7 +702,8 @@ import StaticTranspiler._
           case _: TypeInfo.Enum =>
           case info: TypeInfo.AbstractDatatype =>
             return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
-            else if (info.ast.isRoot) TypeKind.MutableTrait else TypeKind.Mutable
+            else if (info.ast.isRoot) TypeKind.MutableTrait
+            else TypeKind.Mutable
           case info: TypeInfo.Sig =>
             return if (info.ast.isImmutable) TypeKind.ImmutableTrait else TypeKind.MutableTrait
           case _ => halt("Infeasible")
