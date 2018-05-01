@@ -14,8 +14,12 @@ object StaticTranspiler {
 
   @enum object TypeKind {
     'Scalar
+    'ImmutableTrait
     'Immutable
+    'MutableTrait
     'Mutable
+    'IS
+    'MS
   }
 
   type SubstMap = HashMap[AST.Typed.TypeVar, AST.Typed]
@@ -576,15 +580,19 @@ import StaticTranspiler._
           case _: TypeInfo.SubZ =>
           case _: TypeInfo.Enum =>
           case info: TypeInfo.AbstractDatatype =>
-            return if (info.ast.isDatatype) TypeKind.Immutable else TypeKind.Mutable
+            return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
+            else if (info.ast.isRoot) TypeKind.MutableTrait else TypeKind.Mutable
           case info: TypeInfo.Sig =>
-            return if (info.ast.isImmutable) TypeKind.Immutable else TypeKind.Mutable
+            return if (info.ast.isImmutable) TypeKind.ImmutableTrait else TypeKind.MutableTrait
           case _ => halt("Infeasible")
         }
       case t: AST.Typed.Tuple =>
         for (targ <- t.args) {
-          if (typeKind(targ) == TypeKind.Mutable) {
-            return TypeKind.Mutable
+          typeKind(targ) match {
+            case TypeKind.Mutable => return TypeKind.Mutable
+            case TypeKind.MutableTrait => return TypeKind.Mutable
+            case TypeKind.MS => return TypeKind.Mutable
+            case _ =>
           }
         }
         return TypeKind.Immutable
