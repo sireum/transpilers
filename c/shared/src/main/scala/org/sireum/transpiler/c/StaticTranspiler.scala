@@ -22,7 +22,7 @@ object StaticTranspiler {
 
   @datatype class Config(
     lineNumber: B,
-    fingerprintWidth: Z,
+    fprintWidth: Z,
     defaultBitWidth: Z,
     defaultStringSize: Z,
     defaultArraySize: Z,
@@ -60,10 +60,6 @@ object StaticTranspiler {
     return st"${(ids, ".")}".render
   }
 
-  @pure def freshTempName(nextTempNum: Z): (ST, Z) = {
-    return (st"t_$nextTempNum", nextTempNum + 1)
-  }
-
   @pure def methodResolvedInfo(method: AST.Stmt.Method): AST.ResolvedInfo.Method = {
     method.attr.resOpt.get match {
       case res: AST.ResolvedInfo.Method => return res
@@ -75,10 +71,13 @@ object StaticTranspiler {
     return st"l_${encodeName(id)}".render
   }
 
-  @pure def underscoreName(ids: QName): String = {
-    return if (ids.size >= 2 && ids(0) == string"org" && ids(1) == string"sireum")
-      st"${(ops.ISZOps(ids).drop(2).map(encodeName), "_")}".render
-    else st"${(ids.map(encodeName), "_")}".render
+  @pure def mangleName(ids: QName): String = {
+    val r: ST =
+      if (ids.size == z"1") st"top_${ids(0)}"
+      else if (ids.size >= 2 && ids(0) == string"org" && ids(1) == string"sireum")
+        st"${(ops.ISZOps(ids).drop(2).map(encodeName), "_")}"
+      else st"${(ids.map(encodeName), "_")}"
+    return r.render
   }
 
   @pure def encodeName(id: String): String = {
@@ -117,9 +116,17 @@ import StaticTranspiler._
   }
 
   def transpileMethod(method: AST.Stmt.Method): Unit = {
+    val oldNextTempNum = nextTempNum
+    val oldStmts = stmts
+
+    nextTempNum = 0
+    stmts = ISZ()
+
     val info = methodResolvedInfo(method)
     val header = methodHeader(info)
-    val stmts: ISZ[ST] = for (stmt <- method.bodyOpt.get.stmts; st <- transpileStmt(stmt)) yield st
+    for (stmt <- method.bodyOpt.get.stmts) {
+      transpileStmt(stmt)
+    }
     val impl =
       st"""$header {
       |  ${(stmts, "\n")}
@@ -138,17 +145,9 @@ import StaticTranspiler._
       header = cclass.header(headers = cclass.header.headers + id ~> (headers :+ st"$header;")),
       impl = cclass.impl(impls = cclass.impl.impls + id ~> (impls :+ impl))
     )
-  }
 
-  def freshTemp(isClone: B, t: ST, expOpt: Option[ST]): ST = {
-    val p = freshTempName(nextTempNum)
-    nextTempNum = p._2
-    val rhs: ST = expOpt match {
-      case Some(e) => if (isClone) st" = *($e)" else st" = $e"
-      case _ => st""
-    }
-    stmts = stmts :+ st"$t ${p._1}$rhs;"
-    return p._1
+    nextTempNum = oldNextTempNum
+    stmts = oldStmts
   }
 
   @pure def transpileExp(exp: AST.Exp): ST = {
@@ -158,7 +157,7 @@ import StaticTranspiler._
     }
 
     @pure def transLitC(exp: AST.Exp.LitC): ST = {
-      return st"'${escapeChar(exp.value)}'"
+      return st"'${escapeChar(exp.posOpt, exp.value)}'"
     }
 
     def checkBitWidth(n: Z, bitWidth: Z): Unit = {
@@ -206,44 +205,16 @@ import StaticTranspiler._
       return st"${exp.string}L"
     }
 
-    def escapeChar(c: C): String = {
-      if (c <= '\u00FF') {
-        c.native match {
-          case '\u0000' => return "\\0"
-          case '\'' => return "\\'"
-          case '\u0022' => return "\\\\u0022"
-          case '?' => return "\\?"
-          case '\\' => return "\\\\"
-          case '\u0007' => return "\\a"
-          case '\b' => return "\\b"
-          case '\f' => return "\\f"
-          case '\n' => return "\\n"
-          case '\r' => return "\\r"
-          case '\t' => return "\\t"
-          case '\u000B' => return "\\v"
-          case _ =>
-            if ('\u0032' <= c && c < '\u007F') {
-              return c.string
-            } else {
-              return s"\\X${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}"
-            }
-        }
-      } else {
-        reporter.error(exp.posOpt, transKind, "Static C translation does not support Unicode string.")
-        return "\\?"
-      }
-    }
-
-    def transLitString(exp: AST.Exp.LitString): ST = {
+    @pure def transLitString(exp: AST.Exp.LitString): ST = {
       val cis = conversions.String.toCis(exp.value)
       val value = MSZ.create[String](cis.size, "")
+      val posOpt = exp.posOpt
       var i = 0
       while (i < cis.size) {
-        value(i) = escapeChar(cis(i))
+        value(i) = escapeChar(posOpt, cis(i))
         i = i + 1
       }
-      val temp = freshTemp(F, st"", Some(st"""string("${(value, "")}")"""))
-      return temp
+      return st"""string("${(value, "")}")"""
     }
 
     @pure def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
@@ -294,7 +265,7 @@ import StaticTranspiler._
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryRemoveAll => "_removeall"
                 case _ => halt("TODO") // TODO
               }
-              return st"${underscoreName(tname)}$op(${transpileExp(exp.left)}, ${transpileExp(exp.right)})"
+              return st"${mangleName(tname)}$op(${transpileExp(exp.left)}, ${transpileExp(exp.right)})"
           }
         case _ => halt("TODO") // TODO
       }
@@ -313,7 +284,7 @@ import StaticTranspiler._
               case AST.ResolvedInfo.BuiltIn.Kind.UnaryMinus => "_minus"
               case _ => halt("Infeasible")
             }
-            return st"${underscoreName(tname)}$op(${transpileExp(exp.exp)})"
+            return st"${mangleName(tname)}$op(${transpileExp(exp.exp)})"
           }
         case _ => halt("TODO") // TODO
       }
@@ -345,15 +316,53 @@ import StaticTranspiler._
     }
   }
 
-  def transToString(exp: AST.Exp): ST = {
-    halt("TODO") // TODO
+  def transToString(s: ST, exp: AST.Exp): Unit = {
+    // TODO: Gen string on demand
+    val tmp = transpileExp(exp)
+    exp.typedOpt.get match {
+      case t: AST.Typed.Name =>
+        if (t.ids == AST.Typed.isName || t.ids == AST.Typed.msName) {
+          stmts = stmts :+ st"A_string_${Fingerprint.string(t.args(0).string, config.fprintWidth)}(sf, $tmp, $s);"
+        } else if (t.args.isEmpty) {
+          stmts = stmts :+ st"${mangleName(t.ids)}_string($tmp, $s);"
+        } else {
+          stmts = stmts :+ st"${mangleName(t.ids)}_string_${Fingerprint
+            .string(t.args.string, config.fprintWidth)}(sf, $tmp, $s);"
+        }
+      case t: AST.Typed.Tuple =>
+        stmts = stmts :+ st"Tuple${t.args.size}_string_${Fingerprint
+          .string(t.args.string, config.fprintWidth)}(sf, $tmp, $s);"
+      case t: AST.Typed.Enum =>
+        stmts = stmts :+ st"${mangleName(t.name)}_string(sf, $tmp, $s);"
+      case t: AST.Typed.Fun =>
+        stmts = stmts :+ st"Fun_string_${Fingerprint.string(t.string, config.fprintWidth)}(sf, $tmp, $s);"
+      case _ => halt("Infeasible")
+    }
   }
 
-  def transPrintH(isOut: ST, args: ISZ[AST.Exp]): Unit = {
-    halt("TODO") // TODO
+  def transPrintH(isOut: ST, exp: AST.Exp): Unit = {
+    // TODO: Gen print on demand
+    val tmp = transpileExp(exp)
+    exp.typedOpt.get match {
+      case t: AST.Typed.Name =>
+        if (t.ids == AST.Typed.isName || t.ids == AST.Typed.msName) {
+          stmts = stmts :+ st"A_print_${Fingerprint.string(t.args(0).string, config.fprintWidth)}($tmp);"
+        } else if (t.args.isEmpty) {
+          stmts = stmts :+ st"${mangleName(t.ids)}_print($tmp);"
+        } else {
+          stmts = stmts :+ st"${mangleName(t.ids)}_print_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp);"
+        }
+      case t: AST.Typed.Tuple =>
+        stmts = stmts :+ st"Tuple${t.args.size}_print_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp);"
+      case t: AST.Typed.Enum =>
+        stmts = stmts :+ st"${mangleName(t.name)}_print($tmp);"
+      case t: AST.Typed.Fun =>
+        stmts = stmts :+ st"Fun_print_${Fingerprint.string(t.string, config.fprintWidth)}($tmp);"
+      case _ => halt("Infeasible")
+    }
   }
 
-  @pure def transpileStmt(stmt: AST.Stmt): ISZ[ST] = {
+  @pure def transpileStmt(stmt: AST.Stmt): Unit = {
 
     def transVar(stmt: AST.Stmt.Var, init: AST.Stmt.Expr): Unit = {
       val t: AST.Typed = stmt.tipeOpt match {
@@ -417,40 +426,53 @@ import StaticTranspiler._
 
     def transCprint(exp: AST.Exp.Invoke): Unit = {
       val t = transpileExp(exp.args(0))
-      transPrintH(t, ops.ISZOps(exp.args).drop(1))
+      for (i <- z"1" until exp.args.size) {
+        transPrintH(t, exp.args(i))
+      }
     }
 
     def transCprintln(exp: AST.Exp.Invoke): Unit = {
       val t = transpileExp(exp.args(0))
-      val t2 = freshTemp(F, bType, Some(t))
-      transPrintH(t2, ops.ISZOps(exp.args).drop(1))
+      val t2 = freshTempName()
+      for (i <- z"1" until exp.args.size) {
+        transPrintH(t2, exp.args(i))
+      }
       stmts = stmts :+ st"cprintln($t2);"
       stmts = stmts :+ st"cflush($t2);"
     }
 
     def transEprint(exp: AST.Exp.Invoke): Unit = {
-      transPrintH(falseLit, exp.args)
+      for (i <- z"0" until exp.args.size) {
+        transPrintH(falseLit, exp.args(i))
+      }
     }
 
     def transEprintln(exp: AST.Exp.Invoke): Unit = {
-      transPrintH(falseLit, exp.args)
+      for (i <- z"0" until exp.args.size) {
+        transPrintH(falseLit, exp.args(i))
+      }
       stmts = stmts :+ st"cprintln($falseLit);"
       stmts = stmts :+ st"cflush($falseLit);"
     }
 
     def transPrint(exp: AST.Exp.Invoke): Unit = {
-      transPrintH(trueLit, exp.args)
+      for (i <- z"0" until exp.args.size) {
+        transPrintH(trueLit, exp.args(i))
+      }
     }
 
     def transPrintln(exp: AST.Exp.Invoke): Unit = {
-      transPrintH(trueLit, exp.args)
+      for (i <- z"0" until exp.args.size) {
+        transPrintH(trueLit, exp.args(i))
+      }
       stmts = stmts :+ st"cprintln($trueLit);"
       stmts = stmts :+ st"cflush($trueLit);"
     }
 
     def transHalt(exp: AST.Exp.Invoke): Unit = {
-      val s = transToString(exp.args(0))
-      stmts = stmts :+ st"sfAbort(sf, ($s)->value);"
+      val tmp = declString()
+      transToString(tmp, exp.args(0))
+      stmts = stmts :+ st"sfAbort(sf, $tmp->value);"
       stmts = stmts :+ abort
     }
 
@@ -514,8 +536,6 @@ import StaticTranspiler._
         }
       case _ => halt("TODO") // TODO
     }
-
-    return stmts
   }
 
   @pure def methodHeader(method: AST.ResolvedInfo.Method): ST = {
@@ -576,12 +596,55 @@ import StaticTranspiler._
   @pure def methodName(method: AST.ResolvedInfo.Method): String = {
     val tpe = method.tpeOpt.get
     var ids = method.owner :+ method.name
-    if (config.fingerprintWidth != z"0" && (method.typeParams.nonEmpty || !method.isInObject)) {
-      ids = ids :+ Fingerprint.string(tpe.string, config.fingerprintWidth)
+    if (config.fprintWidth != z"0" && (method.typeParams.nonEmpty || !method.isInObject)) {
+      ids = ids :+ Fingerprint.string(tpe.string, config.fprintWidth)
     }
     if (!method.isInObject) {
       ids = "i" +: ids
     }
-    return underscoreName(ids)
+    return mangleName(ids)
   }
+
+  def declString(): ST = {
+    val tmp = freshTempName()
+    val tmp2 = freshTempName()
+    stmts = stmts :+ st"DeclNewString($tmp);"
+    stmts = stmts :+ st"String $tmp2 = (String) &$tmp;"
+    return tmp2
+  }
+
+  def freshTempName(): ST = {
+    val r = st"t_$nextTempNum"
+    nextTempNum = nextTempNum + 1
+    return r
+  }
+
+  def escapeChar(posOpt: Option[Position], c: C): String = {
+    if (c <= '\u00FF') {
+      c.native match {
+        case '\u0000' => return "\\0"
+        case '\'' => return "\\'"
+        case '\u0022' => return "\\\\u0022"
+        case '?' => return "\\?"
+        case '\\' => return "\\\\"
+        case '\u0007' => return "\\a"
+        case '\b' => return "\\b"
+        case '\f' => return "\\f"
+        case '\n' => return "\\n"
+        case '\r' => return "\\r"
+        case '\t' => return "\\t"
+        case '\u000B' => return "\\v"
+        case _ =>
+          if ('\u0032' <= c && c < '\u007F') {
+            return c.string
+          } else {
+            return s"\\X${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}"
+          }
+      }
+    } else {
+      reporter.error(posOpt, transKind, "Static C translation does not support Unicode string.")
+      return "\\?"
+    }
+  }
+
 }
