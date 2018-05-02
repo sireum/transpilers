@@ -22,7 +22,7 @@ object StaticTranspiler {
     'MS
   }
 
-  type SubstMap = HashMap[AST.Typed.TypeVar, AST.Typed]
+  type SubstMap = HashMap[String, AST.Typed]
 
   @datatype class Config(
     lineNumber: B,
@@ -32,6 +32,8 @@ object StaticTranspiler {
     defaultArraySize: Z,
     customArraySizes: HashMap[AST.Typed, Z]
   )
+
+  @datatype class Result(files: HashSMap[String, ST])
 
   val transKind: String = "Static C Transpiler"
   val unitType: ST = st"void"
@@ -89,14 +91,25 @@ object StaticTranspiler {
     }
   }
 
+  @pure def removeExt(filename: String): String = {
+    val sops = ops.StringOps(filename)
+    val i = sops.lastIndexOf('.')
+    if (i < 0) {
+      return filename
+    } else {
+      return sops.substring(0, i)
+    }
+  }
+
   @pure def filename(uriOpt: Option[String]): String = {
     uriOpt match {
       case Some(uri) =>
-        val i = ops.StringOps(uri).lastIndexOf('/')
+        val sops = ops.StringOps(uri)
+        val i = sops.lastIndexOf('/')
         if (i < 0) {
           return uri
         }
-        return ops.StringOps(uri).substring(i + 1, uri.size)
+        return sops.substring(i + 1, uri.size)
       case _ => return "<no-uri>"
     }
   }
@@ -106,6 +119,90 @@ object StaticTranspiler {
       case Some(pos) => return filename(pos.uriOpt)
       case _ => return filename(None())
     }
+  }
+
+  @pure def cmake(project: String, filename: String, files: ISZ[String]): ST = {
+    val r =
+      st"""project($project)
+      |
+      |set(CMAKE_C_STANDARD 99)
+      |
+      |add_compile_options(
+      |        "$$<$$<CONFIG:Release>:-Werror -O2>"
+      |        "$$<$$<CONFIG:Debug>:-Werror>")
+      |
+      |add_executable($filename
+      |        ${(files, "\n")})
+      |
+      |target_include_directories($filename
+      |        PUBLIC .)"""
+    return r
+  }
+
+  def genH(entries: ISZ[ST]): ST = {
+    val r =
+      st"""#ifndef SIREUM_GEN_H
+      |#define SIREUM_GEN_H
+      |
+      |#include <misc.h>
+      |
+      |${(entries, "\n\n")}
+      |
+      |#endif"""
+    return r
+  }
+
+  def genC(entries: ISZ[ST]): ST = {
+    val r =
+      st"""#include <gen.h>
+      |
+      |${(entries, "\n\n")}"""
+    return r
+  }
+
+  def genTypeH(stringMax: Z, types: ISZ[String], entries: ISZ[ST]): ST = {
+    val r =
+      st"""#ifndef SIREUM_GEN_TYPE_H
+      |#define SIREUM_GEN_TYPE_H
+      |
+      |#include <memory.h>
+      |#include <ztype.h>
+      |#include <stackframe.h>
+      |
+      |typedef enum {
+      |  ${(types, ",\n")}
+      |} TYPE;
+      |
+      |typedef struct Type *Type;
+      |struct Type {
+      |  TYPE type;
+      |};
+      |
+      |#define STRING_MAX $stringMax
+      |
+      |typedef struct String *String;
+      |struct String {
+      |  TYPE type;
+      |  Z size;
+      |  C *value;
+      |};
+      |
+      |struct StaticString {
+      |  TYPE type;
+      |  Z size;
+      |  C *value;
+      |  C data[STRING_MAX + 1];
+      |};
+      |
+      |#define string(v) &((struct String) { .type = TYPE_String, .size = Z_C(sizeof(v) - 1), .value = (C *) (v) })
+      |
+      |#define DeclString(x, e) struct StaticString x = e
+      |#define DeclNewString(x) DeclString(x, ((struct StaticString) { .type = TYPE_String, .size = Z_C(0), .value = NULL, .data = {0} })); (x).value = (x).data
+      |
+      |${(entries, "\n\n")}
+      |
+      |#endif"""
+    return r
   }
 }
 
@@ -121,14 +218,16 @@ import StaticTranspiler._
 
   var nextTempNum: Z = 0
 
-  def transpileWorksheet(program: AST.TopUnit.Program): ST = {
-    stmts = ISZ(st"""DeclNewStackFrame(NULL, "${filename(program.fileUriOpt)}", "", "<main>", 0);""")
+  def transpileWorksheet(program: AST.TopUnit.Program): Result = {
+    val fname = filename(program.fileUriOpt)
+    val project = removeExt(fname)
+    stmts = ISZ(st"""DeclNewStackFrame(NULL, "$fname", "", "<main>", 0);""")
     nextTempNum = 0
     assert(program.packageName.ids.isEmpty)
     for (stmt <- program.body.stmts) {
       transpileStmt(stmt)
     }
-    val r =
+    val main =
       st"""#include <gen.h>
       |
       |int main(void) {
@@ -136,7 +235,28 @@ import StaticTranspiler._
       |  return 0;
       |}"""
 
-    return r
+    val files = Runtime.staticFiles
+    var r = HashSMap.empty[String, ST]
+    for (e <- files.entries) {
+      val k = e._1
+      if (k.size == z"1") {
+        r = r + k(0) ~> st"${e._2}"
+      }
+    }
+    val ztype = string"ztype.h"
+    config.defaultBitWidth match {
+      case z"8" => r = r + ztype ~> st"${files.get(ISZ("8", ztype)).get}"
+      case z"16" => r = r + ztype ~> st"${files.get(ISZ("16", ztype)).get}"
+      case z"32" => r = r + ztype ~> st"${files.get(ISZ("32", ztype)).get}"
+      case z"64" => r = r + ztype ~> st"${files.get(ISZ("64", ztype)).get}"
+      case _ => halt("Infeasible")
+    }
+    r = r + string"gentype.h" ~> genTypeH(config.defaultStringSize, ISZ(), ISZ()) // TODO
+    r = r + string"gen.h" ~> genH(genHeader)
+    r = r + string"gen.c" ~> genH(genImpl)
+    r = r + string"main.c" ~> main
+    r = r + string"CMakeLists.txt" ~> cmake(project, project, r.keys.elements)
+    return Result(r)
   }
 
   def transpileObjectMethod(method: QName, substMap: SubstMap): Unit = {
