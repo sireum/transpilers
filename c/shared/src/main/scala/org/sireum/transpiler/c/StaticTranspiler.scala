@@ -33,12 +33,6 @@ object StaticTranspiler {
     customArraySizes: HashMap[AST.Typed, Z]
   )
 
-  @datatype class Header(headers: HashMap[String, ISZ[ST]], footer: ISZ[ST])
-
-  @datatype class Impl(impls: HashMap[String, ISZ[ST]], footer: ISZ[ST])
-
-  @datatype class CClass(header: Header, impl: Impl)
-
   val transKind: String = "Static C Transpiler"
   val unitType: ST = st"void"
   val bType: ST = st"B"
@@ -94,19 +88,56 @@ object StaticTranspiler {
       case _ => halt("Infeasible")
     }
   }
+
+  @pure def filename(uriOpt: Option[String]): String = {
+    uriOpt match {
+      case Some(uri) =>
+        val i = ops.StringOps(uri).lastIndexOf('/')
+        if (i < 0) {
+          return uri
+        }
+        return ops.StringOps(uri).substring(i + 1, uri.size)
+      case _ => return "<no-uri>"
+    }
+  }
+
+  @pure def filenameOfPosOpt(posOpt: Option[Position]): String = {
+    posOpt match {
+      case Some(pos) => return filename(pos.uriOpt)
+      case _ => return filename(None())
+    }
+  }
 }
 
 import StaticTranspiler._
 
 @record class StaticTranspiler(config: Config, th: TypeHierarchy, reporter: Reporter) {
 
-  var nameMap: HashMap[String, QName] = HashMap.empty
-
-  var cclassMap: HashMap[QName, CClass] = HashMap.empty
+  var genTypeHeader: ISZ[ST] = ISZ()
+  var genHeader: ISZ[ST] = ISZ()
+  var genImpl: ISZ[ST] = ISZ()
 
   var stmts: ISZ[ST] = ISZ()
 
   var nextTempNum: Z = 0
+
+  def transpileWorksheet(program: AST.TopUnit.Program): ST = {
+    stmts = ISZ(st"""DeclNewStackFrame(NULL, "${filename(program.fileUriOpt)}", "", "<main>", 0);""")
+    nextTempNum = 0
+    assert(program.packageName.ids.isEmpty)
+    for (stmt <- program.body.stmts) {
+      transpileStmt(stmt)
+    }
+    val r =
+      st"""#include <gen.h>
+      |
+      |int main(void) {
+      |  ${(stmts, "\n")}
+      |  return 0;
+      |}"""
+
+    return r
+  }
 
   def transpileObjectMethod(method: QName, substMap: SubstMap): Unit = {
     val methodInfo: Info.Method = th.nameMap.get(method) match {
@@ -115,7 +146,7 @@ import StaticTranspiler._
         reporter.error(None(), transKind, st"'${dotName(method)}' is not a method".render)
         return
     }
-    assert(methodInfo.ast.sig.typeParams.isEmpty) // TODO: Specialize object method
+    assert(methodInfo.ast.sig.typeParams.isEmpty && substMap.isEmpty) // TODO: Specialize object method
     transpileMethod(methodInfo.ast)
   }
 
@@ -133,22 +164,12 @@ import StaticTranspiler._
     }
     val impl =
       st"""$header {
+      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.posOpt)}", "${dotName(info.owner)}", "${info.name}", 0);
       |  ${(stmts, "\n")}
       |}"""
-    val owner = info.owner
-    val id = info.name
-    val cclass: CClass = cclassMap.get(owner) match {
-      case Some(cc) => cc
-      case _ => CClass(Header(HashMap.empty, ISZ()), Impl(HashMap.empty, ISZ()))
-    }
-    val (headers, impls): (ISZ[ST], ISZ[ST]) = cclass.header.headers.get(id) match {
-      case Some(s) => (s, cclass.impl.impls.get(id).get)
-      case _ => (ISZ(), ISZ())
-    }
-    cclassMap = cclassMap + owner ~> cclass(
-      header = cclass.header(headers = cclass.header.headers + id ~> (headers :+ st"$header;")),
-      impl = cclass.impl(impls = cclass.impl.impls + id ~> (impls :+ impl))
-    )
+
+    genHeader = genHeader :+ st"$header;"
+    genImpl = genImpl :+ impl
 
     nextTempNum = oldNextTempNum
     stmts = oldStmts
@@ -362,6 +383,10 @@ import StaticTranspiler._
         stmts = stmts :+ st"Fun_print_${Fingerprint.string(t.string, config.fprintWidth)}($tmp);"
       case _ => halt("Infeasible")
     }
+  }
+
+  def transpileVarPattern(stmt: AST.Stmt.VarPattern): Unit = {
+    halt("TODO") // TODO
   }
 
   def transpileBlock(stmt: AST.Stmt.Block): Unit = {
@@ -654,12 +679,20 @@ import StaticTranspiler._
             }
           case _ => halt("TODO") // TODO
         }
+      case stmt: AST.Stmt.VarPattern => transpileVarPattern(stmt) // TODO
       case stmt: AST.Stmt.Block => transpileBlock(stmt)
       case stmt: AST.Stmt.If => transpileIf(stmt)
       case stmt: AST.Stmt.While => transpileWhile(stmt)
       case stmt: AST.Stmt.DoWhile => transpileDoWhile(stmt)
       case stmt: AST.Stmt.Match => transpileMatch(stmt)
-      case _ => halt("TODO") // TODO
+      case _: AST.Stmt.Import => // skip
+      case _: AST.Stmt.AbstractDatatype => // skip
+      case _: AST.Stmt.Sig => // skip
+      case _: AST.Stmt.Enum => // skip
+      case _: AST.Stmt.Object => // skip
+      case _: AST.Stmt.SpecMethod => // skip
+      case _: AST.Stmt.SpecVar => // skip
+      case _: AST.Stmt.TypeAlias => // skip
     }
   }
 
