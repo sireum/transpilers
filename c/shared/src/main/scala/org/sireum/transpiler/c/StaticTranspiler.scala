@@ -42,7 +42,7 @@ object StaticTranspiler {
   val zType: ST = st"Z"
   val empty: ST = st""
   val trueLit: ST = st"T"
-  val falseLit: ST = st"T"
+  val falseLit: ST = st"F"
   val i8Min: Z = conversions.Z8.toZ(Z8.Min)
   val i16Min: Z = conversions.Z16.toZ(Z16.Min)
   val i32Min: Z = conversions.Z32.toZ(Z32.Min)
@@ -666,14 +666,14 @@ import StaticTranspiler._
       }
       val cond = transpileExp(exp.args(0))
       if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assert) {
-        stmts = stmts :+ st"""if ($cond) sfAbort(sf, "Assertion failure");"""
+        stmts = stmts :+ st"""if (!($cond)) sfAbort(sf, "Assertion failure");"""
       } else {
         assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssertMsg)
         val oldStmts = stmts
         stmts = ISZ()
         val s = transpileExp(exp.args(1))
         stmts = stmts :+
-          st"""if ($cond) {
+          st"""if (!($cond)) {
           |  ${(stmts, "\n")}
           |  sfAbort(sf, ($s)->value);
           |}"""
@@ -689,14 +689,14 @@ import StaticTranspiler._
       }
       val cond = transpileExp(exp.args(0))
       if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assume) {
-        stmts = stmts :+ st"""if ($cond) sfAbort(sf, "Assumption does not hold");"""
+        stmts = stmts :+ st"""if (!($cond)) sfAbort(sf, "Assumption does not hold");"""
       } else {
         assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg)
         val oldStmts = stmts
         stmts = ISZ()
         val s = transpileExp(exp.args(1))
         stmts = stmts :+
-          st"""if ($cond) {
+          st"""if (!($cond)) {
           |  ${(stmts, "\n")}
           |  sfAbort(sf, ($s)->value);
           |}"""
