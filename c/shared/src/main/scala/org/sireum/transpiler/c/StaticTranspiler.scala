@@ -131,9 +131,9 @@ object StaticTranspiler {
       |
       |set(CMAKE_C_STANDARD 99)
       |
-      |add_compile_options(
-      |        "$$<$$<CONFIG:Release>:-Werror -O2>"
-      |        "$$<$$<CONFIG:Debug>:-Werror>")
+      |add_compile_options(-Werror)
+      |
+      |add_compile_options("$$<$$<CONFIG:Release>:-O2>")
       |
       |add_executable($filename
       |        ${(files, "\n")})
