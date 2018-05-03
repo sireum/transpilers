@@ -12,7 +12,8 @@ trait Module extends CrossJvmJs {
 
   final override def testIvyDeps = Agg(ivy"org.scalatest::scalatest::$scalaTestVersion")
 
-  final override def jvmTestIvyDeps = Agg(ivy"com.sksamuel.diff:diff:$diffVersion")
+  final override def jvmTestIvyDeps = Agg(ivy"com.sksamuel.diff:diff:$diffVersion",
+    ivy"com.lihaoyi::ammonite-ops:$ammoniteOpsVersion")
 
   final override def jsTestIvyDeps = Agg.empty
 

@@ -7,4 +7,4 @@ target
 /.idea
 /.idea_modules
 /versions.properties
-/mill
+/mill-standalone

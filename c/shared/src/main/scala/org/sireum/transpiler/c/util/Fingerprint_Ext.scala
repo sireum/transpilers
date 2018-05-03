@@ -13,7 +13,7 @@ object Fingerprint_Ext {
   }
 
   def bytes(s: String, width: Z): Array[Byte] = {
-    val digest = MessageDigest.getInstance("SHA-256")
+    val digest = MessageDigest.getInstance("SHA-512")
     val hash = digest.digest(s.value.getBytes(StandardCharsets.UTF_8))
     val max = if (0 < width && width <= 64) width.toInt else 64
     val r = new Array[Byte](max)

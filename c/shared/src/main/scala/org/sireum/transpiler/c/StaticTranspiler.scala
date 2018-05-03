@@ -25,6 +25,7 @@ object StaticTranspiler {
   type SubstMap = HashMap[String, AST.Typed]
 
   @datatype class Config(
+    exeName: String,
     lineNumber: B,
     fprintWidth: Z,
     defaultBitWidth: Z,
@@ -55,6 +56,7 @@ object StaticTranspiler {
   val u32Max: Z = conversions.N32.toZ(N32.Max)
   val u64Max: Z = conversions.N64.toZ(N64.Max)
   val abort: ST = st"abort();"
+  val noType: ST = st"TNONE"
 
   @pure def dotName(ids: QName): String = {
     return st"${(ids, ".")}".render
@@ -71,13 +73,13 @@ object StaticTranspiler {
     return st"l_${encodeName(id)}".render
   }
 
-  @pure def mangleName(ids: QName): String = {
+  @pure def mangleName(ids: QName): ST = {
     val r: ST =
       if (ids.size == z"1") st"top_${ids(0)}"
       else if (ids.size >= 2 && ids(0) == string"org" && ids(1) == string"sireum")
         st"${(ops.ISZOps(ids).drop(2).map(encodeName), "_")}"
       else st"${(ids.map(encodeName), "_")}"
-    return r.render
+    return r
   }
 
   @pure def encodeName(id: String): String = {
@@ -110,7 +112,7 @@ object StaticTranspiler {
           return uri
         }
         return sops.substring(i + 1, uri.size)
-      case _ => return "<no-uri>"
+      case _ => return "main"
     }
   }
 
@@ -123,7 +125,9 @@ object StaticTranspiler {
 
   @pure def cmake(project: String, filename: String, files: ISZ[String]): ST = {
     val r =
-      st"""project($project)
+      st"""cmake_minimum_required(VERSION 3.9)
+      |
+      |project($project)
       |
       |set(CMAKE_C_STANDARD 99)
       |
@@ -152,15 +156,29 @@ object StaticTranspiler {
     return r
   }
 
-  def genC(entries: ISZ[ST]): ST = {
+  def genC(typeNames: ISZ[ST], entries: ISZ[ST]): ST = {
     val r =
       st"""#include <gen.h>
+      |
+      |size_t sizeOf(Type t) {
+      |  switch (t->type) {
+      |    ${(for (tn <- typeNames) yield st"case T$tn: return sizeof(struct $tn);", "\n")}
+      |    default: abort();
+      |  }
+      |}
+      |
+      |void clone(Type src, Type dest) {
+      |  size_t srcSize = sizeOf(src);
+      |  size_t destSize = sizeOf(dest);
+      |  memcpy(dest, src, srcSize);
+      |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
+      |}
       |
       |${(entries, "\n\n")}"""
     return r
   }
 
-  def genTypeH(stringMax: Z, types: ISZ[String], entries: ISZ[ST]): ST = {
+  def genTypeH(stringMax: Z, typeNames: ISZ[ST], entries: ISZ[ST]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
       |#define SIREUM_GEN_TYPE_H
@@ -170,7 +188,8 @@ object StaticTranspiler {
       |#include <stackframe.h>
       |
       |typedef enum {
-      |  ${(types, ",\n")}
+      |  TString
+      |  ${(for (tn <- typeNames) yield st"T$tn", ",\n")}
       |} TYPE;
       |
       |typedef struct Type *Type;
@@ -194,7 +213,7 @@ object StaticTranspiler {
       |  C data[STRING_MAX + 1];
       |};
       |
-      |#define string(v) &((struct String) { .type = TYPE_String, .size = Z_C(sizeof(v) - 1), .value = (C *) (v) })
+      |#define string(v) &((struct String) { .type = TString, .size = Z_C(sizeof(v) - 1), .value = (C *) (v) })
       |
       |#define DeclString(x, e) struct StaticString x = e
       |#define DeclNewString(x) DeclString(x, ((struct StaticString) { .type = TYPE_String, .size = Z_C(0), .value = NULL, .data = {0} })); (x).value = (x).data
@@ -213,6 +232,8 @@ import StaticTranspiler._
   var genTypeHeader: ISZ[ST] = ISZ()
   var genHeader: ISZ[ST] = ISZ()
   var genImpl: ISZ[ST] = ISZ()
+  var types: ISZ[ST] = ISZ()
+  var typeNames: ISZ[ST] = ISZ()
 
   var stmts: ISZ[ST] = ISZ()
 
@@ -251,11 +272,11 @@ import StaticTranspiler._
       case z"64" => r = r + ztype ~> st"${files.get(ISZ("64", ztype)).get}"
       case _ => halt("Infeasible")
     }
-    r = r + string"gentype.h" ~> genTypeH(config.defaultStringSize, ISZ(), ISZ()) // TODO
+    r = r + string"gentype.h" ~> genTypeH(config.defaultStringSize, typeNames, types) // TODO
     r = r + string"gen.h" ~> genH(genHeader)
-    r = r + string"gen.c" ~> genH(genImpl)
+    r = r + string"gen.c" ~> genC(typeNames, genImpl)
     r = r + string"main.c" ~> main
-    r = r + string"CMakeLists.txt" ~> cmake(project, project, r.keys.elements)
+    r = r + string"CMakeLists.txt" ~> cmake(project, config.exeName, r.keys.elements)
     return Result(r)
   }
 
@@ -489,18 +510,18 @@ import StaticTranspiler._
     exp.typedOpt.get match {
       case t: AST.Typed.Name =>
         if (t.ids == AST.Typed.isName || t.ids == AST.Typed.msName) {
-          stmts = stmts :+ st"A_print_${Fingerprint.string(t.args(0).string, config.fprintWidth)}($tmp);"
+          stmts = stmts :+ st"A_cprint_${Fingerprint.string(t.args(0).string, config.fprintWidth)}($isOut, $tmp);"
         } else if (t.args.isEmpty) {
-          stmts = stmts :+ st"${mangleName(t.ids)}_print($tmp);"
+          stmts = stmts :+ st"${mangleName(t.ids)}_cprint($isOut, $tmp);"
         } else {
-          stmts = stmts :+ st"${mangleName(t.ids)}_print_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp);"
+          stmts = stmts :+ st"${mangleName(t.ids)}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($isOut, $tmp);"
         }
       case t: AST.Typed.Tuple =>
-        stmts = stmts :+ st"Tuple${t.args.size}_print_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp);"
+        stmts = stmts :+ st"Tuple${t.args.size}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($isOut, $tmp);"
       case t: AST.Typed.Enum =>
-        stmts = stmts :+ st"${mangleName(t.name)}_print($tmp);"
+        stmts = stmts :+ st"${mangleName(t.name)}_cprint($isOut, $tmp);"
       case t: AST.Typed.Fun =>
-        stmts = stmts :+ st"Fun_print_${Fingerprint.string(t.string, config.fprintWidth)}($tmp);"
+        stmts = stmts :+ st"Fun_cprint_${Fingerprint.string(t.string, config.fprintWidth)}($isOut, $tmp);"
       case _ => halt("Infeasible")
     }
   }
@@ -559,13 +580,13 @@ import StaticTranspiler._
       stmt.posOpt match {
         case Some(pos) =>
           if (config.lineNumber) {
-            stmts = stmts :+ st"sfUpdateLoc(${pos.beginLine});"
+            stmts = stmts :+ st"sfUpdateLoc(sf, ${pos.beginLine});"
           } else {
             stmts = stmts :+ st"// L${pos.beginLine}"
           }
         case _ =>
           if (config.lineNumber) {
-            stmts = stmts :+ st"sfUpdateLoc(0);"
+            stmts = stmts :+ st"sfUpdateLoc(sf, 0);"
           } else {
             stmts = stmts :+ st"// L?"
           }
@@ -573,6 +594,7 @@ import StaticTranspiler._
     }
 
     def transVar(stmt: AST.Stmt.Var, init: AST.Stmt.Expr): Unit = {
+      transpileLoc(stmt)
       val t: AST.Typed = stmt.tipeOpt match {
         case Some(tipe) => tipe.typedOpt.get
         case _ => init.typedOpt.get
@@ -585,10 +607,12 @@ import StaticTranspiler._
     }
 
     def transVarComplex(stmt: AST.Stmt.Var): Unit = {
+      transpileLoc(stmt)
       halt("TODO") // TODO
     }
 
     def transAssign(stmt: AST.Stmt.Assign, rhs: AST.Stmt.Expr): Unit = {
+      transpileLoc(stmt)
       val t = stmt.lhs.typedOpt.get
       typeKind(t) match {
         case TypeKind.Scalar =>
@@ -612,10 +636,12 @@ import StaticTranspiler._
     }
 
     def transAssignComplex(assign: AST.Stmt.Assign): Unit = {
+      transpileLoc(stmt)
       halt("TODO") // TODO
     }
 
     def transAssert(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
         case AST.ResolvedInfo.BuiltIn(k) => k
         case _ => halt("Infeasible")
@@ -638,6 +664,7 @@ import StaticTranspiler._
     }
 
     def transAssume(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
         case AST.ResolvedInfo.BuiltIn(k) => k
         case _ => halt("Infeasible")
@@ -660,6 +687,7 @@ import StaticTranspiler._
     }
 
     def transCprint(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       val t = transpileExp(exp.args(0))
       for (i <- z"1" until exp.args.size) {
         transPrintH(t, exp.args(i))
@@ -667,6 +695,7 @@ import StaticTranspiler._
     }
 
     def transCprintln(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       val t = transpileExp(exp.args(0))
       val t2 = freshTempName()
       for (i <- z"1" until exp.args.size) {
@@ -677,12 +706,14 @@ import StaticTranspiler._
     }
 
     def transEprint(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(falseLit, exp.args(i))
       }
     }
 
     def transEprintln(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(falseLit, exp.args(i))
       }
@@ -691,12 +722,14 @@ import StaticTranspiler._
     }
 
     def transPrint(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(trueLit, exp.args(i))
       }
     }
 
     def transPrintln(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(trueLit, exp.args(i))
       }
@@ -705,6 +738,7 @@ import StaticTranspiler._
     }
 
     def transHalt(exp: AST.Exp.Invoke): Unit = {
+      transpileLoc(stmt)
       val tmp = declString()
       transToString(tmp, exp.args(0))
       stmts = stmts :+ st"sfAbort(sf, $tmp->value);"
@@ -731,6 +765,7 @@ import StaticTranspiler._
     }
 
     def transpileWhile(stmt: AST.Stmt.While): Unit = {
+      transpileLoc(stmt)
       val cond = transpileExp(stmt.cond)
       val tmp: String = stmt.posOpt match {
         case Some(pos) => s"t_${pos.beginLine}_${pos.beginColumn}"
@@ -757,6 +792,7 @@ import StaticTranspiler._
     }
 
     def transpileDoWhile(stmt: AST.Stmt.DoWhile): Unit = {
+      transpileLoc(stmt)
       val oldStmts = stmts
       stmts = ISZ()
       for (stmt <- stmt.body.stmts) {
@@ -768,8 +804,6 @@ import StaticTranspiler._
         |  ${(stmts, "\n")}
         |} while($cond);"""
     }
-
-    transpileLoc(stmt)
 
     stmt match {
       case stmt: AST.Stmt.Var =>
@@ -876,7 +910,7 @@ import StaticTranspiler._
     return TypeKind.Scalar
   }
 
-  @pure def methodName(method: AST.ResolvedInfo.Method): String = {
+  @pure def methodName(method: AST.ResolvedInfo.Method): ST = {
     val tpe = method.tpeOpt.get
     var ids = method.owner :+ method.name
     if (config.fprintWidth != z"0" && (method.typeParams.nonEmpty || !method.isInObject)) {
@@ -905,6 +939,7 @@ import StaticTranspiler._
   def escapeChar(posOpt: Option[Position], c: C): String = {
     if (c <= '\u00FF') {
       c.native match {
+        case ' ' => return " "
         case '\u0000' => return "\\0"
         case '\'' => return "\\'"
         case '\u0022' => return "\\\\u0022"
@@ -921,7 +956,7 @@ import StaticTranspiler._
           if ('\u0032' <= c && c < '\u007F') {
             return c.string
           } else {
-            return s"\\X${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}"
+            return s"\\x${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}"
           }
       }
     } else {
