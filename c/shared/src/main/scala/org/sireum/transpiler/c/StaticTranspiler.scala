@@ -598,13 +598,13 @@ import StaticTranspiler._
       stmt.posOpt match {
         case Some(pos) =>
           if (config.lineNumber) {
-            stmts = stmts :+ st"sfUpdateLoc(sf, ${pos.beginLine});"
+            stmts = stmts :+ st"sfUpdateLoc(${pos.beginLine});"
           } else {
             stmts = stmts :+ st"// L${pos.beginLine}"
           }
         case _ =>
           if (config.lineNumber) {
-            stmts = stmts :+ st"sfUpdateLoc(sf, 0);"
+            stmts = stmts :+ st"sfUpdateLoc(0);"
           } else {
             stmts = stmts :+ st"// L?"
           }
@@ -666,7 +666,7 @@ import StaticTranspiler._
       }
       val cond = transpileExp(exp.args(0))
       if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assert) {
-        stmts = stmts :+ st"""if (!($cond)) sfAbort(sf, "Assertion failure");"""
+        stmts = stmts :+ st"""if (!($cond)) sfAbort("Assertion failure");"""
       } else {
         assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssertMsg)
         val oldStmts = stmts
@@ -675,7 +675,7 @@ import StaticTranspiler._
         stmts = stmts :+
           st"""if (!($cond)) {
           |  ${(stmts, "\n")}
-          |  sfAbort(sf, ($s)->value);
+          |  sfAbort(($s)->value);
           |}"""
         stmts = oldStmts
       }
@@ -689,7 +689,7 @@ import StaticTranspiler._
       }
       val cond = transpileExp(exp.args(0))
       if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assume) {
-        stmts = stmts :+ st"""if (!($cond)) sfAbort(sf, "Assumption does not hold");"""
+        stmts = stmts :+ st"""if (!($cond)) sfAbort("Assumption does not hold");"""
       } else {
         assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg)
         val oldStmts = stmts
@@ -698,7 +698,7 @@ import StaticTranspiler._
         stmts = stmts :+
           st"""if (!($cond)) {
           |  ${(stmts, "\n")}
-          |  sfAbort(sf, ($s)->value);
+          |  sfAbort(($s)->value);
           |}"""
         stmts = oldStmts
       }
@@ -759,7 +759,7 @@ import StaticTranspiler._
       transpileLoc(stmt)
       val tmp = declString()
       transToString(tmp, exp.args(0))
-      stmts = stmts :+ st"sfAbort(sf, $tmp->value);"
+      stmts = stmts :+ st"sfAbort($tmp->value);"
       stmts = stmts :+ abort
     }
 
