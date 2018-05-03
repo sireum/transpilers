@@ -20,10 +20,12 @@ class StaticTranspilerTest extends TestSuite {
     * - testWorksheet("""println("Hello World!")""".stripMargin)
 
     * - testWorksheet("""val x = 5 * 5 + 1
+                        |assert(x == 26)
                         |println(x)""".stripMargin)
 
     * - testWorksheet("""val x = 5
-                        |var y = T
+                        |var y = F
+                        |assume(!y)
                         |if (y && x < 6) {
                         |  println(x)
                         |  println(y)
@@ -76,6 +78,7 @@ class StaticTranspilerTest extends TestSuite {
     val r = trans.transpileWorksheet(p)
 
     val resultDir = dir / s"L${line.value}"
+    rm ! resultDir
     mkdir ! resultDir
 
     for (e <- r.files.entries) {
@@ -86,7 +89,7 @@ class StaticTranspilerTest extends TestSuite {
 
     println()
     println("Running CMake ...")
-    %('cmake, ".")(resultDir)
+    %('cmake, "-DCMAKE_BUILD_TYPE=Release", ".")(resultDir)
 
     println()
     println("Running make ...")
