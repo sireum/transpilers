@@ -71,11 +71,12 @@ class StaticTranspilerTest extends TestSuite {
 
     val trans = StaticTranspiler(config, th, reporter)
 
-    if (reporter.hasIssue) {
+    val r = trans.transpileWorksheet(p)
+
+    if (trans.reporter.hasIssue) {
+      trans.reporter.printMessages()
       return false
     }
-
-    val r = trans.transpileWorksheet(p)
 
     val resultDir = dir / s"L${line.value}"
     rm ! resultDir
