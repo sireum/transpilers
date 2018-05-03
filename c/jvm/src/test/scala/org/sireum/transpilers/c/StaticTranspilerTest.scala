@@ -19,6 +19,25 @@ class StaticTranspilerTest extends TestSuite {
 
     * - testWorksheet("""println("Hello World!")""".stripMargin)
 
+    * - testWorksheet("""val x = 5 * 5 + 1
+                        |println(x)""".stripMargin)
+
+    * - testWorksheet("""val x = 5
+                        |var y = T
+                        |if (y && x < 6) {
+                        |  println(x)
+                        |  println(y)
+                        |} else {
+                        |  println(y)
+                        |  println(x)
+                        |}""".stripMargin)
+
+    * - testWorksheet("""var i = 0
+                        |while (i < 6) {
+                        |  println(i)
+                        |  i = i + 1
+                        |}""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Boolean = {
@@ -57,7 +76,7 @@ class StaticTranspilerTest extends TestSuite {
     val r = trans.transpileWorksheet(p)
 
     val resultDir = dir / s"L${line.value}"
-    mkdir! resultDir
+    mkdir ! resultDir
 
     for (e <- r.files.entries) {
       val f = resultDir / e._1.value
