@@ -69,8 +69,8 @@ object StaticTranspiler {
     }
   }
 
-  @pure def localName(id: String): String = {
-    return st"l_${encodeName(id)}".render
+  @pure def localName(id: String): ST = {
+    return st"l_${encodeName(id)}"
   }
 
   @pure def mangleName(ids: QName): ST = {
@@ -391,13 +391,30 @@ import StaticTranspiler._
       }
       val n = Z(exp.lits(0).value).get
       checkBitWidth(n, info.ast.bitWidth)
-      return st"${(dotName(tname), "")}_C"
+      return st"${(dotName(tname), "")}_C($n)"
+    }
+
+    def transIdent(exp: AST.Exp.Ident): ST = {
+      exp.attr.resOpt.get match {
+        case res: AST.ResolvedInfo.LocalVar =>
+          res.scope match {
+            case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
+            case _ => return localName(exp.id.value)
+          }
+        case res: AST.ResolvedInfo.Var =>
+          if (res.owner == AST.Typed.sireumName && (res.id == string"T" || res.id == string"F")) {
+            return if (res.id == string"T") trueLit else falseLit
+          } else {
+            halt(s"TODO: $res") // TODO
+          }
+        case _ => halt("Infeasible")
+      }
     }
 
     def transBinary(exp: AST.Exp.Binary): ST = {
       exp.attr.resOpt.get match {
         case res: AST.ResolvedInfo.BuiltIn =>
-          val tname = typeName(exp.attr.typedOpt)
+          val tname = typeName(exp.left.typedOpt)
           res.kind match {
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryImply =>
               return st"(!(${transpileExp(exp.left)}) || ${transpileExp(exp.right)})"
@@ -476,9 +493,10 @@ import StaticTranspiler._
       case exp: AST.Exp.LitR => val r = transLitR(exp); return r
       case exp: AST.Exp.StringInterpolate if isSubZLit(exp) => val r = transSubZLit(exp); return r
       case exp: AST.Exp.LitString => val r = transLitString(exp); return r
+      case exp: AST.Exp.Ident => val r = transIdent(exp); return r
       case exp: AST.Exp.Binary => val r = transBinary(exp); return r
       case exp: AST.Exp.Unary => val r = transUnary(exp); return r
-      case _ => halt("TODO") // TODO
+      case _ => halt(s"TODO: $exp") // TODO
     }
   }
 
