@@ -110,7 +110,7 @@ import TypeSpecializer._
         }
       case res: AST.ResolvedInfo.Method => halt("TODO") // TODO
       case res: AST.ResolvedInfo.Var => halt("TODO") // TODO
-      case res: AST.ResolvedInfo.Tuple => halt("TODO") // TODO
+      case _: AST.ResolvedInfo.Tuple => // skip
       case _: AST.ResolvedInfo.Enum => // skip
       case _: AST.ResolvedInfo.EnumElement => // skip
       case _: AST.ResolvedInfo.Object => // skip
