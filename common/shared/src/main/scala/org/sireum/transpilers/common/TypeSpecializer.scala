@@ -43,6 +43,22 @@ object TypeSpecializer {
 
   @datatype class Fun(ast: AST.Exp.Fun)
 
+  @record class TypeSubstitutor(substMap: HashMap[String, AST.Typed]) extends AST.MTransformer {
+
+    override def preTyped(o: AST.Typed): AST.MTransformer.PreResult[AST.Typed] = {
+      o match {
+        case o: AST.Typed.TypeVar =>
+          substMap.get(o.id) match {
+            case Some(t) => AST.MTransformer.PreResult(F, MSome(t))
+            case _ => halt(s"Unexpected situation when substituting type var '${o.id}'.")
+          }
+        case _ =>
+      }
+      val r = super.preTyped(o)
+      return r
+    }
+  }
+
   val tsKind: String = "Type Specializer"
 
   def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
@@ -64,11 +80,11 @@ import TypeSpecializer._
 
   def specialize(): TypeSpecializer.Result = {
 
-    def specializeObjectMethod(o: AST.Stmt.Method): Unit = {
+    def specializeMethod(o: AST.Stmt.Method): Unit = {
       halt("TODO") // TODO
     }
 
-    def specializeMethod(ep: EntryPoint.Method): Unit = {
+    def entryMethod(ep: EntryPoint.Method): Unit = {
       val info: Info.Method = th.nameMap.get(ep.name) match {
         case Some(inf: Info.Method) => inf
         case Some(_) =>
@@ -83,10 +99,10 @@ import TypeSpecializer._
         return
       }
 
-      specializeObjectMethod(info.ast)
+      specializeMethod(info.ast)
     }
 
-    def specializeWorksheet(ep: EntryPoint.Worksheet): Unit = {
+    def entryWorksheet(ep: EntryPoint.Worksheet): Unit = {
       for (stmt <- ep.program.body.stmts) {
         val shouldTransform: B = stmt match {
           case _: AST.Stmt.Match => T
@@ -121,8 +137,8 @@ import TypeSpecializer._
 
     for (ep <- eps) {
       ep match {
-        case ep: EntryPoint.Method => specializeMethod(ep)
-        case ep: EntryPoint.Worksheet => specializeWorksheet(ep)
+        case ep: EntryPoint.Method => entryMethod(ep)
+        case ep: EntryPoint.Worksheet => entryWorksheet(ep)
       }
     }
     return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, methods, funs)
@@ -150,19 +166,6 @@ import TypeSpecializer._
     return MNone()
   }
 
-  override def preTyped(o: AST.Typed): AST.MTransformer.PreResult[AST.Typed] = {
-    o match {
-      case o: AST.Typed.TypeVar =>
-        substMap.get(o.id) match {
-          case Some(t) => AST.MTransformer.PreResult(F, MSome(t))
-          case _ => halt(s"Unexpected situation when substituting type var '${o.id}'.")
-        }
-      case _ =>
-    }
-    val r = super.preTyped(o)
-    return r
-  }
-
   def addType(o: AST.Typed): Unit = {
     o match {
       case o: AST.Typed.Name =>
@@ -183,40 +186,6 @@ import TypeSpecializer._
   override def postTypedFun(o: AST.Typed.Fun): MOption[AST.Typed] = {
     addType(o)
     return MNone()
-  }
-
-  override def transformStmt(o: AST.Stmt): MOption[AST.Stmt] = {
-    val shouldTransform: B = o match {
-      case _: AST.Stmt.Match => T
-      case _: AST.Stmt.While => T
-      case _: AST.Stmt.For => T
-      case _: AST.Stmt.If => T
-      case _: AST.Stmt.Block => T
-      case _: AST.Stmt.DoWhile => T
-      case _: AST.Stmt.Assign => T
-      case _: AST.Stmt.Expr => T
-      case _: AST.Stmt.Var => T
-      case _: AST.Stmt.VarPattern => T
-      case _: AST.Stmt.LStmt => F
-      case _: AST.Stmt.TypeAlias => F
-      case _: AST.Stmt.SpecMethod => F
-      case _: AST.Stmt.Object => F
-      case _: AST.Stmt.Enum => F
-      case _: AST.Stmt.Sig => F
-      case _: AST.Stmt.AbstractDatatype => F
-      case _: AST.Stmt.ExtMethod => F
-      case _: AST.Stmt.Import => F
-      case _: AST.Stmt.Method => F
-      case _: AST.Stmt.Return => F
-      case _: AST.Stmt.SpecVar => F
-      case _: AST.Stmt.SubZ => F
-    }
-    if (shouldTransform) {
-      val r = super.transformStmt(o)
-      return r
-    } else {
-      return MNone()
-    }
   }
 
 }
