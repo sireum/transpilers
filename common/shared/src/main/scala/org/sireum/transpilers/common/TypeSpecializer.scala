@@ -28,7 +28,6 @@ object TypeSpecializer {
     nameTypes: HashMap[QName, HashSet[AST.Typed.Name]],
     otherTypes: HashSet[AST.Typed],
     objectVars: HashSet[QName],
-    classVars: HashSet[QName],
     methods: HashMap[QName, HashSet[Method]],
     funs: HashMap[QName, HashSet[Fun]]
   )
@@ -59,12 +58,15 @@ import TypeSpecializer._
   var nameTypes: HashMap[QName, HashSet[AST.Typed.Name]] = HashMap.empty
   var otherTypes: HashSet[AST.Typed] = HashSet.empty
   var objectVars: HashSet[QName] = HashSet.empty
-  var classVars: HashSet[QName] = HashSet.empty
   var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
   var funs: HashMap[QName, HashSet[Fun]] = HashMap.empty
   var substMap: HashMap[String, AST.Typed] = HashMap.empty
 
   def specialize(): TypeSpecializer.Result = {
+
+    def specializeObjectMethod(o: AST.Stmt.Method): Unit = {
+      halt("TODO") // TODO
+    }
 
     def specializeMethod(ep: EntryPoint.Method): Unit = {
       val info: Info.Method = th.nameMap.get(ep.name) match {
@@ -80,12 +82,40 @@ import TypeSpecializer._
         reporter.error(None(), tsKind, st"Method entry point '${(ep.name, ".")}' cannot be generic.".render)
         return
       }
-      transformStmt(info.ast)
+
+      specializeObjectMethod(info.ast)
     }
 
     def specializeWorksheet(ep: EntryPoint.Worksheet): Unit = {
       for (stmt <- ep.program.body.stmts) {
-        transformStmt(stmt)
+        val shouldTransform: B = stmt match {
+          case _: AST.Stmt.Match => T
+          case _: AST.Stmt.While => T
+          case _: AST.Stmt.For => T
+          case _: AST.Stmt.If => T
+          case _: AST.Stmt.Block => T
+          case _: AST.Stmt.DoWhile => T
+          case _: AST.Stmt.Assign => T
+          case _: AST.Stmt.Expr => T
+          case _: AST.Stmt.Var => T
+          case _: AST.Stmt.VarPattern => T
+          case _: AST.Stmt.LStmt => F
+          case _: AST.Stmt.TypeAlias => F
+          case _: AST.Stmt.SpecMethod => F
+          case _: AST.Stmt.Object => F
+          case _: AST.Stmt.Enum => F
+          case _: AST.Stmt.Sig => F
+          case _: AST.Stmt.AbstractDatatype => F
+          case _: AST.Stmt.ExtMethod => F
+          case _: AST.Stmt.Import => F
+          case _: AST.Stmt.Method => F
+          case _: AST.Stmt.Return => F
+          case _: AST.Stmt.SpecVar => F
+          case _: AST.Stmt.SubZ => F
+        }
+        if (shouldTransform) {
+          transformStmt(stmt)
+        }
       }
     }
 
@@ -95,13 +125,16 @@ import TypeSpecializer._
         case ep: EntryPoint.Worksheet => specializeWorksheet(ep)
       }
     }
-    return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, classVars, methods, funs)
+    return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, methods, funs)
   }
 
   override def postResolvedAttr(o: ResolvedAttr): MOption[ResolvedAttr] = {
     o.resOpt.get match {
+      case res: AST.ResolvedInfo.Var =>
+        if (res.isInObject && !res.isSpec) {
+          objectVars = objectVars + (res.owner :+ res.id)
+        }
       case res: AST.ResolvedInfo.Method => halt("TODO") // TODO
-      case res: AST.ResolvedInfo.Var => halt("TODO") // TODO
       case res: AST.ResolvedInfo.LocalVar =>
         if (res.scope == AST.ResolvedInfo.LocalVar.Scope.Closure) {
           halt("TODO") // TODO
