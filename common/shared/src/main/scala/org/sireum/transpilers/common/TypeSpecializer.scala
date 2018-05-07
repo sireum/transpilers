@@ -100,16 +100,13 @@ import TypeSpecializer._
 
   override def postResolvedAttr(o: ResolvedAttr): MOption[ResolvedAttr] = {
     o.resOpt.get match {
+      case res: AST.ResolvedInfo.Method => halt("TODO") // TODO
+      case res: AST.ResolvedInfo.Var => halt("TODO") // TODO
       case res: AST.ResolvedInfo.LocalVar =>
         if (res.scope == AST.ResolvedInfo.LocalVar.Scope.Closure) {
           halt("TODO") // TODO
         }
-      case res: AST.ResolvedInfo.BuiltIn =>
-        if (res.kind == AST.ResolvedInfo.BuiltIn.Kind.String) {
-          halt("TODO") // TODO
-        }
-      case res: AST.ResolvedInfo.Method => halt("TODO") // TODO
-      case res: AST.ResolvedInfo.Var => halt("TODO") // TODO
+      case _: AST.ResolvedInfo.BuiltIn => // skip
       case _: AST.ResolvedInfo.Tuple => // skip
       case _: AST.ResolvedInfo.Enum => // skip
       case _: AST.ResolvedInfo.EnumElement => // skip
