@@ -7,7 +7,7 @@ import org.sireum.message._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
 import org.sireum.lang.symbol.Resolver._
-import org.sireum.lang.tipe.TypeHierarchy
+import org.sireum.lang.tipe.{TypeChecker, TypeHierarchy}
 
 object TypeSpecializer {
 
@@ -48,7 +48,7 @@ object TypeSpecializer {
       o match {
         case o: AST.Typed.TypeVar =>
           substMap.get(o.id) match {
-            case Some(t) => AST.MTransformer.PreResult(F, MSome(t))
+            case Some(t) => return AST.MTransformer.PreResult(F, MSome(t))
             case _ => halt(s"Unexpected situation when substituting type var '${o.id}'.")
           }
         case _ =>
@@ -56,14 +56,20 @@ object TypeSpecializer {
       val r = super.preTyped(o)
       return r
     }
+
   }
 
+  @datatype class SMethod(isInObject: B, owner: QName, id: String, tpe: AST.Typed.Fun)
+
   val tsKind: String = "Type Specializer"
+  val continuePreResult: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResult(T, MNone())
+  val stopPreResult: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResult(F, MNone())
 
   def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
     val r = TypeSpecializer(th, entryPoints).specialize()
     return r
   }
+
 }
 
 import TypeSpecializer._
@@ -75,7 +81,8 @@ import TypeSpecializer._
   var objectVars: HashSet[QName] = HashSet.empty
   var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
   var funs: HashMap[QName, HashSet[Fun]] = HashMap.empty
-  var substMap: HashMap[String, AST.Typed] = HashMap.empty
+  var workList: ISZ[Info.Method] = ISZ()
+  var seen: HashSet[SMethod] = HashSet.empty
 
   def specialize(): TypeSpecializer.Result = {
 
@@ -98,7 +105,7 @@ import TypeSpecializer._
         return
       }
 
-      specializeMethod(info.ast)
+      workList = workList :+ info
     }
 
     def entryWorksheet(ep: EntryPoint.Worksheet): Unit = {
@@ -165,19 +172,70 @@ import TypeSpecializer._
     return MNone()
   }
 
-  override def postExpSelect(o: AST.Exp.Select): MOption[AST.Exp] = {
-    // TODO
-    return MNone()
+  @pure def substMethod(m: Info.Method, substMap: HashMap[String, AST.Typed]): Info.Method = {
+    val newAst = TypeSubstitutor(substMap).transformStmt(m.ast).asInstanceOf[AST.Stmt.Method]
+    return m(ast = newAst)
   }
 
-  override def postExpInvoke(o: AST.Exp.Invoke): MOption[AST.Exp] = {
-    // TODO
-    return MNone()
+  def addMethodToWorkList(posOpt: Option[Position], method: SMethod): Unit = {
+    if (method.isInObject) {
+      val m = th.nameMap.get(method.owner :+ method.id).get.asInstanceOf[Info.Method]
+      if (seen.contains(method)) {
+        return
+      }
+      seen = seen + method
+      if (m.ast.sig.typeParams.isEmpty) {
+        workList = workList :+ m
+        return
+      }
+      val mType = m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe
+      val substMapOpt = TypeChecker.unifyMethod(tsKind, th, posOpt, method.tpe, mType, reporter)
+      substMapOpt match {
+        case Some(substMap) => workList = workList :+ substMethod(m, substMap)
+        case _ => return
+      }
+    } else {
+      halt("TODO") // TODO
+    }
+    return
   }
 
-  override def postExpInvokeNamed(o: AST.Exp.InvokeNamed): MOption[AST.Exp] = {
-    // TODO
-    return MNone()
+  def addIfMethod(attr: AST.ResolvedAttr): Unit = {
+    attr.resOpt.get match {
+      case m: AST.ResolvedInfo.Method =>
+        addMethodToWorkList(attr.posOpt, SMethod(m.isInObject, m.owner, m.name, m.tpeOpt.get))
+      case _ =>
+    }
+    return
+  }
+
+  override def preExpEta(o: AST.Exp.Eta): AST.MTransformer.PreResult[AST.Exp] = {
+    o.ref match {
+      case ref: AST.Exp.Ident => addIfMethod(ref.attr)
+      case _ =>
+    }
+    return continuePreResult
+  }
+
+  override def preExpSelect(o: AST.Exp.Select): AST.MTransformer.PreResult[AST.Exp] = {
+    addIfMethod(o.attr)
+    return continuePreResult
+  }
+
+  override def preExpInvoke(o: AST.Exp.Invoke): AST.MTransformer.PreResult[AST.Exp] = {
+    if (o.id.value == string"apply") {
+      return continuePreResult
+    }
+    addIfMethod(o.attr)
+    return continuePreResult
+  }
+
+  override def preExpInvokeNamed(o: AST.Exp.InvokeNamed): AST.MTransformer.PreResult[AST.Exp] = {
+    o.attr.resOpt.get match {
+      case m: AST.ResolvedInfo.Method => // TODO
+      case _ =>
+    }
+    return continuePreResult
   }
 
   def addType(o: AST.Typed): Unit = {
@@ -188,8 +246,17 @@ import TypeSpecializer._
           case _ => HashSet.empty
         }
         nameTypes = nameTypes + o.ids ~> (set + o)
-      case _ => otherTypes = otherTypes + o
+        return
+      case _: AST.Typed.Enum => otherTypes = otherTypes + o
+      case _: AST.Typed.Tuple => otherTypes = otherTypes + o
+      case _: AST.Typed.Object => // skip
+      case _: AST.Typed.Fun => // skip
+      case _: AST.Typed.Method => // skip
+      case _: AST.Typed.Methods => // skip
+      case _: AST.Typed.Package => // skip
+      case _: AST.Typed.TypeVar => halt("Infeasible")
     }
+    return
   }
 
   override def postTyped(o: AST.Typed): MOption[AST.Typed] = {
