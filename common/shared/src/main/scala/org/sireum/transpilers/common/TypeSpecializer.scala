@@ -59,7 +59,7 @@ object TypeSpecializer {
 
   }
 
-  @datatype class SMethod(isInObject: B, owner: QName, id: String, tpe: AST.Typed.Fun)
+  @datatype class SMethod(receiverOpt: Option[AST.Typed.Name], owner: QName, id: String, tpe: AST.Typed.Fun)
 
   val tsKind: String = "Type Specializer"
   val continuePreResult: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResult(T, MNone())
@@ -83,6 +83,7 @@ import TypeSpecializer._
   var funs: HashMap[QName, HashSet[Fun]] = HashMap.empty
   var workList: ISZ[Info.Method] = ISZ()
   var seen: HashSet[SMethod] = HashSet.empty
+  var currReceiverOpt: Option[AST.Typed.Name] = None()
 
   def specialize(): TypeSpecializer.Result = {
 
@@ -173,52 +174,79 @@ import TypeSpecializer._
   }
 
   @pure def substMethod(m: Info.Method, substMap: HashMap[String, AST.Typed]): Info.Method = {
-    val newAst = TypeSubstitutor(substMap).transformStmt(m.ast).asInstanceOf[AST.Stmt.Method]
-    return m(ast = newAst)
+    if (substMap.nonEmpty) {
+      val newAst = TypeSubstitutor(substMap).transformStmt(m.ast).asInstanceOf[AST.Stmt.Method]
+      return m(ast = newAst)
+    } else {
+      return m
+    }
   }
 
-  def addMethodToWorkList(posOpt: Option[Position], method: SMethod): Unit = {
-    if (method.isInObject) {
-      val m = th.nameMap.get(method.owner :+ method.id).get.asInstanceOf[Info.Method]
-      if (seen.contains(method)) {
-        return
-      }
-      seen = seen + method
-      if (m.ast.sig.typeParams.isEmpty) {
-        workList = workList :+ m
-        return
-      }
-      val mType = m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe
-      val substMapOpt = TypeChecker.unifyMethod(tsKind, th, posOpt, method.tpe, mType, reporter)
-      substMapOpt match {
-        case Some(substMap) => workList = workList :+ substMethod(m, substMap)
-        case _ => return
+  def addSMethod(posOpt: Option[Position], method: SMethod): Unit = {
+    method.receiverOpt match {
+      case Some(receiver) => halt("TODO") // TODO
+      case _ =>
+        val m = th.nameMap.get(method.owner :+ method.id).get.asInstanceOf[Info.Method]
+        if (seen.contains(method)) {
+          return
+        }
+        seen = seen + method
+        if (m.ast.sig.typeParams.isEmpty) {
+          workList = workList :+ m
+          return
+        }
+        val mType = m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe
+        val substMapOpt = TypeChecker.unifyMethod(tsKind, th, posOpt, method.tpe, mType, reporter)
+        substMapOpt match {
+          case Some(substMap) => workList = workList :+ substMethod(m, substMap)
+          case _ =>
+        }
+    }
+    return
+  }
+
+  def addResolvedMethod(posOpt: Option[Position], m: AST.ResolvedInfo.Method, receiverOpt: Option[AST.Exp]): Unit = {
+    val rOpt: Option[AST.Typed.Name] = if (m.isInObject) {
+      None()
+    } else if (th.typeMap.get(m.owner).nonEmpty) {
+      receiverOpt match {
+        case Some(receiver) => Some(receiver.typedOpt.get.asInstanceOf[AST.Typed.Name])
+        case _ => Some(currReceiverOpt.get)
       }
     } else {
-      halt("TODO") // TODO
+      // nested method, skip
+      return
     }
-    return
-  }
-
-  def addIfMethod(attr: AST.ResolvedAttr): Unit = {
-    attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method =>
-        addMethodToWorkList(attr.posOpt, SMethod(m.isInObject, m.owner, m.name, m.tpeOpt.get))
-      case _ =>
-    }
-    return
+    addSMethod(posOpt, SMethod(rOpt, m.owner, m.name, m.tpeOpt.get))
   }
 
   override def preExpEta(o: AST.Exp.Eta): AST.MTransformer.PreResult[AST.Exp] = {
     o.ref match {
-      case ref: AST.Exp.Ident => addIfMethod(ref.attr)
+      case ref: AST.Exp.Ident =>
+        ref.attr.resOpt.get match {
+          case m: AST.ResolvedInfo.Method =>
+            val rOpt: Option[AST.Typed.Name] = if (m.isInObject) {
+              None()
+            } else if (th.typeMap.get(m.owner).nonEmpty) {
+              assert(currReceiverOpt.nonEmpty)
+              currReceiverOpt
+            } else {
+              // nested method, skip
+              return continuePreResult
+            }
+            addSMethod(ref.posOpt, SMethod(rOpt, m.owner, m.name, m.tpeOpt.get))
+          case _ =>
+        }
       case _ =>
     }
     return continuePreResult
   }
 
   override def preExpSelect(o: AST.Exp.Select): AST.MTransformer.PreResult[AST.Exp] = {
-    addIfMethod(o.attr)
+    o.attr.resOpt.get match {
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
+      case _ =>
+    }
     return continuePreResult
   }
 
@@ -226,13 +254,17 @@ import TypeSpecializer._
     if (o.id.value == string"apply") {
       return continuePreResult
     }
-    addIfMethod(o.attr)
+    o.attr.resOpt.get match {
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
+      case _ =>
+    }
+
     return continuePreResult
   }
 
   override def preExpInvokeNamed(o: AST.Exp.InvokeNamed): AST.MTransformer.PreResult[AST.Exp] = {
     o.attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method => // TODO
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
       case _ =>
     }
     return continuePreResult
