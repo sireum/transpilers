@@ -3,7 +3,6 @@
 package org.sireum.transpilers.common
 
 import org.sireum._
-import org.sireum.lang.ast.ResolvedAttr
 import org.sireum.message._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
@@ -144,17 +143,17 @@ import TypeSpecializer._
     return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, methods, funs)
   }
 
-  override def postResolvedAttr(o: ResolvedAttr): MOption[ResolvedAttr] = {
+  override def postResolvedAttr(o: AST.ResolvedAttr): MOption[AST.ResolvedAttr] = {
     o.resOpt.get match {
       case res: AST.ResolvedInfo.Var =>
         if (res.isInObject && !res.isSpec) {
           objectVars = objectVars + (res.owner :+ res.id)
         }
-      case res: AST.ResolvedInfo.Method => halt("TODO") // TODO
       case res: AST.ResolvedInfo.LocalVar =>
         if (res.scope == AST.ResolvedInfo.LocalVar.Scope.Closure) {
           halt("TODO") // TODO
         }
+      case _: AST.ResolvedInfo.Method => // skip
       case _: AST.ResolvedInfo.BuiltIn => // skip
       case _: AST.ResolvedInfo.Tuple => // skip
       case _: AST.ResolvedInfo.Enum => // skip
@@ -163,6 +162,21 @@ import TypeSpecializer._
       case _: AST.ResolvedInfo.Package => // skip
       case _: AST.ResolvedInfo.Methods => halt("Infeasible")
     }
+    return MNone()
+  }
+
+  override def postExpSelect(o: AST.Exp.Select): MOption[AST.Exp] = {
+    // TODO
+    return MNone()
+  }
+
+  override def postExpInvoke(o: AST.Exp.Invoke): MOption[AST.Exp] = {
+    // TODO
+    return MNone()
+  }
+
+  override def postExpInvokeNamed(o: AST.Exp.InvokeNamed): MOption[AST.Exp] = {
+    // TODO
     return MNone()
   }
 
