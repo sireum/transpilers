@@ -7,6 +7,7 @@ import org.sireum.message._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
 import org.sireum.lang.symbol.Resolver._
+import org.sireum.lang.tipe.TypeChecker.TypeRelation
 import org.sireum.lang.tipe.{TypeChecker, TypeHierarchy}
 
 object TypeSpecializer {
@@ -59,7 +60,7 @@ object TypeSpecializer {
 
   }
 
-  @datatype class SMethod(receiverOpt: Option[AST.Typed.Name], owner: QName, id: String, tpe: AST.Typed.Fun)
+  @datatype class SMethod(receiverOpt: Option[AST.Typed.Name], res: AST.ResolvedInfo.Method)
 
   val tsKind: String = "Type Specializer"
   val continuePreResult: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResult(T, MNone())
@@ -81,15 +82,12 @@ import TypeSpecializer._
   var objectVars: HashSet[QName] = HashSet.empty
   var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
   var funs: HashMap[QName, HashSet[Fun]] = HashMap.empty
+  var traitMethods: ISZ[SMethod] = ISZ()
   var workList: ISZ[Info.Method] = ISZ()
   var seen: HashSet[SMethod] = HashSet.empty
   var currReceiverOpt: Option[AST.Typed.Name] = None()
 
   def specialize(): TypeSpecializer.Result = {
-
-    def specializeMethod(o: AST.Stmt.Method): Unit = {
-      halt("TODO") // TODO
-    }
 
     def entryMethod(ep: EntryPoint.Method): Unit = {
       val info: Info.Method = th.nameMap.get(ep.name) match {
@@ -183,20 +181,53 @@ import TypeSpecializer._
   }
 
   def addSMethod(posOpt: Option[Position], method: SMethod): Unit = {
-    method.receiverOpt match {
-      case Some(receiver) => halt("TODO") // TODO
-      case _ =>
-        val m = th.nameMap.get(method.owner :+ method.id).get.asInstanceOf[Info.Method]
-        if (seen.contains(method)) {
-          return
+    if (seen.contains(method)) {
+      return
+    }
+
+    def combine(sm1: HashMap[String, AST.Typed], sm2: HashMap[String, AST.Typed]): HashMap[String, AST.Typed] = {
+      if (sm1.isEmpty) {
+        return sm2
+      }
+      var r = sm2
+      for (e <- sm1.entries) {
+        val (k, v) = e
+        sm2.get(k) match {
+          case Some(v2) => assert(v == v2)
+          case _ => r = r + k ~> v
         }
+      }
+      return r
+    }
+
+    method.receiverOpt match {
+      case Some(receiver) =>
+        th.typeMap.get(receiver.ids).get match {
+          case info: TypeInfo.AbstractDatatype if info.ast.isRoot => traitMethods = traitMethods :+ method
+          case _: TypeInfo.Sig => traitMethods = traitMethods :+ method
+          case info: TypeInfo.AbstractDatatype =>
+            val asm = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter).get
+            val m = info.methods.get(method.res.name).get
+            val mFun = m.ast.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method].tpeOpt.get
+            val msm = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.res.tpeOpt.get, mFun, reporter).get
+            val sm = combine(asm, msm)
+            val mInfo: Info.Method = if (m.ast.bodyOpt.isEmpty) {
+              halt("TODO")// TODO
+            } else {
+              m
+            }
+            workList = workList :+ substMethod(mInfo, sm)
+          case _ => halt("Infeasible")
+        }
+      case _ =>
+        val m = th.nameMap.get(method.res.owner :+ method.res.name).get.asInstanceOf[Info.Method]
         seen = seen + method
         if (m.ast.sig.typeParams.isEmpty) {
           workList = workList :+ m
           return
         }
         val mType = m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe
-        val substMapOpt = TypeChecker.unifyMethod(tsKind, th, posOpt, method.tpe, mType, reporter)
+        val substMapOpt = TypeChecker.unifyMethod(tsKind, th, posOpt, method.res.tpeOpt.get, mType, reporter)
         substMapOpt match {
           case Some(substMap) => workList = workList :+ substMethod(m, substMap)
           case _ =>
@@ -217,7 +248,7 @@ import TypeSpecializer._
       // nested method, skip
       return
     }
-    addSMethod(posOpt, SMethod(rOpt, m.owner, m.name, m.tpeOpt.get))
+    addSMethod(posOpt, SMethod(rOpt, m))
   }
 
   override def preExpEta(o: AST.Exp.Eta): AST.MTransformer.PreResult[AST.Exp] = {
@@ -234,7 +265,7 @@ import TypeSpecializer._
               // nested method, skip
               return continuePreResult
             }
-            addSMethod(ref.posOpt, SMethod(rOpt, m.owner, m.name, m.tpeOpt.get))
+            addSMethod(ref.posOpt, SMethod(rOpt, m))
           case _ =>
         }
       case _ =>
