@@ -62,12 +62,28 @@ object TypeSpecializer {
   @datatype class SMethod(receiverOpt: Option[AST.Typed.Name], res: AST.ResolvedInfo.Method)
 
   val tsKind: String = "Type Specializer"
-  val continuePreResult: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResult(T, MNone())
-  val stopPreResult: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResult(F, MNone())
 
   def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
     val r = TypeSpecializer(th, entryPoints).specialize()
     return r
+  }
+
+  @pure def substMethod(m: Info.Method, substMap: HashMap[String, AST.Typed]): Info.Method = {
+    if (substMap.nonEmpty) {
+      val newAst = TypeSubstitutor(substMap).transformStmt(m.ast)
+      return m(ast = newAst.asInstanceOf[AST.Stmt.Method])
+    } else {
+      return m
+    }
+  }
+
+  @pure def substAssignExp(ast: AST.AssignExp, substMap: HashMap[String, AST.Typed]): AST.AssignExp = {
+    if (substMap.nonEmpty) {
+      val newAst = TypeSubstitutor(substMap).transformAssignExp(ast)
+      return newAst.asInstanceOf[AST.AssignExp]
+    } else {
+      return ast
+    }
   }
 
 }
@@ -140,44 +156,41 @@ import TypeSpecializer._
       }
     }
 
-    for (ep <- eps) {
-      ep match {
-        case ep: EntryPoint.Method => entryMethod(ep)
-        case ep: EntryPoint.Worksheet => entryWorksheet(ep)
+    def addEntryPoints(): Unit = {
+      for (ep <- eps) {
+        ep match {
+          case ep: EntryPoint.Method => entryMethod(ep)
+          case ep: EntryPoint.Worksheet => entryWorksheet(ep)
+        }
       }
     }
+
+    def work(): Unit = {
+      var oldSeenSize = z"0"
+      var oldTraitMethodsSize = z"0"
+
+      do {
+
+        oldSeenSize = seen.size
+        oldTraitMethodsSize = traitMethods.size
+
+        val wl = workList
+        workList = ISZ()
+
+        for (m <- wl) {
+          for (stmt <- m.ast.bodyOpt.get.stmts) {
+            transformStmt(stmt)
+          }
+        }
+
+        // TODO: specialize all impl of trait methods in seen specialized classes
+
+      } while (seen.size != oldSeenSize || traitMethods.size != oldTraitMethodsSize)
+    }
+
+    addEntryPoints()
+    work()
     return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, methods, funs)
-  }
-
-  override def postResolvedAttr(o: AST.ResolvedAttr): MOption[AST.ResolvedAttr] = {
-    o.resOpt.get match {
-      case res: AST.ResolvedInfo.Var =>
-        if (res.isInObject && !res.isSpec) {
-          objectVars = objectVars + (res.owner :+ res.id)
-        }
-      case res: AST.ResolvedInfo.LocalVar =>
-        if (res.scope == AST.ResolvedInfo.LocalVar.Scope.Closure) {
-          halt("TODO") // TODO: handle closure
-        }
-      case _: AST.ResolvedInfo.Method => // skip
-      case _: AST.ResolvedInfo.BuiltIn => // skip
-      case _: AST.ResolvedInfo.Tuple => // skip
-      case _: AST.ResolvedInfo.Enum => // skip
-      case _: AST.ResolvedInfo.EnumElement => // skip
-      case _: AST.ResolvedInfo.Object => // skip
-      case _: AST.ResolvedInfo.Package => // skip
-      case _: AST.ResolvedInfo.Methods => halt("Infeasible")
-    }
-    return MNone()
-  }
-
-  @pure def substMethod(m: Info.Method, substMap: HashMap[String, AST.Typed]): Info.Method = {
-    if (substMap.nonEmpty) {
-      val newAst = TypeSubstitutor(substMap).transformStmt(m.ast).asInstanceOf[AST.Stmt.Method]
-      return m(ast = newAst)
-    } else {
-      return m
-    }
   }
 
   def classMethodImpl(posOpt: Option[Position], method: SMethod): Info.Method = {
@@ -229,10 +242,10 @@ import TypeSpecializer._
       }
     }
 
-    val aSubstMap = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter).get
+    val aSubstMapOpt = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter)
     val mFun = m.ast.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method].tpeOpt.get
-    val mSubstMap = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.res.tpeOpt.get, mFun, reporter).get
-    val substMap = combine(aSubstMap, mSubstMap)
+    val mSubstMapOpt = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.res.tpeOpt.get, mFun, reporter)
+    val substMap = combine(aSubstMapOpt.get, mSubstMapOpt.get)
     return substMethod(m, substMap)
   }
 
@@ -282,6 +295,82 @@ import TypeSpecializer._
     addSMethod(posOpt, SMethod(rOpt, m))
   }
 
+  def specializeClass(t: AST.Typed.Name, info: TypeInfo.AbstractDatatype): Unit = {
+    val oldRcvOpt = currReceiverOpt
+    currReceiverOpt = Some(t)
+    val smOpt = TypeChecker.buildTypeSubstMap(t.ids, info.ast.posOpt, info.ast.typeParams, t.args, reporter)
+    val sm = smOpt.get
+    for (stmt <- info.ast.stmts) {
+      stmt match {
+        case stmt: AST.Stmt.Var =>
+          addType(stmt.tipeOpt.get.typedOpt.get.subst(sm))
+          transformAssignExp(substAssignExp(stmt.initOpt.get, sm))
+        case _ =>
+      }
+    }
+    currReceiverOpt = oldRcvOpt
+  }
+
+  def addType(o: AST.Typed): Unit = {
+    o match {
+      case o: AST.Typed.Name =>
+        val set: HashSet[AST.Typed.Name] = nameTypes.get(o.ids) match {
+          case Some(s) => s
+          case _ => HashSet.empty
+        }
+        val newSet = set + o
+        if (newSet.size != set.size) {
+          th.typeMap.get(o.ids).get match {
+            case info: TypeInfo.AbstractDatatype if !info.ast.isRoot => specializeClass(o, info)
+            case _ =>
+          }
+        }
+        nameTypes = nameTypes + o.ids ~> newSet
+      case _: AST.Typed.Enum => otherTypes = otherTypes + o
+      case _: AST.Typed.Tuple => otherTypes = otherTypes + o
+      case _: AST.Typed.Object => // skip
+      case _: AST.Typed.Fun => // skip
+      case _: AST.Typed.Method => // skip
+      case _: AST.Typed.Methods => // skip
+      case _: AST.Typed.Package => // skip
+      case _: AST.Typed.TypeVar => halt("Infeasible")
+    }
+  }
+
+  def specializeObjectVar(info: Info.Var): Unit = {
+    val oldRcvOpt = currReceiverOpt
+    currReceiverOpt = None()
+    transformAssignExp(info.ast.initOpt.get)
+    currReceiverOpt = oldRcvOpt
+  }
+
+  override def preResolvedAttr(o: AST.ResolvedAttr): AST.MTransformer.PreResult[AST.ResolvedAttr] = {
+    o.resOpt.get match {
+      case res: AST.ResolvedInfo.Var =>
+        if (res.isInObject && !res.isSpec) {
+          val info = th.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
+          val newObjectVars = objectVars + info.name
+          if (newObjectVars.size != objectVars.size) {
+            specializeObjectVar(info)
+          }
+          objectVars = newObjectVars
+        }
+      case res: AST.ResolvedInfo.LocalVar =>
+        if (res.scope == AST.ResolvedInfo.LocalVar.Scope.Closure) {
+          halt("TODO") // TODO: handle closure
+        }
+      case _: AST.ResolvedInfo.Method => // skip
+      case _: AST.ResolvedInfo.BuiltIn => // skip
+      case _: AST.ResolvedInfo.Tuple => // skip
+      case _: AST.ResolvedInfo.Enum => // skip
+      case _: AST.ResolvedInfo.EnumElement => // skip
+      case _: AST.ResolvedInfo.Object => // skip
+      case _: AST.ResolvedInfo.Package => // skip
+      case _: AST.ResolvedInfo.Methods => halt("Infeasible")
+    }
+    return AST.MTransformer.PreResultResolvedAttr
+  }
+
   override def preExpEta(o: AST.Exp.Eta): AST.MTransformer.PreResult[AST.Exp] = {
     o.ref match {
       case ref: AST.Exp.Ident =>
@@ -294,14 +383,14 @@ import TypeSpecializer._
               currReceiverOpt
             } else {
               // nested method, skip
-              return continuePreResult
+              return AST.MTransformer.PreResultExpEta
             }
             addSMethod(ref.posOpt, SMethod(rOpt, m))
           case _ =>
         }
       case _ =>
     }
-    return continuePreResult
+    return AST.MTransformer.PreResultExpEta
   }
 
   override def preExpSelect(o: AST.Exp.Select): AST.MTransformer.PreResult[AST.Exp] = {
@@ -309,19 +398,19 @@ import TypeSpecializer._
       case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
       case _ =>
     }
-    return continuePreResult
+    return AST.MTransformer.PreResultExpSelect
   }
 
   override def preExpInvoke(o: AST.Exp.Invoke): AST.MTransformer.PreResult[AST.Exp] = {
     if (o.id.value == string"apply") {
-      return continuePreResult
+      return AST.MTransformer.PreResultExpInvoke
     }
     o.attr.resOpt.get match {
       case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
       case _ =>
     }
 
-    return continuePreResult
+    return AST.MTransformer.PreResultExpInvoke
   }
 
   override def preExpInvokeNamed(o: AST.Exp.InvokeNamed): AST.MTransformer.PreResult[AST.Exp] = {
@@ -329,32 +418,11 @@ import TypeSpecializer._
       case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
       case _ =>
     }
-    return continuePreResult
+    return AST.MTransformer.PreResultExpInvokeNamed
   }
 
   override def preExpFun(o: AST.Exp.Fun): AST.MTransformer.PreResult[AST.Exp] = {
     halt("TODO") // TODO
-  }
-
-  def addType(o: AST.Typed): Unit = {
-    o match {
-      case o: AST.Typed.Name =>
-        val set: HashSet[AST.Typed.Name] = nameTypes.get(o.ids) match {
-          case Some(s) => s
-          case _ => HashSet.empty
-        }
-        nameTypes = nameTypes + o.ids ~> (set + o)
-        return
-      case _: AST.Typed.Enum => otherTypes = otherTypes + o
-      case _: AST.Typed.Tuple => otherTypes = otherTypes + o
-      case _: AST.Typed.Object => // skip
-      case _: AST.Typed.Fun => // skip
-      case _: AST.Typed.Method => // skip
-      case _: AST.Typed.Methods => // skip
-      case _: AST.Typed.Package => // skip
-      case _: AST.Typed.TypeVar => halt("Infeasible")
-    }
-    return
   }
 
   override def postTyped(o: AST.Typed): MOption[AST.Typed] = {
