@@ -3,6 +3,7 @@
 package org.sireum.transpilers.common
 
 import org.sireum._
+import org.sireum.alir.CallGraph
 import org.sireum.message._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
@@ -77,6 +78,7 @@ import TypeSpecializer._
 
 @record class TypeSpecializer(th: TypeHierarchy, eps: ISZ[EntryPoint]) extends AST.MTransformer {
   val reporter: Reporter = Reporter.create
+  val methodRefinement: Poset[CallGraph.Node] = CallGraph.methodRefinements(th)
   var nameTypes: HashMap[QName, HashSet[AST.Typed.Name]] = HashMap.empty
   var otherTypes: HashSet[AST.Typed] = HashSet.empty
   var objectVars: HashSet[QName] = HashSet.empty
@@ -180,10 +182,7 @@ import TypeSpecializer._
     }
   }
 
-  def addSMethod(posOpt: Option[Position], method: SMethod): Unit = {
-    if (seen.contains(method)) {
-      return
-    }
+  def classMethodImpl(posOpt: Option[Position], method: SMethod): Info.Method = {
 
     def combine(sm1: HashMap[String, AST.Typed], sm2: HashMap[String, AST.Typed]): HashMap[String, AST.Typed] = {
       if (sm1.isEmpty) {
@@ -200,27 +199,37 @@ import TypeSpecializer._
       return r
     }
 
+    val receiver = method.receiverOpt.get
+    val info = th.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+    assert(!info.ast.isRoot)
+    val asm = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter).get
+    val m = info.methods.get(method.res.id).get
+    val mFun = m.ast.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method].tpeOpt.get
+    val msm = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.res.tpeOpt.get, mFun, reporter).get
+    val sm = combine(asm, msm)
+    if (m.ast.bodyOpt.nonEmpty) {
+      return substMethod(m, sm)
+    }
+    halt("TODO") // TODO
+  }
+
+  def addSMethod(posOpt: Option[Position], method: SMethod): Unit = {
+    if (seen.contains(method)) {
+      return
+    }
+
     method.receiverOpt match {
       case Some(receiver) =>
         th.typeMap.get(receiver.ids).get match {
           case info: TypeInfo.AbstractDatatype if info.ast.isRoot => traitMethods = traitMethods :+ method
           case _: TypeInfo.Sig => traitMethods = traitMethods :+ method
-          case info: TypeInfo.AbstractDatatype =>
-            val asm = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter).get
-            val m = info.methods.get(method.res.name).get
-            val mFun = m.ast.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method].tpeOpt.get
-            val msm = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.res.tpeOpt.get, mFun, reporter).get
-            val sm = combine(asm, msm)
-            val mInfo: Info.Method = if (m.ast.bodyOpt.isEmpty) {
-              halt("TODO")// TODO
-            } else {
-              m
-            }
-            workList = workList :+ substMethod(mInfo, sm)
+          case _: TypeInfo.AbstractDatatype =>
+            val mInfo = classMethodImpl(posOpt, method)
+            workList = workList :+ mInfo
           case _ => halt("Infeasible")
         }
       case _ =>
-        val m = th.nameMap.get(method.res.owner :+ method.res.name).get.asInstanceOf[Info.Method]
+        val m = th.nameMap.get(method.res.owner :+ method.res.id).get.asInstanceOf[Info.Method]
         seen = seen + method
         if (m.ast.sig.typeParams.isEmpty) {
           workList = workList :+ m
