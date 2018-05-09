@@ -28,22 +28,20 @@ object Module {
 
   trait Common extends Module {
 
-    final override def deps = Seq(frontEndObject)
+    final override def deps = Seq(alirObject)
 
-    def frontEndObject: CrossJvmJs
+    def alirObject: CrossJvmJs
 
     final override def ivyDeps = Agg.empty
   }
 
   trait C extends Module {
 
-    final override def deps = Seq(commonObject, alirObject)
+    final override def deps = Seq(commonObject)
 
     final override def ivyDeps = Agg.empty
 
     def commonObject: Common
-
-    def alirObject: CrossJvmJs
   }
 
   trait Cli extends JvmOnly {

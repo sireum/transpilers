@@ -57,16 +57,21 @@ object transpilers extends mill.Module {
   final override val millSourcePath = super.millSourcePath / up
 
   object common extends Transpilers.Module.Common {
-    override val frontEndObject = slang.frontend
+
+    override val alirObject = alir
+
   }
 
   object c extends Transpilers.Module.C {
+
     override val commonObject = common
-    override val alirObject = alir
+
   }
 
   object cli extends Transpilers.Module.Cli {
+
     override val cObject = c
+
   }
 
 }
