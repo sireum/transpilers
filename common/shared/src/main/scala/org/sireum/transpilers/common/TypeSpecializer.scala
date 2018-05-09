@@ -30,7 +30,7 @@ object TypeSpecializer {
     otherTypes: HashSet[AST.Typed],
     objectVars: HashSet[QName],
     methods: HashMap[QName, HashSet[Method]],
-    funs: HashMap[QName, HashSet[Fun]]
+    funs: HashMap[QName, HashSet[AST.Exp.Fun]]
   )
 
   @datatype class Method(
@@ -41,8 +41,6 @@ object TypeSpecializer {
     ast: AST.Stmt.Method,
     closureEnv: HashMap[String, AST.Typed]
   )
-
-  @datatype class Fun(ast: AST.Exp.Fun)
 
   @record class TypeSubstitutor(substMap: HashMap[String, AST.Typed]) extends AST.MTransformer {
 
@@ -83,7 +81,7 @@ import TypeSpecializer._
   var otherTypes: HashSet[AST.Typed] = HashSet.empty
   var objectVars: HashSet[QName] = HashSet.empty
   var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
-  var funs: HashMap[QName, HashSet[Fun]] = HashMap.empty
+  var funs: HashMap[QName, HashSet[AST.Exp.Fun]] = HashMap.empty
   var traitMethods: ISZ[SMethod] = ISZ()
   var workList: ISZ[Info.Method] = ISZ()
   var seen: HashSet[SMethod] = HashSet.empty
@@ -267,7 +265,6 @@ import TypeSpecializer._
           case _ =>
         }
     }
-    return
   }
 
   def addResolvedMethod(posOpt: Option[Position], m: AST.ResolvedInfo.Method, receiverOpt: Option[AST.Exp]): Unit = {
@@ -333,6 +330,10 @@ import TypeSpecializer._
       case _ =>
     }
     return continuePreResult
+  }
+
+  override def preExpFun(o: AST.Exp.Fun): AST.MTransformer.PreResult[AST.Exp] = {
+    halt("TODO") // TODO
   }
 
   def addType(o: AST.Typed): Unit = {
