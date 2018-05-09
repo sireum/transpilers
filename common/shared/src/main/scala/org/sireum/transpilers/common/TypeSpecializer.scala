@@ -159,7 +159,7 @@ import TypeSpecializer._
         }
       case res: AST.ResolvedInfo.LocalVar =>
         if (res.scope == AST.ResolvedInfo.LocalVar.Scope.Closure) {
-          halt("TODO") // TODO
+          halt("TODO") // TODO: handle closure
         }
       case _: AST.ResolvedInfo.Method => // skip
       case _: AST.ResolvedInfo.BuiltIn => // skip
@@ -202,15 +202,40 @@ import TypeSpecializer._
     val receiver = method.receiverOpt.get
     val info = th.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
     assert(!info.ast.isRoot)
-    val asm = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter).get
-    val m = info.methods.get(method.res.id).get
-    val mFun = m.ast.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method].tpeOpt.get
-    val msm = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.res.tpeOpt.get, mFun, reporter).get
-    val sm = combine(asm, msm)
-    if (m.ast.bodyOpt.nonEmpty) {
-      return substMethod(m, sm)
+    val m: Info.Method = {
+      val cm = info.methods.get(method.res.id).get
+      if (cm.ast.bodyOpt.nonEmpty) {
+        cm
+      } else {
+        var nodes: ISZ[CallGraph.Node] = ISZ(CallGraph.Node(T, F, cm.owner, cm.ast.sig.id.value))
+        var mOpt: Option[Info.Method] = None()
+        do {
+          var parentNodes: ISZ[CallGraph.Node] = ISZ()
+          for (node <- nodes if mOpt.isEmpty) {
+            for (parent <- methodRefinement.parentsOf(node).elements if mOpt.isEmpty) {
+              val cInfo: Info.Method = th.typeMap.get(parent.owner).get match {
+                case tInfo: TypeInfo.AbstractDatatype => tInfo.methods.get(parent.id).get
+                case tInfo: TypeInfo.Sig => tInfo.methods.get(parent.id).get
+                case _ => halt("Infeasible")
+              }
+              if (cInfo.ast.bodyOpt.isEmpty) {
+                parentNodes = parentNodes :+ CallGraph.Node(T, F, cInfo.owner, cInfo.ast.sig.id.value)
+              } else {
+                mOpt = Some(cInfo)
+              }
+            }
+          }
+          nodes = parentNodes
+        } while (mOpt.isEmpty || nodes.isEmpty)
+        mOpt.get
+      }
     }
-    halt("TODO") // TODO
+
+    val aSubstMap = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter).get
+    val mFun = m.ast.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method].tpeOpt.get
+    val mSubstMap = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.res.tpeOpt.get, mFun, reporter).get
+    val substMap = combine(aSubstMap, mSubstMap)
+    return substMethod(m, substMap)
   }
 
   def addSMethod(posOpt: Option[Position], method: SMethod): Unit = {
