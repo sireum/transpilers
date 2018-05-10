@@ -71,7 +71,9 @@ object TypeSpecializer {
   val emptyVars: Map[String, AST.Typed] = Map.empty
 
   def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
-    val r = TypeSpecializer(th, entryPoints).specialize()
+    val ts = TypeSpecializer(th, entryPoints)
+    val r = ts.specialize()
+    reporter.reports(ts.reporter.messages)
     return r
   }
 
@@ -227,7 +229,9 @@ import TypeSpecializer._
     }
 
     addEntryPoints()
+
     work()
+
     return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, methods, funs)
   }
 
