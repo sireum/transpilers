@@ -23,10 +23,16 @@ object TypeSpecializer {
 
   }
 
+  @datatype class NamedType(
+    tpe: AST.Typed.Name,
+    @hidden constructorVars: Map[String, AST.Typed],
+    @hidden vars: Map[String, AST.Typed]
+  )
+
   @datatype class Result(
     typeHierarchy: TypeHierarchy,
     entryPoints: ISZ[EntryPoint],
-    nameTypes: HashMap[QName, HashSet[AST.Typed.Name]],
+    nameTypes: HashMap[QName, HashSet[NamedType]],
     otherTypes: HashSet[AST.Typed],
     objectVars: HashSet[QName],
     methods: HashMap[QName, HashSet[Method]],
@@ -62,6 +68,7 @@ object TypeSpecializer {
   @datatype class SMethod(receiverOpt: Option[AST.Typed.Name], res: AST.ResolvedInfo.Method)
 
   val tsKind: String = "Type Specializer"
+  val emptyVars: Map[String, AST.Typed] = Map.empty
 
   def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
     val r = TypeSpecializer(th, entryPoints).specialize()
@@ -93,7 +100,7 @@ import TypeSpecializer._
 @record class TypeSpecializer(th: TypeHierarchy, eps: ISZ[EntryPoint]) extends AST.MTransformer {
   val reporter: Reporter = Reporter.create
   val methodRefinement: Poset[CallGraph.Node] = CallGraph.methodRefinements(th)
-  var nameTypes: HashMap[QName, HashSet[AST.Typed.Name]] = HashMap.empty
+  var nameTypes: HashMap[QName, HashSet[NamedType]] = HashMap.empty
   var otherTypes: HashSet[AST.Typed] = HashSet.empty
   var objectVars: HashSet[QName] = HashSet.empty
   var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
@@ -238,7 +245,7 @@ import TypeSpecializer._
           }
           nodes = parentNodes
         } while (mOpt.isEmpty || nodes.isEmpty)
-        mOpt.get
+        mOpt.get(owner = method.res.owner)
       }
     }
 
@@ -295,35 +302,47 @@ import TypeSpecializer._
     addSMethod(posOpt, SMethod(rOpt, m))
   }
 
-  def specializeClass(t: AST.Typed.Name, info: TypeInfo.AbstractDatatype): Unit = {
+  def specializeClass(t: AST.Typed.Name, info: TypeInfo.AbstractDatatype): NamedType = {
     val oldRcvOpt = currReceiverOpt
     currReceiverOpt = Some(t)
     val smOpt = TypeChecker.buildTypeSubstMap(t.ids, info.ast.posOpt, info.ast.typeParams, t.args, reporter)
     val sm = smOpt.get
+    var cvs = emptyVars
+    var vs = emptyVars
+    for (p <- info.ast.params) {
+      cvs = cvs + p.id.value ~> p.tipe.typedOpt.get.subst(sm)
+    }
     for (stmt <- info.ast.stmts) {
       stmt match {
         case stmt: AST.Stmt.Var =>
-          addType(stmt.tipeOpt.get.typedOpt.get.subst(sm))
+          val vt = stmt.tipeOpt.get.typedOpt.get.subst(sm)
+          vs = vs + stmt.id.value ~> vt
+          addType(vt)
           transformAssignExp(substAssignExp(stmt.initOpt.get, sm))
         case _ =>
       }
     }
     currReceiverOpt = oldRcvOpt
+    return NamedType(t, cvs, vs)
   }
 
   def addType(o: AST.Typed): Unit = {
     o match {
       case o: AST.Typed.Name =>
-        val set: HashSet[AST.Typed.Name] = nameTypes.get(o.ids) match {
+        val set: HashSet[NamedType] = nameTypes.get(o.ids) match {
           case Some(s) => s
           case _ => HashSet.empty
         }
-        val newSet = set + o
-        if (newSet.size != set.size) {
-          th.typeMap.get(o.ids).get match {
-            case info: TypeInfo.AbstractDatatype if !info.ast.isRoot => specializeClass(o, info)
-            case _ =>
-          }
+        val key = NamedType(o, emptyVars, emptyVars)
+        val newSet: HashSet[NamedType] = th.typeMap.get(o.ids).get match {
+          case info: TypeInfo.AbstractDatatype if !info.ast.isRoot =>
+            if (set.contains(NamedType(o, emptyVars, emptyVars))) {
+              set
+            } else {
+              val nt = specializeClass(o, info)
+              set + nt
+            }
+          case _ => set + key
         }
         nameTypes = nameTypes + o.ids ~> newSet
       case _: AST.Typed.Enum => otherTypes = otherTypes + o
