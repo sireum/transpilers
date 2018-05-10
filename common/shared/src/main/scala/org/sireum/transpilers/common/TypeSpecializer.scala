@@ -390,6 +390,7 @@ import TypeSpecializer._
   def specializeObjectVar(info: Info.Var): Unit = {
     val oldRcvOpt = currReceiverOpt
     currReceiverOpt = None()
+    addType(info.ast.tipeOpt.get.typedOpt.get)
     transformAssignExp(info.ast.initOpt.get)
     currReceiverOpt = oldRcvOpt
   }
