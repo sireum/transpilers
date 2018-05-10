@@ -65,7 +65,7 @@ object TypeSpecializer {
 
   }
 
-  @datatype class SMethod(receiverOpt: Option[AST.Typed.Name], res: AST.ResolvedInfo.Method)
+  @datatype class SMethod(receiverOpt: Option[AST.Typed.Name], owner: QName, id: String, tpe: AST.Typed.Fun)
 
   val tsKind: String = "Type Specializer"
   val emptyVars: Map[String, AST.Typed] = Map.empty
@@ -108,6 +108,7 @@ import TypeSpecializer._
   var traitMethods: ISZ[SMethod] = ISZ()
   var workList: ISZ[Info.Method] = ISZ()
   var seen: HashSet[SMethod] = HashSet.empty
+  var decendantsCache: HashMap[Poset.Index, HashSet[Poset.Index]] = HashMap.empty
   var currReceiverOpt: Option[AST.Typed.Name] = None()
 
   def specialize(): TypeSpecializer.Result = {
@@ -190,9 +191,39 @@ import TypeSpecializer._
           }
         }
 
-        // TODO: specialize all impl of trait methods in seen specialized classes
+        for (tm <- traitMethods) {
+          val p = Poset.Internal.descendantsCache(th.poset, th.poset.nodes.get(tm.owner).get, decendantsCache)
+          decendantsCache = p._2
+          val ni = th.poset.nodesInverse
+          val id = tm.id
+          val t = tm.receiverOpt.get
+          for (i <- p._1.elements) {
+            val name = ni(i)
+            th.typeMap.get(name).get match {
+              case info: TypeInfo.AbstractDatatype if !info.ast.isRoot && info.methods.contains(id) =>
+                val posOpt = info.ast.posOpt
+                nameTypes.get(name) match {
+                  case Some(nts) =>
+                    for (nt <- nts.elements if th.isSubType(nt.tpe, t)) {
+                      val aSubstMapOpt =
+                        TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, nt.tpe.args, reporter)
+                      val m = info.methods.get(id).get
+                      val mFun = m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe.subst(aSubstMapOpt.get)
+                      val smOpt =
+                        TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Supertype, tm.tpe, mFun, reporter)
+                      smOpt match {
+                        case Some(sm) => addSMethod(posOpt, SMethod(Some(nt.tpe), nt.tpe.ids, id, mFun.subst(sm)))
+                        case _ =>
+                      }
+                    }
+                  case _ =>
+                }
+              case _ =>
+            }
+          }
+        }
 
-      } while (seen.size != oldSeenSize || traitMethods.size != oldTraitMethodsSize)
+      } while (workList.nonEmpty)
     }
 
     addEntryPoints()
@@ -221,7 +252,7 @@ import TypeSpecializer._
     val info = th.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
     assert(!info.ast.isRoot)
     val m: Info.Method = {
-      val cm = info.methods.get(method.res.id).get
+      val cm = info.methods.get(method.id).get
       if (cm.ast.bodyOpt.nonEmpty) {
         cm
       } else {
@@ -245,13 +276,13 @@ import TypeSpecializer._
           }
           nodes = parentNodes
         } while (mOpt.isEmpty || nodes.isEmpty)
-        mOpt.get(owner = method.res.owner)
+        mOpt.get(owner = method.owner)
       }
     }
 
     val aSubstMapOpt = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter)
     val mFun = m.ast.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method].tpeOpt.get
-    val mSubstMapOpt = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.res.tpeOpt.get, mFun, reporter)
+    val mSubstMapOpt = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.tpe, mFun, reporter)
     val substMap = combine(aSubstMapOpt.get, mSubstMapOpt.get)
     return substMethod(m, substMap)
   }
@@ -272,14 +303,14 @@ import TypeSpecializer._
           case _ => halt("Infeasible")
         }
       case _ =>
-        val m = th.nameMap.get(method.res.owner :+ method.res.id).get.asInstanceOf[Info.Method]
+        val m = th.nameMap.get(method.owner :+ method.id).get.asInstanceOf[Info.Method]
         seen = seen + method
         if (m.ast.sig.typeParams.isEmpty) {
           workList = workList :+ m
           return
         }
         val mType = m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe
-        val substMapOpt = TypeChecker.unifyMethod(tsKind, th, posOpt, method.res.tpeOpt.get, mType, reporter)
+        val substMapOpt = TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Equal, method.tpe, mType, reporter)
         substMapOpt match {
           case Some(substMap) => workList = workList :+ substMethod(m, substMap)
           case _ =>
@@ -299,7 +330,7 @@ import TypeSpecializer._
       // nested method, skip
       return
     }
-    addSMethod(posOpt, SMethod(rOpt, m))
+    addSMethod(posOpt, SMethod(rOpt, m.owner, m.id, m.tpeOpt.get))
   }
 
   def specializeClass(t: AST.Typed.Name, info: TypeInfo.AbstractDatatype): NamedType = {
@@ -404,7 +435,7 @@ import TypeSpecializer._
               // nested method, skip
               return AST.MTransformer.PreResultExpEta
             }
-            addSMethod(ref.posOpt, SMethod(rOpt, m))
+            addSMethod(ref.posOpt, SMethod(rOpt, m.owner, m.id, m.tpeOpt.get))
           case _ =>
         }
       case _ =>
