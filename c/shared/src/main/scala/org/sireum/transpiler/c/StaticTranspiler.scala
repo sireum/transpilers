@@ -305,7 +305,7 @@ import StaticTranspiler._
     }
     val impl =
       st"""$header {
-      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.posOpt)}", "${dotName(info.owner)}", "${info.name}", 0);
+      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.posOpt)}", "${dotName(info.owner)}", "${info.id}", 0);
       |  ${(stmts, "\n")}
       |}"""
 
@@ -930,7 +930,7 @@ import StaticTranspiler._
 
   @pure def methodName(method: AST.ResolvedInfo.Method): ST = {
     val tpe = method.tpeOpt.get
-    var ids = method.owner :+ method.name
+    var ids = method.owner :+ method.id
     if (config.fprintWidth != z"0" && (method.typeParams.nonEmpty || !method.isInObject)) {
       ids = ids :+ Fingerprint.string(tpe.string, config.fprintWidth)
     }
