@@ -208,7 +208,7 @@ import TypeSpecializer._
                       val aSubstMapOpt =
                         TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, nt.tpe.args, reporter)
                       val m = info.methods.get(id).get
-                      val mFun = m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe.subst(aSubstMapOpt.get)
+                      val mFun = m.methodType.tpe.subst(aSubstMapOpt.get)
                       val smOpt =
                         TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Supertype, tm.tpe, mFun, reporter)
                       smOpt match {
@@ -281,7 +281,7 @@ import TypeSpecializer._
     }
 
     val aSubstMapOpt = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter)
-    val mFun = m.ast.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method].tpeOpt.get
+    val mFun = m.methodRes.tpeOpt.get
     val mSubstMapOpt = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.tpe, mFun, reporter)
     val substMap = combine(aSubstMapOpt.get, mSubstMapOpt.get)
     return substMethod(m, substMap)
@@ -309,7 +309,7 @@ import TypeSpecializer._
           workList = workList :+ m
           return
         }
-        val mType = m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe
+        val mType = m.methodType.tpe
         val substMapOpt = TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Equal, method.tpe, mType, reporter)
         substMapOpt match {
           case Some(substMap) => workList = workList :+ substMethod(m, substMap)
