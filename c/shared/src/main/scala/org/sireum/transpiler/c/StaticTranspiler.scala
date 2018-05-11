@@ -3,12 +3,11 @@ package org.sireum.transpiler.c
 
 import org.sireum._
 import org.sireum.message._
-
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
 import org.sireum.lang.symbol.Resolver.QName
-import org.sireum.lang.tipe._
 import org.sireum.transpiler.c.util.Fingerprint
+import org.sireum.transpilers.common.TypeSpecializer
 
 object StaticTranspiler {
 
@@ -25,7 +24,7 @@ object StaticTranspiler {
   type SubstMap = HashMap[String, AST.Typed]
 
   @datatype class Config(
-    exeName: String,
+    projectName: String,
     lineNumber: B,
     fprintWidth: Z,
     defaultBitWidth: Z,
@@ -34,14 +33,11 @@ object StaticTranspiler {
     customArraySizes: HashMap[AST.Typed, Z]
   )
 
-  @datatype class CompUnit(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
+  @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
 
   @datatype class Result(files: HashSMap[QName, ST])
 
   val transKind: String = "Static C Transpiler"
-  val unitType: ST = st"void"
-  val bType: ST = st"B"
-  val zType: ST = st"Z"
   val empty: ST = st""
   val trueLit: ST = st"T"
   val falseLit: ST = st"F"
@@ -59,6 +55,16 @@ object StaticTranspiler {
   val u64Max: Z = conversions.N64.toZ(N64.Max)
   val abort: ST = st"abort();"
   val noType: ST = st"TNONE"
+
+  val builtInTypes: HashSet[AST.Typed] = HashSet ++ ISZ(
+    AST.Typed.unit,
+    AST.Typed.b,
+    AST.Typed.c,
+    AST.Typed.z,
+    AST.Typed.f32,
+    AST.Typed.f64,
+    AST.Typed.r
+  )
 
   @pure def dotName(ids: QName): String = {
     return st"${(ids, ".")}".render
@@ -114,176 +120,154 @@ object StaticTranspiler {
       case _ => return filename(None())
     }
   }
-
-  def genH(entries: ISZ[ST]): ST = {
-    val r =
-      st"""#ifndef SIREUM_GEN_H
-      |#define SIREUM_GEN_H
-      |
-      |#include <misc.h>
-      |
-      |${(entries, "\n\n")}
-      |
-      |#endif"""
-    return r
-  }
-
-  def genC(typeNames: ISZ[ST], entries: ISZ[ST]): ST = {
-    val r =
-      st"""#include <gen.h>
-      |
-      |size_t sizeOf(Type t) {
-      |  switch (t->type) {
-      |    ${(for (tn <- typeNames) yield st"case T$tn: return sizeof(struct $tn);", "\n")}
-      |    default: abort();
-      |  }
-      |}
-      |
-      |void clone(Type src, Type dest) {
-      |  size_t srcSize = sizeOf(src);
-      |  size_t destSize = sizeOf(dest);
-      |  memcpy(dest, src, srcSize);
-      |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
-      |}
-      |
-      |${(entries, "\n\n")}"""
-    return r
-  }
-
-  def genTypeH(stringMax: Z, typeNames: ISZ[ST], entries: ISZ[ST]): ST = {
-    val r =
-      st"""#ifndef SIREUM_GEN_TYPE_H
-      |#define SIREUM_GEN_TYPE_H
-      |
-      |#include <memory.h>
-      |#include <ztype.h>
-      |#include <stackframe.h>
-      |
-      |typedef enum {
-      |  TString
-      |  ${(for (tn <- typeNames) yield st"T$tn", ",\n")}
-      |} TYPE;
-      |
-      |typedef struct Type *Type;
-      |struct Type {
-      |  TYPE type;
-      |};
-      |
-      |#define STRING_MAX $stringMax
-      |
-      |typedef struct String *String;
-      |struct String {
-      |  TYPE type;
-      |  Z size;
-      |  C *value;
-      |};
-      |
-      |struct StaticString {
-      |  TYPE type;
-      |  Z size;
-      |  C *value;
-      |  C data[STRING_MAX + 1];
-      |};
-      |
-      |#define string(v) &((struct String) { .type = TString, .size = Z_C(sizeof(v) - 1), .value = (C *) (v) })
-      |
-      |#define DeclString(x, e) struct StaticString x = e
-      |#define DeclNewString(x) DeclString(x, ((struct StaticString) { .type = TYPE_String, .size = Z_C(0), .value = NULL, .data = {0} })); (x).value = (x).data
-      |
-      |${(entries, "\n\n")}
-      |
-      |#endif"""
-    return r
-  }
 }
 
 import StaticTemplate._
 import StaticTranspiler._
 
-@record class StaticTranspiler(config: Config, th: TypeHierarchy, reporter: Reporter) {
-
-  var genTypeHeader: ISZ[ST] = ISZ()
-  var genHeader: ISZ[ST] = ISZ()
-  var genImpl: ISZ[ST] = ISZ()
-  var types: ISZ[ST] = ISZ()
-  var typeNames: ISZ[ST] = ISZ()
+@record class StaticTranspiler(config: Config, ts: TypeSpecializer.Result, reporter: Reporter) {
+  var compiledMap: HashSMap[QName, Compiled] = HashSMap.empty
+  var typeNameMap: HashSMap[AST.Typed, ST] = HashSMap.empty
 
   var stmts: ISZ[ST] = ISZ()
-
   var nextTempNum: Z = 0
 
-  def transpileWorksheet(program: AST.TopUnit.Program): Result = {
+  def transpile(): Result = {
+
+    var r = HashSMap.empty[QName, ST]
+    var cFilenames: ISZ[String] = ISZ()
+
+    def transEntryPoints(): Unit = {
+
+      var i = 0
+      for (ep <- ts.entryPoints) {
+        ep match {
+          case ep: TypeSpecializer.EntryPoint.Worksheet =>
+            val (exeName, main) = transpileWorksheet(ep.program, i)
+            val cFilename = s"$exeName.c"
+            r = r + ISZ[String](cFilename) ~> main
+            cFilenames = cFilenames :+ exeName
+            i = i + 1
+          case ep: TypeSpecializer.EntryPoint.Method => // TODO
+        }
+      }
+    }
+
+    def genFiles(): Unit = {
+
+      val runtimeDir = string"runtime"
+      val files = Runtime.staticFiles
+      for (e <- files.entries) {
+        val k = e._1
+        if (k.size == z"1") {
+          r = r + ISZ(runtimeDir, k(0)) ~> st"${e._2}"
+        }
+      }
+      val ztypeFilename = string"ztype.h"
+      val ztype: ST = config.defaultBitWidth match {
+        case z"8" => st"${files.get(ISZ("8", ztypeFilename)).get}"
+        case z"16" => st"${files.get(ISZ("16", ztypeFilename)).get}"
+        case z"32" => st"${files.get(ISZ("32", ztypeFilename)).get}"
+        case z"64" => st"${files.get(ISZ("64", ztypeFilename)).get}"
+        case _ => halt("Infeasible")
+      }
+      r = r + ISZ(runtimeDir, ztypeFilename) ~> ztype
+      val typeNames: ISZ[ST] = {
+        var tn: ISZ[ST] = ISZ()
+        for (e <- typeNameMap.entries) {
+          if (!builtInTypes.contains(e._1)) {
+            tn = tn :+ e._2
+          }
+        }
+        tn
+      }
+      r = r + ISZ[String]("gentype.h") ~> genTypeH(config.defaultStringSize, typeNames)
+      r = r + ISZ[String](string"gen.h") ~> genH(ISZ()) // TODO: add includes for types and methods
+      r = r + ISZ[String](string"gen.c") ~> genC(typeNames)
+      r = r + ISZ[String](string"CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
+    }
+
+    genTypeNames()
+    transEntryPoints()
+    genFiles()
+
+    return Result(r)
+  }
+
+  def genTypeNames(): Unit = {
+    def genType(t: AST.Typed): ST = {
+      def fprint: String = {
+        return Fingerprint.string(t.string, config.fprintWidth)
+      }
+      typeNameMap.get(t) match {
+        case Some(tr) =>
+          return tr
+        case _ =>
+      }
+      val r: ST = t match {
+        case t: AST.Typed.Name =>
+          if (t.args.isEmpty) mangleName(t.ids) else st"${mangleName(t.ids)}_$fprint"
+        case t: AST.Typed.Tuple => st"Tuple${t.args.size}_$fprint"
+        case t: AST.Typed.Fun => st"Fun${t.args.size}_$fprint"
+        case t: AST.Typed.Enum => mangleName(t.name)
+        case _ => halt("Infeasible: $t")
+      }
+      typeNameMap = typeNameMap + t ~> r
+      return r
+    }
+
+    genType(AST.Typed.string)
+
+    for (nts <- ts.nameTypes.values; nt <- nts.elements) {
+      ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
+        case _: TypeInfo.AbstractDatatype => genType(nt.tpe)
+        case _: TypeInfo.Sig => genType(nt.tpe)
+        case _ =>
+      }
+    }
+    for (t <- ts.otherTypes.elements) {
+      genType(t)
+    }
+  }
+
+  def transpileWorksheet(program: AST.TopUnit.Program, i: Z): (String, ST) = {
     val fname = filename(program.fileUriOpt)
-    val project = removeExt(fname)
+    val exeName = removeExt(fname)
     stmts = ISZ(st"""DeclNewStackFrame(NULL, "$fname", "", "<main>", 0);""")
     nextTempNum = 0
     assert(program.packageName.ids.isEmpty)
     for (stmt <- program.body.stmts) {
       transpileStmt(stmt)
     }
-    val main =
+    val r =
       st"""#include <gen.h>
       |
       |int main(void) {
       |  ${(stmts, "\n")}
       |  return 0;
       |}"""
-
-    val files = Runtime.staticFiles
-    var r = HashSMap.empty[QName, ST]
-    for (e <- files.entries) {
-      val k = e._1
-      if (k.size == z"1") {
-        r = r + ISZ(k(0)) ~> st"${e._2}"
-      }
-    }
-    val ztype = string"ztype.h"
-    config.defaultBitWidth match {
-      case z"8" => r = r + ISZ(ztype) ~> st"${files.get(ISZ("8", ztype)).get}"
-      case z"16" => r = r + ISZ(ztype) ~> st"${files.get(ISZ("16", ztype)).get}"
-      case z"32" => r = r + ISZ(ztype) ~> st"${files.get(ISZ("32", ztype)).get}"
-      case z"64" => r = r + ISZ(ztype) ~> st"${files.get(ISZ("64", ztype)).get}"
-      case _ => halt("Infeasible")
-    }
-    r = r + ISZ(string"gentype.h") ~> genTypeH(config.defaultStringSize, typeNames, types) // TODO
-    r = r + ISZ(string"gen.h") ~> genH(genHeader)
-    r = r + ISZ(string"gen.c") ~> genC(typeNames, genImpl)
-    r = r + ISZ(string"main.c") ~> main
-    r = r + ISZ(string"CMakeLists.txt") ~> cmake(project, ISZ(config.exeName), r.keys.elements)
-    return Result(r)
+    return (if (i == z"0") exeName else if (exeName == string"main") s"main$i" else exeName, r)
   }
 
-  def transpileObjectMethod(method: QName, substMap: SubstMap): Unit = {
-    val methodInfo: Info.Method = th.nameMap.get(method) match {
-      case Some(info: Info.Method) => info
-      case _ =>
-        reporter.error(None(), transKind, st"'${dotName(method)}' is not a method".render)
-        return
-    }
-    assert(methodInfo.ast.sig.typeParams.isEmpty && substMap.isEmpty) // TODO: Specialize object method
-    transpileMethod(methodInfo.ast)
-  }
-
-  def transpileMethod(method: AST.Stmt.Method): Unit = {
+  def transpileMethod(method: TypeSpecializer.Method): Unit = {
     val oldNextTempNum = nextTempNum
     val oldStmts = stmts
 
     nextTempNum = 0
     stmts = ISZ()
 
-    val info = method.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
-    val header = methodHeader(info)
-    for (stmt <- method.bodyOpt.get.stmts) {
+    val info = method.info.methodRes
+    val header = methodHeader(method)
+    for (stmt <- method.info.ast.bodyOpt.get.stmts) {
       transpileStmt(stmt)
     }
     val impl =
       st"""$header {
-      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.posOpt)}", "${dotName(info.owner)}", "${info.id}", 0);
+      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.info.ast.posOpt)}", "${dotName(info.owner)}", "${info.id}", 0);
       |  ${(stmts, "\n")}
       |}"""
 
-    genHeader = genHeader :+ st"$header;"
-    genImpl = genImpl :+ impl
+    // TODO: add header, impl
 
     nextTempNum = oldNextTempNum
     stmts = oldStmts
@@ -358,7 +342,7 @@ import StaticTranspiler._
 
     @pure def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
       val tname = typeName(exp.attr.typedOpt)
-      val info: TypeInfo.SubZ = th.typeMap.get(tname).get.asInstanceOf[TypeInfo.SubZ]
+      val info: TypeInfo.SubZ = ts.typeHierarchy.typeMap.get(tname).get.asInstanceOf[TypeInfo.SubZ]
       val n = Z(exp.lits(0).value).get
       checkBitWidth(n, info.ast.bitWidth)
       return st"${(dotName(tname), "")}_C($n)"
@@ -446,7 +430,7 @@ import StaticTranspiler._
     def isSubZLit(exp: AST.Exp.StringInterpolate): B = {
       exp.attr.typedOpt.get match {
         case t: AST.Typed.Name if t.args.isEmpty =>
-          th.typeMap.get(t.ids) match {
+          ts.typeHierarchy.typeMap.get(t.ids) match {
             case Some(_: TypeInfo.SubZ) => return T
             case _ => return F
           }
@@ -838,16 +822,19 @@ import StaticTranspiler._
     }
   }
 
-  @pure def methodHeader(method: AST.ResolvedInfo.Method): ST = {
-    val name = methodName(method)
-    val tpe = method.tpeOpt.get
+  @pure def methodHeader(method: TypeSpecializer.Method): ST = {
+    val res = method.info.methodRes
+    val name = methodName(res)
+    val tpe = res.tpeOpt.get
     val retType = transpileType(tpe.ret, F)
+
+    // TODO: receiver
     val params: ST =
-      if (method.paramNames.isEmpty)
-        unitType
+      if (res.paramNames.isEmpty)
+        st"void"
       else
         st"${(
-          for (p <- ops.ISZOps(tpe.args).zip(method.paramNames))
+          for (p <- ops.ISZOps(tpe.args).zip(res.paramNames))
             yield st"${transpileType(p._1, T)} ${localName(p._2)}",
           ", "
         )}"
@@ -855,12 +842,8 @@ import StaticTranspiler._
   }
 
   @pure def transpileType(tpe: AST.Typed, isPtr: B): ST = {
-    tpe match {
-      case AST.Typed.unit => return unitType
-      case AST.Typed.b => return bType
-      case AST.Typed.z => return zType
-      case _ => halt("TODO") // TODO
-    }
+    val r = typeNameMap.get(tpe).get
+    return if (isPtr) st"struct $r" else st"$r"
   }
 
   @pure def typeKind(t: AST.Typed): TypeKind.Type = {
@@ -872,7 +855,7 @@ import StaticTranspiler._
       case AST.Typed.f64 =>
       case AST.Typed.r =>
       case t: AST.Typed.Name if t.args.isEmpty =>
-        th.typeMap.get(t.ids).get match {
+        ts.typeHierarchy.typeMap.get(t.ids).get match {
           case _: TypeInfo.SubZ =>
           case _: TypeInfo.Enum =>
           case info: TypeInfo.AbstractDatatype =>

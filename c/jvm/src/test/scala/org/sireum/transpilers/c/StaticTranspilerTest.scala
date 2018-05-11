@@ -9,6 +9,7 @@ import org.sireum.message.Reporter
 import org.sireum.test.TestSuite
 import org.sireum.transpiler.c.StaticTranspiler
 import ammonite.ops._
+import org.sireum.transpilers.common.TypeSpecializer
 
 class StaticTranspilerTest extends TestSuite {
 
@@ -60,7 +61,7 @@ class StaticTranspilerTest extends TestSuite {
       }
 
     val config = StaticTranspiler.Config(
-      exeName = "main",
+      projectName = "main",
       lineNumber = T,
       fprintWidth = 3,
       defaultBitWidth = 64,
@@ -69,9 +70,11 @@ class StaticTranspilerTest extends TestSuite {
       customArraySizes = HashMap.empty
     )
 
-    val trans = StaticTranspiler(config, th, reporter)
+    val ts = TypeSpecializer.specialize(th, ISZ(TypeSpecializer.EntryPoint.Worksheet(p)), reporter)
 
-    val r = trans.transpileWorksheet(p)
+    val trans = StaticTranspiler(config, ts, reporter)
+
+    val r = trans.transpile()
 
     if (trans.reporter.hasIssue) {
       trans.reporter.printMessages()
@@ -79,7 +82,7 @@ class StaticTranspilerTest extends TestSuite {
     }
 
     val resultDir = dir / s"L${line.value}"
-    rm ! resultDir
+    //rm ! resultDir
     mkdir ! resultDir
 
     for (e <- r.files.entries) {
@@ -102,8 +105,8 @@ class StaticTranspilerTest extends TestSuite {
     %('make)(resultDir)
 
     println()
-    println(s"Running program ${config.exeName} ...")
-    %(s"./${config.exeName}")(resultDir)
+    println(s"Running ${config.projectName} ...")
+    %(s"./${config.projectName}")(resultDir)
 
     return true
   }

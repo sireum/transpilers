@@ -36,18 +36,12 @@ object TypeSpecializer {
     nameTypes: HashMap[QName, HashSet[NamedType]],
     otherTypes: HashSet[AST.Typed],
     objectVars: HashSet[QName],
+    traitMethods: HashSet[SMethod],
     methods: HashMap[QName, HashSet[Method]],
     callGraph: Graph[SMember, B]
   )
 
-  @datatype class Method(
-    isInObject: B,
-    isNested: B,
-    owner: QName,
-    id: String,
-    ast: AST.Stmt.Method,
-    closureEnv: HashMap[String, AST.Typed]
-  )
+  @datatype class Method(receiverOpt: Option[AST.Typed.Name], info: Info.Method)
 
   @record class TypeSubstitutor(substMap: HashMap[String, AST.Typed]) extends AST.MTransformer {
 
@@ -125,8 +119,8 @@ import TypeSpecializer._
   var objectVars: HashSet[QName] = HashSet.empty
   var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
   var callGraph: Graph[SMember, B] = Graph.empty
-  var traitMethods: ISZ[SMethod] = ISZ()
-  var workList: ISZ[Info.Method] = ISZ()
+  var traitMethods: HashSet[SMethod] = HashSet.empty
+  var workList: ISZ[Method] = ISZ()
   var seen: HashSet[SMethod] = HashSet.empty
   var descendantsCache: HashMap[Poset.Index, HashSet[Poset.Index]] = HashMap.empty
   var currReceiverOpt: Option[AST.Typed.Name] = None()
@@ -149,7 +143,7 @@ import TypeSpecializer._
         return
       }
 
-      workList = workList :+ info
+      workList = workList :+ Method(None(), info)
     }
 
     def entryWorksheet(ep: EntryPoint.Worksheet): Unit = {
@@ -207,12 +201,19 @@ import TypeSpecializer._
         workList = ISZ()
 
         for (m <- wl) {
-          for (stmt <- m.ast.bodyOpt.get.stmts) {
+
+          val set: HashSet[Method] = methods.get(m.info.owner) match {
+            case Some(s) => s
+            case _ => HashSet.empty
+          }
+          methods = methods + m.info.owner ~> (set + m)
+
+          for (stmt <- m.info.ast.bodyOpt.get.stmts) {
             transformStmt(stmt)
           }
         }
 
-        for (tm <- traitMethods) {
+        for (tm <- traitMethods.elements) {
           val p = Poset.Internal.descendantsCache(th.poset, th.poset.nodes.get(tm.owner).get, descendantsCache)
           descendantsCache = p._2
           val ni = th.poset.nodesInverse
@@ -261,7 +262,7 @@ import TypeSpecializer._
 
     work()
 
-    return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, methods, callGraph)
+    return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, traitMethods, methods, callGraph)
   }
 
   def classMethodImpl(posOpt: Option[Position], method: SMethod): Info.Method = {
@@ -346,24 +347,24 @@ import TypeSpecializer._
     method.receiverOpt match {
       case Some(receiver) =>
         th.typeMap.get(receiver.ids).get match {
-          case info: TypeInfo.AbstractDatatype if info.ast.isRoot => traitMethods = traitMethods :+ method
-          case _: TypeInfo.Sig => traitMethods = traitMethods :+ method
+          case info: TypeInfo.AbstractDatatype if info.ast.isRoot => traitMethods = traitMethods + method
+          case _: TypeInfo.Sig => traitMethods = traitMethods + method
           case _: TypeInfo.AbstractDatatype =>
             val mInfo = classMethodImpl(posOpt, method)
-            workList = workList :+ mInfo
+            workList = workList :+ Method(method.receiverOpt, mInfo)
           case _ => halt("Infeasible")
         }
       case _ =>
         val m = th.nameMap.get(method.owner :+ method.id).get.asInstanceOf[Info.Method]
         seen = seen + method
         if (m.ast.sig.typeParams.isEmpty) {
-          workList = workList :+ m
+          workList = workList :+ Method(method.receiverOpt, m)
           return
         }
         val mType = m.methodType.tpe
         val substMapOpt = TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Equal, method.tpe, mType, reporter)
         substMapOpt match {
-          case Some(substMap) => workList = workList :+ substMethod(m, substMap)
+          case Some(substMap) => workList = workList :+ Method(method.receiverOpt, substMethod(m, substMap))
           case _ =>
         }
     }
@@ -470,7 +471,10 @@ import TypeSpecializer._
         nameTypes = nameTypes + o.ids ~> newSet
       case _: AST.Typed.Enum => otherTypes = otherTypes + o
       case _: AST.Typed.Tuple => otherTypes = otherTypes + o
-      case _: AST.Typed.Fun => otherTypes = otherTypes + o
+      case o: AST.Typed.Fun =>
+        if (!o.isByName) {
+          otherTypes = otherTypes + o
+        }
       case _: AST.Typed.Object => // skip
       case _: AST.Typed.Method => // skip
       case _: AST.Typed.Methods => halt("Infeasible")
@@ -480,23 +484,32 @@ import TypeSpecializer._
   }
 
   def specializeObjectVar(info: Info.Var): Unit = {
-    val oldRcvOpt = currReceiverOpt
-    val oldSMethodOpt = currSMethodOpt
-    val constructorInfo = th.nameMap.get(info.owner).get.asInstanceOf[Info.Object].constructorRes
-    currReceiverOpt = None()
-    currSMethodOpt = Some(
-      SMethod(
-        None(),
-        constructorInfo.owner,
-        constructorInfo.id,
-        objectConstructorType,
-        AST.MethodMode.ObjectConstructor
-      )
-    )
-    addType(info.ast.tipeOpt.get.typedOpt.get)
-    transformAssignExp(info.ast.initOpt.get)
-    currReceiverOpt = oldRcvOpt
-    currSMethodOpt = oldSMethodOpt
+    th.nameMap.get(info.owner).get match {
+      case ownerInfo: Info.Object =>
+        val constructorInfo = ownerInfo.asInstanceOf[Info.Object].constructorRes
+        val oldRcvOpt = currReceiverOpt
+        val oldSMethodOpt = currSMethodOpt
+        currReceiverOpt = None()
+        currSMethodOpt = {
+          Some(
+            SMethod(
+              None(),
+              constructorInfo.owner,
+              constructorInfo.id,
+              objectConstructorType,
+              AST.MethodMode.ObjectConstructor
+            )
+          )
+        }
+        addType(info.ast.tipeOpt.get.typedOpt.get)
+        transformAssignExp(info.ast.initOpt.get)
+        currReceiverOpt = oldRcvOpt
+        currSMethodOpt = oldSMethodOpt
+      case _: Info.Package =>
+        assert(info.owner == AST.Typed.sireumName && (info.ast.id.value == string"T" || info.ast.id.value == string"F"))
+      case _ => halt("Infeasible")
+    }
+
   }
 
   override def preResolvedAttr(o: AST.ResolvedAttr): AST.MTransformer.PreResult[AST.ResolvedAttr] = {
