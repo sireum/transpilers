@@ -34,7 +34,9 @@ object StaticTranspiler {
     customArraySizes: HashMap[AST.Typed, Z]
   )
 
-  @datatype class Result(files: HashSMap[String, ST])
+  @datatype class CompUnit(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
+
+  @datatype class Result(files: HashSMap[QName, ST])
 
   val transKind: String = "Static C Transpiler"
   val unitType: ST = st"void"
@@ -62,13 +64,6 @@ object StaticTranspiler {
     return st"${(ids, ".")}".render
   }
 
-  @pure def methodResolvedInfo(method: AST.Stmt.Method): AST.ResolvedInfo.Method = {
-    method.attr.resOpt.get match {
-      case res: AST.ResolvedInfo.Method => return res
-      case _ => halt("Infeasible")
-    }
-  }
-
   @pure def localName(id: String): ST = {
     return st"l_${encodeName(id)}"
   }
@@ -87,10 +82,7 @@ object StaticTranspiler {
   }
 
   @pure def typeName(tOpt: Option[AST.Typed]): QName = {
-    tOpt.get match {
-      case t: AST.Typed.Name => return t.ids
-      case _ => halt("Infeasible")
-    }
+    return tOpt.get.asInstanceOf[AST.Typed.Name].ids
   }
 
   @pure def removeExt(filename: String): String = {
@@ -121,26 +113,6 @@ object StaticTranspiler {
       case Some(pos) => return filename(pos.uriOpt)
       case _ => return filename(None())
     }
-  }
-
-  @pure def cmake(project: String, filename: String, files: ISZ[String]): ST = {
-    val r =
-      st"""cmake_minimum_required(VERSION 3.9)
-      |
-      |project($project)
-      |
-      |set(CMAKE_C_STANDARD 99)
-      |
-      |add_compile_options(-Werror)
-      |
-      |add_compile_options("$$<$$<CONFIG:Release>:-O2>")
-      |
-      |add_executable($filename
-      |        ${(files, "\n")})
-      |
-      |target_include_directories($filename
-      |        PUBLIC .)"""
-    return r
   }
 
   def genH(entries: ISZ[ST]): ST = {
@@ -225,6 +197,7 @@ object StaticTranspiler {
   }
 }
 
+import StaticTemplate._
 import StaticTranspiler._
 
 @record class StaticTranspiler(config: Config, th: TypeHierarchy, reporter: Reporter) {
@@ -257,26 +230,26 @@ import StaticTranspiler._
       |}"""
 
     val files = Runtime.staticFiles
-    var r = HashSMap.empty[String, ST]
+    var r = HashSMap.empty[QName, ST]
     for (e <- files.entries) {
       val k = e._1
       if (k.size == z"1") {
-        r = r + k(0) ~> st"${e._2}"
+        r = r + ISZ(k(0)) ~> st"${e._2}"
       }
     }
     val ztype = string"ztype.h"
     config.defaultBitWidth match {
-      case z"8" => r = r + ztype ~> st"${files.get(ISZ("8", ztype)).get}"
-      case z"16" => r = r + ztype ~> st"${files.get(ISZ("16", ztype)).get}"
-      case z"32" => r = r + ztype ~> st"${files.get(ISZ("32", ztype)).get}"
-      case z"64" => r = r + ztype ~> st"${files.get(ISZ("64", ztype)).get}"
+      case z"8" => r = r + ISZ(ztype) ~> st"${files.get(ISZ("8", ztype)).get}"
+      case z"16" => r = r + ISZ(ztype) ~> st"${files.get(ISZ("16", ztype)).get}"
+      case z"32" => r = r + ISZ(ztype) ~> st"${files.get(ISZ("32", ztype)).get}"
+      case z"64" => r = r + ISZ(ztype) ~> st"${files.get(ISZ("64", ztype)).get}"
       case _ => halt("Infeasible")
     }
-    r = r + string"gentype.h" ~> genTypeH(config.defaultStringSize, typeNames, types) // TODO
-    r = r + string"gen.h" ~> genH(genHeader)
-    r = r + string"gen.c" ~> genC(typeNames, genImpl)
-    r = r + string"main.c" ~> main
-    r = r + string"CMakeLists.txt" ~> cmake(project, config.exeName, r.keys.elements)
+    r = r + ISZ(string"gentype.h") ~> genTypeH(config.defaultStringSize, typeNames, types) // TODO
+    r = r + ISZ(string"gen.h") ~> genH(genHeader)
+    r = r + ISZ(string"gen.c") ~> genC(typeNames, genImpl)
+    r = r + ISZ(string"main.c") ~> main
+    r = r + ISZ(string"CMakeLists.txt") ~> cmake(project, ISZ(config.exeName), r.keys.elements)
     return Result(r)
   }
 
@@ -298,7 +271,7 @@ import StaticTranspiler._
     nextTempNum = 0
     stmts = ISZ()
 
-    val info = methodResolvedInfo(method)
+    val info = method.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
     val header = methodHeader(info)
     for (stmt <- method.bodyOpt.get.stmts) {
       transpileStmt(stmt)
@@ -385,10 +358,7 @@ import StaticTranspiler._
 
     @pure def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
       val tname = typeName(exp.attr.typedOpt)
-      val info: TypeInfo.SubZ = th.typeMap.get(tname).get match {
-        case inf: TypeInfo.SubZ => inf
-        case _ => halt("Infeasible")
-      }
+      val info: TypeInfo.SubZ = th.typeMap.get(tname).get.asInstanceOf[TypeInfo.SubZ]
       val n = Z(exp.lits(0).value).get
       checkBitWidth(n, info.ast.bitWidth)
       return st"${(dotName(tname), "")}_C($n)"

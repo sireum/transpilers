@@ -83,7 +83,12 @@ class StaticTranspilerTest extends TestSuite {
     mkdir ! resultDir
 
     for (e <- r.files.entries) {
-      val f = resultDir / e._1.value
+      val path = e._1
+      var f = resultDir
+      for (segment <- path) {
+        f = f / segment.value
+      }
+      mkdir ! f / up
       write.over(f, e._2.render.value)
       println(s"Wrote $f")
     }
