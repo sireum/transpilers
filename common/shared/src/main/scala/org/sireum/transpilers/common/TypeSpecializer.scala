@@ -4,6 +4,7 @@ package org.sireum.transpilers.common
 
 import org.sireum._
 import org.sireum.alir.CallGraph
+import org.sireum.lang.ast.{Exp, MTransformer}
 import org.sireum.message._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
@@ -36,7 +37,7 @@ object TypeSpecializer {
     otherTypes: HashSet[AST.Typed],
     objectVars: HashSet[QName],
     methods: HashMap[QName, HashSet[Method]],
-    funs: HashMap[QName, HashSet[AST.Exp.Fun]]
+    callGraph: Graph[SMember, B]
   )
 
   @datatype class Method(
@@ -65,10 +66,27 @@ object TypeSpecializer {
 
   }
 
-  @datatype class SMethod(receiverOpt: Option[AST.Typed.Name], owner: QName, id: String, tpe: AST.Typed.Fun)
+  @datatype trait SMember {
+    def receiverOpt: Option[AST.Typed.Name]
+    def owner: QName
+    def id: String
+    def tpe: AST.Typed
+  }
+
+  @datatype class SVar(val receiverOpt: Option[AST.Typed.Name], val owner: QName, val id: String, val tpe: AST.Typed)
+      extends SMember
+
+  @datatype class SMethod(
+    val receiverOpt: Option[AST.Typed.Name],
+    val owner: QName,
+    val id: String,
+    val tpe: AST.Typed.Fun,
+    mode: AST.MethodMode.Type
+  ) extends SMember
 
   val tsKind: String = "Type Specializer"
   val emptyVars: Map[String, AST.Typed] = Map.empty
+  val objectConstructorType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(), AST.Typed.unit)
 
   def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
     val ts = TypeSpecializer(th, entryPoints)
@@ -106,12 +124,13 @@ import TypeSpecializer._
   var otherTypes: HashSet[AST.Typed] = HashSet.empty
   var objectVars: HashSet[QName] = HashSet.empty
   var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
-  var funs: HashMap[QName, HashSet[AST.Exp.Fun]] = HashMap.empty
+  var callGraph: Graph[SMember, B] = Graph.empty
   var traitMethods: ISZ[SMethod] = ISZ()
   var workList: ISZ[Info.Method] = ISZ()
   var seen: HashSet[SMethod] = HashSet.empty
-  var decendantsCache: HashMap[Poset.Index, HashSet[Poset.Index]] = HashMap.empty
+  var descendantsCache: HashMap[Poset.Index, HashSet[Poset.Index]] = HashMap.empty
   var currReceiverOpt: Option[AST.Typed.Name] = None()
+  var currSMethodOpt: Option[SMethod] = None()
 
   def specialize(): TypeSpecializer.Result = {
 
@@ -194,28 +213,38 @@ import TypeSpecializer._
         }
 
         for (tm <- traitMethods) {
-          val p = Poset.Internal.descendantsCache(th.poset, th.poset.nodes.get(tm.owner).get, decendantsCache)
-          decendantsCache = p._2
+          val p = Poset.Internal.descendantsCache(th.poset, th.poset.nodes.get(tm.owner).get, descendantsCache)
+          descendantsCache = p._2
           val ni = th.poset.nodesInverse
           val id = tm.id
           val t = tm.receiverOpt.get
           for (i <- p._1.elements) {
             val name = ni(i)
             th.typeMap.get(name).get match {
-              case info: TypeInfo.AbstractDatatype if !info.ast.isRoot && info.methods.contains(id) =>
+              case info: TypeInfo.AbstractDatatype if !info.ast.isRoot =>
                 val posOpt = info.ast.posOpt
                 nameTypes.get(name) match {
                   case Some(nts) =>
                     for (nt <- nts.elements if th.isSubType(nt.tpe, t)) {
+                      val receiver = nt.tpe
                       val aSubstMapOpt =
-                        TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, nt.tpe.args, reporter)
-                      val m = info.methods.get(id).get
-                      val mFun = m.methodType.tpe.subst(aSubstMapOpt.get)
-                      val smOpt =
-                        TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Supertype, tm.tpe, mFun, reporter)
-                      smOpt match {
-                        case Some(sm) => addSMethod(posOpt, SMethod(Some(nt.tpe), nt.tpe.ids, id, mFun.subst(sm)))
+                        TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter)
+                      info.methods.get(id) match {
+                        case Some(m) =>
+                          val mFun = m.methodType.tpe.subst(aSubstMapOpt.get)
+                          val smOpt =
+                            TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Supertype, tm.tpe, mFun, reporter)
+                          smOpt match {
+                            case Some(sm) =>
+                              val target = SMethod(Some(receiver), receiver.ids, id, mFun.subst(sm), tm.mode)
+                              callGraph = callGraph + tm ~> target
+                              addSMethod(posOpt, target)
+                            case _ =>
+                          }
                         case _ =>
+                          val v = info.vars.get(id).get
+                          val target = SVar(Some(receiver), receiver.ids, id, v.typedOpt.get.subst(aSubstMapOpt.get))
+                          callGraph = callGraph + tm ~> target
                       }
                     }
                   case _ =>
@@ -232,7 +261,7 @@ import TypeSpecializer._
 
     work()
 
-    return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, methods, funs)
+    return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, methods, callGraph)
   }
 
   def classMethodImpl(posOpt: Option[Position], method: SMethod): Info.Method = {
@@ -291,7 +320,25 @@ import TypeSpecializer._
     return substMethod(m, substMap)
   }
 
+  def addClassSVar(
+    posOpt: Option[Position],
+    caller: SMethod,
+    receiver: AST.Typed.Name,
+    v: AST.ResolvedInfo.Var
+  ): Unit = {
+    val info = th.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+    val aSubstMapOpt = TypeChecker.buildTypeSubstMap(receiver.ids, posOpt, info.ast.typeParams, receiver.args, reporter)
+    val vInfo = info.vars.get(v.id).get
+    val target = SVar(Some(receiver), v.owner, v.id, vInfo.ast.tipeOpt.get.typedOpt.get.subst(aSubstMapOpt.get))
+    callGraph = callGraph + caller ~> target
+  }
+
   def addSMethod(posOpt: Option[Position], method: SMethod): Unit = {
+    method.mode match {
+      case AST.MethodMode.Method =>
+      case _ => return
+    }
+
     if (seen.contains(method)) {
       return
     }
@@ -322,26 +369,66 @@ import TypeSpecializer._
     }
   }
 
-  def addResolvedMethod(posOpt: Option[Position], m: AST.ResolvedInfo.Method, receiverOpt: Option[AST.Exp]): Unit = {
+  def addResolvedMethod(
+    posOpt: Option[Position],
+    m: AST.ResolvedInfo.Method,
+    receiverOpt: Option[AST.Exp],
+    expType: AST.Typed
+  ): Unit = {
     val rOpt: Option[AST.Typed.Name] = if (m.isInObject) {
       None()
     } else if (th.typeMap.get(m.owner).nonEmpty) {
-      receiverOpt match {
-        case Some(receiver) => Some(receiver.typedOpt.get.asInstanceOf[AST.Typed.Name])
-        case _ => Some(currReceiverOpt.get)
+      m.mode match {
+        case AST.MethodMode.Method =>
+          receiverOpt match {
+            case Some(receiver) => Some(receiver.typedOpt.get.asInstanceOf[AST.Typed.Name])
+            case _ => Some(currReceiverOpt.get)
+          }
+        case AST.MethodMode.Spec =>
+          receiverOpt match {
+            case Some(receiver) => Some(receiver.typedOpt.get.asInstanceOf[AST.Typed.Name])
+            case _ => Some(currReceiverOpt.get)
+          }
+        case AST.MethodMode.ObjectConstructor => None()
+        case AST.MethodMode.Constructor => Some(expType.asInstanceOf[AST.Typed.Name])
+        case AST.MethodMode.Copy => Some(expType.asInstanceOf[AST.Typed.Name])
+        case AST.MethodMode.Extractor => None()
+        case AST.MethodMode.Ext => None()
+        case AST.MethodMode.Select =>
+          val mFun = m.tpeOpt.get
+          Some(
+            AST.Typed.Name(if (m.id == string"IS") AST.Typed.isName else AST.Typed.msName, ISZ(mFun.args(0), mFun.ret))
+          )
+        case AST.MethodMode.Store => Some(expType.asInstanceOf[AST.Typed.Name])
       }
     } else {
       // nested method, skip
       return
     }
-    addSMethod(posOpt, SMethod(rOpt, m.owner, m.id, m.tpeOpt.get))
+    val target = SMethod(rOpt, m.owner, m.id, m.tpeOpt.get, m.mode)
+    currSMethodOpt match {
+      case Some(sm) => callGraph = callGraph + sm ~> target
+      case _ =>
+    }
+    addSMethod(posOpt, target)
   }
 
   def specializeClass(t: AST.Typed.Name, info: TypeInfo.AbstractDatatype): NamedType = {
     val oldRcvOpt = currReceiverOpt
-    currReceiverOpt = Some(t)
+    val oldSMethodOpt = currSMethodOpt
+    val constructorInfo = info.constructorResOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
     val smOpt = TypeChecker.buildTypeSubstMap(t.ids, info.ast.posOpt, info.ast.typeParams, t.args, reporter)
     val sm = smOpt.get
+    currReceiverOpt = Some(t)
+    currSMethodOpt = Some(
+      SMethod(
+        currReceiverOpt,
+        constructorInfo.owner,
+        constructorInfo.id,
+        constructorInfo.tpeOpt.get.subst(sm),
+        constructorInfo.mode
+      )
+    )
     var cvs = emptyVars
     var vs = emptyVars
     for (p <- info.ast.params) {
@@ -358,6 +445,7 @@ import TypeSpecializer._
       }
     }
     currReceiverOpt = oldRcvOpt
+    currSMethodOpt = oldSMethodOpt
     return NamedType(t, cvs, vs)
   }
 
@@ -393,10 +481,22 @@ import TypeSpecializer._
 
   def specializeObjectVar(info: Info.Var): Unit = {
     val oldRcvOpt = currReceiverOpt
+    val oldSMethodOpt = currSMethodOpt
+    val constructorInfo = th.nameMap.get(info.owner).get.asInstanceOf[Info.Object].constructorRes
     currReceiverOpt = None()
+    currSMethodOpt = Some(
+      SMethod(
+        None(),
+        constructorInfo.owner,
+        constructorInfo.id,
+        objectConstructorType,
+        AST.MethodMode.ObjectConstructor
+      )
+    )
     addType(info.ast.tipeOpt.get.typedOpt.get)
     transformAssignExp(info.ast.initOpt.get)
     currReceiverOpt = oldRcvOpt
+    currSMethodOpt = oldSMethodOpt
   }
 
   override def preResolvedAttr(o: AST.ResolvedAttr): AST.MTransformer.PreResult[AST.ResolvedAttr] = {
@@ -408,12 +508,14 @@ import TypeSpecializer._
           if (newObjectVars.size != objectVars.size) {
             specializeObjectVar(info)
           }
+          val target = SVar(None(), res.owner, res.id, info.ast.tipeOpt.get.typedOpt.get)
+          currSMethodOpt match {
+            case Some(sm) => callGraph = callGraph + sm ~> target
+            case _ =>
+          }
           objectVars = newObjectVars
         }
-      case res: AST.ResolvedInfo.LocalVar =>
-        if (res.scope == AST.ResolvedInfo.LocalVar.Scope.Closure) {
-          halt("TODO") // TODO: handle closure
-        }
+      case _: AST.ResolvedInfo.LocalVar => // skip
       case _: AST.ResolvedInfo.Method => // skip
       case _: AST.ResolvedInfo.BuiltIn => // skip
       case _: AST.ResolvedInfo.Tuple => // skip
@@ -424,6 +526,18 @@ import TypeSpecializer._
       case _: AST.ResolvedInfo.Methods => halt("Infeasible")
     }
     return AST.MTransformer.PreResultResolvedAttr
+  }
+
+  override def preExpIdent(o: Exp.Ident): MTransformer.PreResult[Exp] = {
+    o.attr.resOpt.get match {
+      case v: AST.ResolvedInfo.Var if !v.isInObject =>
+        currSMethodOpt match {
+          case Some(sm) => addClassSVar(o.posOpt, sm, currReceiverOpt.get, v)
+          case _ =>
+        }
+      case _ =>
+    }
+    return AST.MTransformer.PreResultExpIdent
   }
 
   override def preExpEta(o: AST.Exp.Eta): AST.MTransformer.PreResult[AST.Exp] = {
@@ -440,7 +554,7 @@ import TypeSpecializer._
               // nested method, skip
               return AST.MTransformer.PreResultExpEta
             }
-            addSMethod(ref.posOpt, SMethod(rOpt, m.owner, m.id, m.tpeOpt.get))
+            addSMethod(ref.posOpt, SMethod(rOpt, m.owner, m.id, m.tpeOpt.get, m.mode))
           case _ =>
         }
       case _ =>
@@ -450,7 +564,17 @@ import TypeSpecializer._
 
   override def preExpSelect(o: AST.Exp.Select): AST.MTransformer.PreResult[AST.Exp] = {
     o.attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt, o.typedOpt.get)
+      case v: AST.ResolvedInfo.Var if !v.isInObject =>
+        currSMethodOpt match {
+          case Some(sm) =>
+            val receiver: AST.Typed.Name = o.receiverOpt match {
+              case Some(r) => r.typedOpt.get.asInstanceOf[AST.Typed.Name]
+              case _ => currReceiverOpt.get
+            }
+            addClassSVar(o.posOpt, sm, receiver, v)
+          case _ =>
+        }
       case _ =>
     }
     return AST.MTransformer.PreResultExpSelect
@@ -461,7 +585,7 @@ import TypeSpecializer._
       return AST.MTransformer.PreResultExpInvoke
     }
     o.attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt, o.typedOpt.get)
       case _ =>
     }
 
@@ -470,14 +594,10 @@ import TypeSpecializer._
 
   override def preExpInvokeNamed(o: AST.Exp.InvokeNamed): AST.MTransformer.PreResult[AST.Exp] = {
     o.attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt)
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt, o.typedOpt.get)
       case _ =>
     }
     return AST.MTransformer.PreResultExpInvokeNamed
-  }
-
-  override def preExpFun(o: AST.Exp.Fun): AST.MTransformer.PreResult[AST.Exp] = {
-    halt("TODO") // TODO
   }
 
   override def postTyped(o: AST.Typed): MOption[AST.Typed] = {
