@@ -470,10 +470,10 @@ import TypeSpecializer._
         nameTypes = nameTypes + o.ids ~> newSet
       case _: AST.Typed.Enum => otherTypes = otherTypes + o
       case _: AST.Typed.Tuple => otherTypes = otherTypes + o
+      case _: AST.Typed.Fun => otherTypes = otherTypes + o
       case _: AST.Typed.Object => // skip
-      case _: AST.Typed.Fun => // skip
       case _: AST.Typed.Method => // skip
-      case _: AST.Typed.Methods => // skip
+      case _: AST.Typed.Methods => halt("Infeasible")
       case _: AST.Typed.Package => // skip
       case _: AST.Typed.TypeVar => halt("Infeasible")
     }
