@@ -35,9 +35,10 @@ object TypeSpecializer {
     entryPoints: ISZ[EntryPoint],
     nameTypes: HashMap[QName, HashSet[NamedType]],
     otherTypes: HashSet[AST.Typed],
-    objectVars: HashSet[QName],
+    objectVars: HashMap[QName, HashSet[String]],
     traitMethods: HashSet[SMethod],
     methods: HashMap[QName, HashSet[Method]],
+    typeImpl: Poset[AST.Typed.Name],
     callGraph: Graph[SMember, B]
   )
 
@@ -116,7 +117,7 @@ import TypeSpecializer._
   val methodRefinement: Poset[CallGraph.Node] = CallGraph.methodRefinements(th)
   var nameTypes: HashMap[QName, HashSet[NamedType]] = HashMap.empty
   var otherTypes: HashSet[AST.Typed] = HashSet.empty
-  var objectVars: HashSet[QName] = HashSet.empty
+  var objectVars: HashMap[QName, HashSet[String]] = HashMap.empty
   var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
   var callGraph: Graph[SMember, B] = Graph.empty
   var traitMethods: HashSet[SMethod] = HashSet.empty
@@ -262,7 +263,56 @@ import TypeSpecializer._
 
     work()
 
-    return TypeSpecializer.Result(th, eps, nameTypes, otherTypes, objectVars, traitMethods, methods, callGraph)
+    var typeImpl = Poset.empty[AST.Typed.Name]
+
+    def buildLeaves(info: TypeInfo): Unit = {
+      val traits: ISZ[NamedType] = info match {
+        case info: TypeInfo.AbstractDatatype if info.ast.isRoot =>
+          nameTypes.get(info.name) match {
+            case Some(nts) => nts.elements
+            case _ => return
+          }
+        case info: TypeInfo.Sig =>
+          nameTypes.get(info.name) match {
+            case Some(nts) => nts.elements
+            case _ => return
+          }
+        case _ => return
+      }
+      for (nt <- traits) {
+        val tpe = nt.tpe
+        th.poset.nodes.get(tpe.ids) match {
+          case Some(i) =>
+            val p = Poset.Internal.descendantsCache(th.poset, i, descendantsCache)
+            descendantsCache = p._2
+            var subClasses = ISZ[AST.Typed.Name]()
+            for (j <- p._1.elements) {
+              nameTypes.get(th.poset.nodesInverse(j)) match {
+                case Some(subs) =>
+                  for (sub <- subs.elements) {
+                    val subTpe = sub.tpe
+                    th.typeMap.get(subTpe.ids).get match {
+                      case subInfo: TypeInfo.AbstractDatatype if !subInfo.ast.isRoot =>
+                        if (th.isSubType(subTpe, tpe)) {
+                          subClasses = subClasses :+ subTpe
+                        }
+                      case _ =>
+                    }
+                  }
+                case _ =>
+              }
+            }
+            typeImpl = typeImpl.addChildren(tpe, subClasses)
+          case _ =>
+        }
+      }
+    }
+
+    for (info <- th.typeMap.values) {
+      buildLeaves(info)
+    }
+
+    return Result(th, eps, nameTypes, otherTypes, objectVars, traitMethods, methods, typeImpl, callGraph)
   }
 
   def classMethodImpl(posOpt: Option[Position], method: SMethod): Info.Method = {
@@ -515,10 +565,15 @@ import TypeSpecializer._
   override def preResolvedAttr(o: AST.ResolvedAttr): AST.MTransformer.PreResult[AST.ResolvedAttr] = {
     o.resOpt.get match {
       case res: AST.ResolvedInfo.Var =>
-        if (res.isInObject && !res.isSpec) {
+        if (res.isInObject && !res.isSpec && res.owner.size != z"0") {
           val info = th.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
-          val newObjectVars = objectVars + info.name
-          if (newObjectVars.size != objectVars.size) {
+          val set: HashSet[String] = objectVars.get(res.owner) match {
+            case Some(s) => s
+            case _ => HashSet.empty
+          }
+          val newSet = set + res.id
+          if (newSet.size != set.size) {
+            objectVars = objectVars + res.owner ~> newSet
             specializeObjectVar(info)
           }
           val target = SVar(None(), res.owner, res.id, info.ast.tipeOpt.get.typedOpt.get)
@@ -526,7 +581,6 @@ import TypeSpecializer._
             case Some(sm) => callGraph = callGraph + sm ~> target
             case _ =>
           }
-          objectVars = newObjectVars
         }
       case _: AST.ResolvedInfo.LocalVar => // skip
       case _: AST.ResolvedInfo.Method => // skip
