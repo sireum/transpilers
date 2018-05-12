@@ -2,13 +2,15 @@
 package org.sireum.transpiler.c
 
 import org.sireum._
+import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol.Resolver._
+import org.sireum.message._
 
 object StaticTemplate {
 
   @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
 
-  @pure def typeCompositeH(stringMax: Z, typeNames: ISZ[String]): ST = {
+  @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[String]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
       |#define SIREUM_GEN_TYPE_H
@@ -26,7 +28,7 @@ object StaticTemplate {
       |  TYPE type;
       |};
       |
-      |#define STRING_MAX $stringMax
+      |#define MaxString $stringMax
       |
       |typedef struct String *String;
       |struct String {
@@ -39,13 +41,29 @@ object StaticTemplate {
       |  TYPE type;
       |  Z size;
       |  C *value;
-      |  C data[STRING_MAX + 1];
+      |  C data[MaxString + 1];
       |};
       |
       |#define string(v) &((struct String) { .type = TString, .size = Z_C(sizeof(v) - 1), .value = (C *) (v) })
       |
       |#define DeclString(x, e) struct StaticString x = e
       |#define DeclNewString(x) DeclString(x, ((struct StaticString) { .type = TYPE_String, .size = Z_C(0), .value = NULL, .data = {0} })); (x).value = (x).data
+      |
+      |#define MaxAString $isStringMax
+      |
+      |typedef struct AString *AString;
+      |struct AString {
+      |  TYPE type;
+      |  Z size;
+      |  struct StaticString value[MaxAString];
+      |};
+      |
+      |#define DeclAString(x, e)    struct AString x = e
+      |#define NewAString()         ((struct AString) { TYPE_AString, Z_C(0) })
+      |#define DeclNewAString(x)    DeclAString(x, NewAString())
+      |#define AString_size(this)   (this)->size
+      |#define AString_up(this, i)  (this)->value[i]
+      |#define AString_at(this, i)  (String) &(AString_up(this, i))
       |
       |#endif"""
     return r
@@ -182,5 +200,101 @@ object StaticTemplate {
       |#endif"""))
     }
     return r
+  }
+
+  @pure def worksheet(filename: String, stmts: ISZ[ST]): ST = {
+    val r =
+      st"""#include <all.h>
+          |
+          |int main(void) {
+          |  DeclNewStackFrame(NULL, "$filename", "<worksheet>", "<main>", 0);
+          |
+          |  ${(stmts, "\n")}
+          |
+          |  return 0;
+          |}"""
+    return r
+  }
+
+  @pure def main(filename: String, owner: QName, id: String): ST = {
+    val r =
+      st"""#include <all.h>
+          |
+          |int main(int argc, char *argv[]) {
+          |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<main>", 0);
+          |
+          |  DeclNewAString(t_args);
+          |  AString args = &t_args;
+          |
+          |  int size = argc - 1;
+          |  if (size > MaxAString) {
+          |    sfAbort("Insufficient maximum number of string elements.");
+          |    abort();
+          |  }
+          |
+          |  for (int i = 0; i < size; i++) {
+          |    stringAppend(sf, string(argv[i + 1]), AString_at(args, i));
+          |  }
+          |
+          |  AString_size(args) = size;
+          |
+          |  ${mangleName(owner :+ id)}(args);
+          |}"""
+    return r
+  }
+
+  @pure def dotName(ids: QName): String = {
+    return st"${(ids, ".")}".render
+  }
+
+  @pure def localName(id: String): ST = {
+    return st"l_${encodeName(id)}"
+  }
+
+  @pure def mangleName(ids: QName): ST = {
+    val r: ST =
+      if (ids.size == z"1") st"top_${ids(0)}"
+      else if (ids.size >= 2 && ids(0) == string"org" && ids(1) == string"sireum")
+        st"${(ops.ISZOps(ids).drop(2).map(encodeName), "_")}"
+      else st"${(ids.map(encodeName), "_")}"
+    return r
+  }
+
+  @pure def encodeName(id: String): String = {
+    return id // TODO
+  }
+
+  @pure def typeName(tOpt: Option[AST.Typed]): QName = {
+    return tOpt.get.asInstanceOf[AST.Typed.Name].ids
+  }
+
+  @pure def removeExt(filename: String): String = {
+    val sops = ops.StringOps(filename)
+    val i = sops.lastIndexOf('.')
+    if (i < 0) {
+      return filename
+    } else {
+      return sops.substring(0, i)
+    }
+  }
+
+  @pure def filename(uriOpt: Option[String]): String = {
+    uriOpt match {
+      case Some(uri) =>
+        val sops = ops.StringOps(uri)
+        val i = sops.lastIndexOf('/')
+        if (i < 0) {
+          return uri
+        }
+        return sops.substring(i + 1, uri.size)
+      case _ => return "main"
+    }
+  }
+
+  @pure def filenameOfPosOpt(posOpt: Option[Position]): String = {
+    posOpt match {
+      case Some(pos) => return filename(pos.uriOpt)
+      case _ => return filename(None())
+    }
   }
 }

@@ -28,8 +28,8 @@ object StaticTranspiler {
     lineNumber: B,
     fprintWidth: Z,
     defaultBitWidth: Z,
-    defaultStringSize: Z,
-    defaultArraySize: Z,
+    maxStringSize: Z,
+    maxArraySize: Z,
     customArraySizes: HashMap[AST.Typed, Z]
   )
 
@@ -64,60 +64,8 @@ object StaticTranspiler {
     AST.Typed.r
   )
 
-  @pure def dotName(ids: QName): String = {
-    return st"${(ids, ".")}".render
-  }
-
-  @pure def localName(id: String): ST = {
-    return st"l_${encodeName(id)}"
-  }
-
-  @pure def mangleName(ids: QName): ST = {
-    val r: ST =
-      if (ids.size == z"1") st"top_${ids(0)}"
-      else if (ids.size >= 2 && ids(0) == string"org" && ids(1) == string"sireum")
-        st"${(ops.ISZOps(ids).drop(2).map(encodeName), "_")}"
-      else st"${(ids.map(encodeName), "_")}"
-    return r
-  }
-
-  @pure def encodeName(id: String): String = {
-    return id // TODO
-  }
-
-  @pure def typeName(tOpt: Option[AST.Typed]): QName = {
-    return tOpt.get.asInstanceOf[AST.Typed.Name].ids
-  }
-
-  @pure def removeExt(filename: String): String = {
-    val sops = ops.StringOps(filename)
-    val i = sops.lastIndexOf('.')
-    if (i < 0) {
-      return filename
-    } else {
-      return sops.substring(0, i)
-    }
-  }
-
-  @pure def filename(uriOpt: Option[String]): String = {
-    uriOpt match {
-      case Some(uri) =>
-        val sops = ops.StringOps(uri)
-        val i = sops.lastIndexOf('/')
-        if (i < 0) {
-          return uri
-        }
-        return sops.substring(i + 1, uri.size)
-      case _ => return "main"
-    }
-  }
-
-  @pure def filenameOfPosOpt(posOpt: Option[Position]): String = {
-    posOpt match {
-      case Some(pos) => return filename(pos.uriOpt)
-      case _ => return filename(None())
-    }
-  }
+  val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
+  val mainType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(iszStringType), AST.Typed.unit)
 }
 
 import StaticTemplate._
@@ -147,7 +95,16 @@ import StaticTranspiler._
             r = r + ISZ[String](cFilename) ~> main
             cFilenames = cFilenames :+ exeName
             i = i + 1
-          case ep: TypeSpecializer.EntryPoint.Method => // TODO
+          case ep: TypeSpecializer.EntryPoint.Method =>
+            val m = ts.typeHierarchy.nameMap.get(ep.name).get.asInstanceOf[Info.Method]
+            val res = m.methodRes
+            if (res.id == string"main" && res.tpeOpt.get == mainType) {
+              val (exeName, main) = transpileMain(m, i)
+              val cFilename = s"$exeName.c"
+              r = r + ISZ[String](cFilename) ~> main
+              cFilenames = cFilenames :+ exeName
+              i = i + 1
+            }
         }
       }
     }
@@ -187,7 +144,11 @@ import StaticTranspiler._
       }
 
       val typeQNames = compiledMap.keys
-      r = r + ISZ[String]("type-composite.h") ~> typeCompositeH(config.defaultStringSize, typeNames)
+      val iszStringMax: Z = config.customArraySizes.get(iszStringType) match {
+        case Some(n) => n
+        case _ => config.maxArraySize
+      }
+      r = r + ISZ[String]("type-composite.h") ~> typeCompositeH(config.maxStringSize, iszStringMax, typeNames)
       r = r + ISZ[String]("types.h") ~> typesH(typeQNames)
       r = r + ISZ[String]("types.c") ~> typesC(typeNames)
       r = r + ISZ[String]("all.h") ~> allH(typeQNames)
@@ -252,6 +213,7 @@ import StaticTranspiler._
     }
 
     genType(AST.Typed.string)
+    // TODO: genType(iszStringType)
 
     for (nts <- ts.nameTypes.values; nt <- nts.elements) {
       ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
@@ -265,23 +227,29 @@ import StaticTranspiler._
     }
   }
 
+  def transpileMain(m: Info.Method, i: Z): (String, ST) = {
+    val fileUriOpt: Option[String] = m.ast.posOpt match {
+      case Some(pos) => pos.uriOpt
+      case _ => None()
+    }
+    val fname = filename(fileUriOpt)
+    val exeName = removeExt(fname)
+    return (
+      if (i == z"0") exeName else if (exeName == string"main") s"main$i" else exeName,
+      main(fname, m.owner, m.ast.sig.id.value)
+    )
+  }
+
   def transpileWorksheet(program: AST.TopUnit.Program, i: Z): (String, ST) = {
     val fname = filename(program.fileUriOpt)
     val exeName = removeExt(fname)
-    stmts = ISZ(st"""DeclNewStackFrame(NULL, "$fname", "", "<main>", 0);""")
+    stmts = ISZ()
     nextTempNum = 0
     assert(program.packageName.ids.isEmpty)
     for (stmt <- program.body.stmts) {
       transpileStmt(stmt)
     }
-    val r =
-      st"""#include <all.h>
-      |
-      |int main(void) {
-      |  ${(stmts, "\n")}
-      |  return 0;
-      |}"""
-    return (if (i == z"0") exeName else if (exeName == string"main") s"main$i" else exeName, r)
+    return (if (i == z"0") exeName else if (exeName == string"main") s"main$i" else exeName, worksheet(fname, stmts))
   }
 
   def transpileMethod(method: TypeSpecializer.Method): Unit = {
