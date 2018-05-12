@@ -332,13 +332,11 @@ import StaticTranspiler._
     }
 
     @pure def transLitString(exp: AST.Exp.LitString): ST = {
-      val cis = conversions.String.toCis(exp.value)
-      val value = MSZ.create[String](cis.size, "")
+      val u8is = conversions.String.toU8is(exp.value)
+      val value = MSZ.create[String](u8is.size, "")
       val posOpt = exp.posOpt
-      var i = 0
-      while (i < cis.size) {
-        value(i) = escapeChar(posOpt, cis(i))
-        i = i + 1
+      for (i <- u8is.indices) {
+        value(i) = escapeChar(posOpt, conversions.U32.toC(conversions.U8.toU32(u8is(i))))
       }
       return st"""string("${(value, "")}")"""
     }
@@ -934,7 +932,11 @@ import StaticTranspiler._
           }
       }
     } else {
-      reporter.error(posOpt, transKind, "Static C translation does not support Unicode string.")
+      reporter.error(
+        posOpt,
+        transKind,
+        "Static C translation does not support Unicode character literal (use String literal instead)."
+      )
       return "\\?"
     }
   }
