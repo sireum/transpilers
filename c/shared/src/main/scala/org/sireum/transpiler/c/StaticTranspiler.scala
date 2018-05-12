@@ -33,8 +33,6 @@ object StaticTranspiler {
     customArraySizes: HashMap[AST.Typed, Z]
   )
 
-  @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
-
   @datatype class Result(files: HashSMap[QName, ST])
 
   val transKind: String = "Static C Transpiler"
@@ -126,8 +124,9 @@ import StaticTemplate._
 import StaticTranspiler._
 
 @record class StaticTranspiler(config: Config, ts: TypeSpecializer.Result, reporter: Reporter) {
-  var compiledMap: HashSMap[QName, Compiled] = HashSMap.empty
-  var typeNameMap: HashSMap[AST.Typed, ST] = HashSMap.empty
+  var compiledMap: HashMap[QName, Compiled] = HashMap.empty
+  var typeNameMap: HashMap[AST.Typed, ST] = HashMap.empty
+  var mangledTypeNameMap: HashMap[String, AST.Typed] = HashMap.empty
 
   var stmts: ISZ[ST] = ISZ()
   var nextTempNum: Z = 0
@@ -172,19 +171,28 @@ import StaticTranspiler._
         case _ => halt("Infeasible")
       }
       r = r + ISZ(runtimeDir, ztypeFilename) ~> ztype
-      val typeNames: ISZ[ST] = {
-        var tn: ISZ[ST] = ISZ()
+
+      r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
+        for (e <- mangledTypeNameMap.entries) yield (e._1, prettyType(e._2).render)
+      )
+
+      val typeNames: ISZ[String] = {
+        var tn: ISZ[String] = ISZ()
         for (e <- typeNameMap.entries) {
           if (!builtInTypes.contains(e._1)) {
-            tn = tn :+ e._2
+            tn = tn :+ e._2.render
           }
         }
-        tn
+        ops.ISZOps(tn).sortWith((s1, s2) => s1 <= s2)
       }
-      r = r + ISZ[String]("gentype.h") ~> genTypeH(config.defaultStringSize, typeNames)
-      r = r + ISZ[String](string"gen.h") ~> genH(ISZ()) // TODO: add includes for types and methods
-      r = r + ISZ[String](string"gen.c") ~> genC(typeNames)
-      r = r + ISZ[String](string"CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
+
+      val typeQNames = compiledMap.keys
+      r = r + ISZ[String]("type-composite.h") ~> typeCompositeH(config.defaultStringSize, typeNames)
+      r = r + ISZ[String]("types.h") ~> typesH(typeQNames)
+      r = r + ISZ[String]("types.c") ~> typesC(typeNames)
+      r = r + ISZ[String]("all.h") ~> allH(typeQNames)
+      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
+      r = r ++ compiled(compiledMap)
     }
 
     genTypeNames()
@@ -192,6 +200,21 @@ import StaticTranspiler._
     genFiles()
 
     return Result(r)
+  }
+
+  @memoize def prettyType(t: AST.Typed): ST = {
+    t match {
+      case t: AST.Typed.Name => return st"${(t.ids, ".")}[${(t.args.map(prettyType), ", ")}]"
+      case t: AST.Typed.Tuple => return st"(${(t.args.map(prettyType), ", ")})"
+      case t: AST.Typed.Fun =>
+        t.args.size match {
+          case z"0" =>
+          case z"1" => return st"${prettyType(t.args(0))} => ${prettyType(t.ret)}"
+          case _ => return st"(${(t.args.map(prettyType), ", ")}) => ${prettyType(t.ret)}"
+        }
+      case _ =>
+    }
+    halt("Infeasible")
   }
 
   def genTypeNames(): Unit = {
@@ -204,13 +227,25 @@ import StaticTranspiler._
           return tr
         case _ =>
       }
-      val r: ST = t match {
+      val (r, fprinted): (ST, B) = t match {
         case t: AST.Typed.Name =>
-          if (t.args.isEmpty) mangleName(t.ids) else st"${mangleName(t.ids)}_$fprint"
-        case t: AST.Typed.Tuple => st"Tuple${t.args.size}_$fprint"
-        case t: AST.Typed.Fun => st"Fun${t.args.size}_$fprint"
-        case t: AST.Typed.Enum => mangleName(t.name)
+          if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
+        case t: AST.Typed.Tuple => (st"Tuple${t.args.size}_$fprint", T)
+        case t: AST.Typed.Fun => (st"Fun${t.args.size}_$fprint", T)
+        case t: AST.Typed.Enum => (mangleName(t.name), F)
         case _ => halt("Infeasible: $t")
+      }
+      if (fprinted) {
+        val tString = r.render
+        mangledTypeNameMap.get(tString) match {
+          case Some(t2) if t != t2 =>
+            reporter.error(
+              None(),
+              transKind,
+              st"Type name mangling collision is detected for '${prettyType(t2)}' and '${prettyType(t)}' as '$tString' as (please increase fingerprint width).".render
+            )
+          case _ =>
+        }
       }
       typeNameMap = typeNameMap + t ~> r
       return r
@@ -240,7 +275,7 @@ import StaticTranspiler._
       transpileStmt(stmt)
     }
     val r =
-      st"""#include <gen.h>
+      st"""#include <all.h>
       |
       |int main(void) {
       |  ${(stmts, "\n")}

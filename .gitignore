@@ -8,3 +8,4 @@ target
 /.idea_modules
 /versions.properties
 /mill-standalone
+/c/result

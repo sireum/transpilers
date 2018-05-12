@@ -14,7 +14,7 @@ import org.sireum.transpilers.common.TypeSpecializer
 class StaticTranspilerTest extends TestSuite {
 
   lazy val typeChecker: TypeChecker = LibraryTypeCheckingTest.tc
-  val dir: Path = Path(implicitly[sourcecode.File].value) / up / 'result
+  val dir: Path = Path(implicitly[sourcecode.File].value) / up / up / up / up / up / up / up / up / up / 'result
 
   val tests = Tests {
 
@@ -82,7 +82,7 @@ class StaticTranspilerTest extends TestSuite {
     }
 
     val resultDir = dir / s"L${line.value}"
-    //rm ! resultDir
+    rm ! resultDir
     mkdir ! resultDir
 
     for (e <- r.files.entries) {
