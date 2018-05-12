@@ -131,7 +131,7 @@ object StaticTemplate {
       return for (f <- r.elements) yield st"PUBLIC ${(f, "/")}"
     }
 
-    @pure def main(filename: String): ST = {
+    @pure def target(filename: String): ST = {
       val r =
         st"""
         |add_executable($filename
@@ -142,7 +142,7 @@ object StaticTemplate {
       return r
     }
 
-    val mains: ISZ[ST] = for (f <- mainFilenames) yield main(f)
+    val mains: ISZ[ST] = for (f <- mainFilenames) yield target(f)
 
     val r =
       st"""cmake_minimum_required(VERSION 3.9)
@@ -224,16 +224,21 @@ object StaticTemplate {
           |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<main>", 0);
           |
           |  DeclNewAString(t_args);
-          |  AString args = &t_args;
+          |  AString args = (AString) &t_args;
           |
           |  int size = argc - 1;
           |  if (size > MaxAString) {
-          |    sfAbort("Insufficient maximum number of string elements.");
-          |    abort();
+          |    sfAbort("Insufficient maximum for String elements.");
           |  }
           |
           |  for (int i = 0; i < size; i++) {
-          |    stringAppend(sf, string(argv[i + 1]), AString_at(args, i));
+          |    char *arg = argv[i + 1];
+          |    size_t argSize = strlen(arg);
+          |    if (argSize > MaxString) {
+          |      sfAbort("Insufficient maximum for String characters.");
+          |    }
+          |    AString_at(args, i)->size = (Z) argSize;
+          |    memcpy(AString_at(args, i)->value, arg, argSize + 1);
           |  }
           |
           |  AString_size(args) = size;

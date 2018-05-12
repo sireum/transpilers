@@ -621,7 +621,7 @@ import StaticTranspiler._
       }
       val cond = transpileExp(exp.args(0))
       if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assert) {
-        stmts = stmts :+ st"""if (!($cond)) sfAbort("Assertion failure");"""
+        stmts = stmts :+ st"""if (!($cond)) { sfAbort("Assertion failure"); }"""
       } else {
         assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssertMsg)
         val oldStmts = stmts
@@ -644,7 +644,7 @@ import StaticTranspiler._
       }
       val cond = transpileExp(exp.args(0))
       if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assume) {
-        stmts = stmts :+ st"""if (!($cond)) sfAbort("Assumption does not hold");"""
+        stmts = stmts :+ st"""if (!($cond)) { sfAbort("Assumption does not hold"); }"""
       } else {
         assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg)
         val oldStmts = stmts
