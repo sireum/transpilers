@@ -10,6 +10,10 @@ object StaticTemplate {
 
   @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
 
+  val sireumDir: String = "sireum"
+  val libraryDir: String = "library"
+  val worksheetFilename: ST = st"worksheet"
+
   @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[String]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
@@ -84,20 +88,20 @@ object StaticTemplate {
   @pure def typesC(typeNames: ISZ[String]): ST = {
     val r =
       st"""#include <types.h>
-          |
+      |
       |size_t sizeOf(Type t) {
-          |  switch (t->type) {
-          |    ${(for (tn <- typeNames) yield st"case T$tn: return sizeof(struct $tn);", "\n")}
-          |    default: exit(1);
-          |  }
-          |}
-          |
+      |  switch (t->type) {
+      |    ${(for (tn <- typeNames) yield st"case T$tn: return sizeof(struct $tn);", "\n")}
+      |    default: exit(1);
+      |  }
+      |}
+      |
       |void clone(Type src, Type dest) {
-          |  size_t srcSize = sizeOf(src);
-          |  size_t destSize = sizeOf(dest);
-          |  memcpy(dest, src, srcSize);
-          |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
-          |}"""
+      |  size_t srcSize = sizeOf(src);
+      |  size_t destSize = sizeOf(dest);
+      |  memcpy(dest, src, srcSize);
+      |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
+      |}"""
     return r
   }
 
@@ -116,7 +120,7 @@ object StaticTemplate {
   @pure def cmake(project: String, mainFilenames: ISZ[String], filess: ISZ[QName]): ST = {
     @pure def files(filess: ISZ[QName]): ISZ[ST] = {
       return for (f <- filess)
-        yield if (f.size == z"1") st"${f(0)}" else st"${ops.ISZOps(f).dropRight(1)}/${f(f.size - 1)}"
+        yield if (f.size == z"1") st"${f(0)}" else st"${(ops.ISZOps(f).dropRight(1), "/")}/${f(f.size - 1)}"
     }
 
     @pure def includeDirs(filess: ISZ[QName]): ISZ[ST] = {
@@ -168,36 +172,43 @@ object StaticTemplate {
     return if (qn1.size < qn2.size) T else if (qn1.size > qn1.size) F else st"$qn1".render <= st"$qn2".render
   }
 
+  @pure def dirOf(name: QName): QName = {
+    return if (name.size == z"1") ISZ(libraryDir) else libraryDir +: ops.ISZOps(name).dropRight(1)
+  }
+
+  @pure def filenameOf(name: QName): ST = {
+    return if (name.size == z"1") worksheetFilename else st"${(name, "_")}"
+  }
+
   @pure def compiled(compiledMap: HashMap[QName, Compiled]): ISZ[(QName, ST)] = {
     val entries = compiledMap.entries
     val sortedEntries = ops.ISZOps(entries).sortWith((p1, p2) => qnameLt(p1._1, p2._1))
     var r = ISZ[(QName, ST)]()
     for (e <- sortedEntries) {
-      val dir = e._1
-      val filename = st"${(e._1, "_")}"
+      val qname = e._1
+      val dir = dirOf(qname)
+      val filename = filenameOf(qname)
       val comp = e._2
       val typeHeaderFilename = st"type-$filename.h".render
       val headerFilename = st"$filename.h".render
       val implFilename = st"$filename.c".render
       r = r :+ ((dir :+ typeHeaderFilename, st"""#ifndef SIREUM_TYPE_H_$filename
       |#define SIREUM_TYPE_H_$filename
-      |#include <gentype.h>
+      |#include <type.h>
       |
       |${(comp.typeHeader, "\n\n")}
       |
       |#endif"""))
       r = r :+ ((dir :+ headerFilename, st"""#ifndef SIREUM_H_$filename
       |#define SIREUM_H_$filename
-      |#include <gen.h>
+      |#include <types.h>
       |
       |${(comp.header, "\n\n")}
       |
       |#endif"""))
       r = r :+ ((dir :+ implFilename, st"""#include <all.h>
       |
-      |${(comp.impl, "\n\n")}
-      |
-      |#endif"""))
+      |${(comp.impl, "\n\n")}"""))
     }
     return r
   }
@@ -205,46 +216,79 @@ object StaticTemplate {
   @pure def worksheet(filename: String, stmts: ISZ[ST]): ST = {
     val r =
       st"""#include <all.h>
-          |
-          |int main(void) {
-          |  DeclNewStackFrame(NULL, "$filename", "<worksheet>", "<main>", 0);
-          |
-          |  ${(stmts, "\n")}
-          |
-          |  return 0;
-          |}"""
+      |
+      |int main(void) {
+      |  DeclNewStackFrame(NULL, "$filename", "<worksheet>", "<main>", 0);
+      |
+      |  ${(stmts, "\n")}
+      |
+      |  return 0;
+      |}"""
     return r
   }
 
   @pure def main(filename: String, owner: QName, id: String): ST = {
     val r =
       st"""#include <all.h>
-          |
-          |int main(int argc, char *argv[]) {
-          |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<main>", 0);
-          |
-          |  DeclNewAString(t_args);
-          |  AString args = (AString) &t_args;
-          |
-          |  int size = argc - 1;
-          |  if (size > MaxAString) {
-          |    sfAbort("Insufficient maximum for String elements.");
-          |  }
-          |
-          |  for (int i = 0; i < size; i++) {
-          |    char *arg = argv[i + 1];
-          |    size_t argSize = strlen(arg);
-          |    if (argSize > MaxString) {
-          |      sfAbort("Insufficient maximum for String characters.");
-          |    }
-          |    AString_at(args, i)->size = (Z) argSize;
-          |    memcpy(AString_at(args, i)->value, arg, argSize + 1);
-          |  }
-          |
-          |  AString_size(args) = size;
-          |
-          |  ${mangleName(owner :+ id)}(args);
-          |}"""
+      |
+      |int main(int argc, char *argv[]) {
+      |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<main>", 0);
+      |
+      |  DeclNewAString(t_args);
+      |  AString args = (AString) &t_args;
+      |
+      |  int size = argc - 1;
+      |  if (size > MaxAString) {
+      |    sfAbort("Insufficient maximum for String elements.");
+      |  }
+      |
+      |  for (int i = 0; i < size; i++) {
+      |    char *arg = argv[i + 1];
+      |    size_t argSize = strlen(arg);
+      |    if (argSize > MaxString) {
+      |      sfAbort("Insufficient maximum for String characters.");
+      |    }
+      |    AString_at(args, i)->size = (Z) argSize;
+      |    memcpy(AString_at(args, i)->value, arg, argSize + 1);
+      |  }
+      |
+      |  AString_size(args) = size;
+      |
+      |  ${mangleName(owner :+ id)}(args);
+      |}"""
+    return r
+  }
+
+  @pure def array(
+    includes: ISZ[ST],
+    tpe: ST,
+    name: ST,
+    indexType: ST,
+    elementType: ST,
+    elementTypePtr: ST,
+    maxElement: Z
+  ): ST = {
+    val r =
+      st"""// $tpe
+      |${(includes, "\n")}
+      |
+      |#ifndef Max$name
+      |#define Max$name $maxElement
+      |#endif
+      |
+      |typedef struct $name *$name;
+      |struct $name {
+      |  TYPE type;
+      |  $indexType size;
+      |  $elementType value[Max$name];
+      |};
+      |
+      |#define Decl$name(x, e) struct $name x = e
+      |#define New$name() ((struct $name) { TYPE_$name, ${indexType}_C(0) })
+      |#define DeclNew$name(x) Decl$name(x, New$name())
+      |#define ${name}_size(this) ((this)->size)
+      |#define ${name}_up(this, i) ((this)->value[i])
+      |#define ${name}_at(this, i) (($elementTypePtr) &(AString_up(this, i)))"""
     return r
   }
 

@@ -61,7 +61,8 @@ object StaticTranspiler {
     AST.Typed.z,
     AST.Typed.f32,
     AST.Typed.f64,
-    AST.Typed.r
+    AST.Typed.r,
+    AST.Typed.string
   )
 
   val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
@@ -136,7 +137,7 @@ import StaticTranspiler._
       val typeNames: ISZ[String] = {
         var tn: ISZ[String] = ISZ()
         for (e <- typeNameMap.entries) {
-          if (!builtInTypes.contains(e._1)) {
+          if (!builtInTypes.contains(e._1) || e._1 == AST.Typed.string) {
             tn = tn :+ e._2.render
           }
         }
@@ -144,11 +145,11 @@ import StaticTranspiler._
       }
 
       val typeQNames = compiledMap.keys
-      val iszStringMax: Z = config.customArraySizes.get(iszStringType) match {
-        case Some(n) => n
-        case _ => config.maxArraySize
-      }
-      r = r + ISZ[String]("type-composite.h") ~> typeCompositeH(config.maxStringSize, iszStringMax, typeNames)
+      r = r + ISZ[String]("type-composite.h") ~> typeCompositeH(
+        config.maxStringSize,
+        maxElementSize(iszStringType),
+        typeNames
+      )
       r = r + ISZ[String]("types.h") ~> typesH(typeQNames)
       r = r + ISZ[String]("types.c") ~> typesC(typeNames)
       r = r + ISZ[String]("all.h") ~> allH(typeQNames)
@@ -163,9 +164,18 @@ import StaticTranspiler._
     return Result(r)
   }
 
+  @pure def maxElementSize(t: AST.Typed): Z = {
+    config.customArraySizes.get(t) match {
+      case Some(n) => return n
+      case _ => return config.maxArraySize
+    }
+  }
+
   @memoize def prettyType(t: AST.Typed): ST = {
     t match {
-      case t: AST.Typed.Name => return st"${(t.ids, ".")}[${(t.args.map(prettyType), ", ")}]"
+      case t: AST.Typed.Name =>
+        return if (t.args.size == z"0") st"${(t.ids, ".")}"
+        else st"${(t.ids, ".")}[${(t.args.map(prettyType), ", ")}]"
       case t: AST.Typed.Tuple => return st"(${(t.args.map(prettyType), ", ")})"
       case t: AST.Typed.Fun =>
         t.args.size match {
@@ -177,27 +187,71 @@ import StaticTranspiler._
     halt("Infeasible")
   }
 
+  def getCompiled(key: QName): Compiled = {
+    compiledMap.get(key) match {
+      case Some(r) => return r
+      case _ => return Compiled(ISZ(), ISZ(), ISZ())
+    }
+  }
+
   def genTypeNames(): Unit = {
+    @pure def typeFilename(t: AST.Typed): ST = {
+      t match {
+        case t: AST.Typed.Name => filenameOf(t.ids)
+        case t: AST.Typed.Tuple => filenameOf(AST.Typed.sireumName :+ s"Tuple${t.args.size}")
+        case t: AST.Typed.Fun => filenameOf(AST.Typed.sireumName :+ s"Fun${t.args.size}")
+        case t: AST.Typed.Enum => filenameOf(t.name)
+        case _ => halt("Infeasible")
+      }
+    }
+
+    @pure def includes(ts: ISZ[AST.Typed]): ISZ[ST] = {
+      var r = ISZ[ST]()
+      for (t <- ts) {
+        if (!builtInTypes.contains(t)) {
+          r = r :+ st"#include <type-${typeFilename(t)}.h>"
+        }
+      }
+      return r
+    }
+
     def genArray(t: AST.Typed.Name, mangledName: ST): Unit = {
-      halt("TODO") // TODO
+      val key = t.ids
+      val it = t.args(0)
+      val et = t.args(1)
+      val indexType = genType(it)
+      val elementType = genType(et)
+      val value = getCompiled(key)
+      compiledMap = compiledMap + key ~> value(
+        typeHeader = value.typeHeader :+
+          array(
+            includes(ISZ(it, et)),
+            prettyType(t),
+            mangledName,
+            indexType,
+            elementType,
+            transpileType(et, T),
+            maxElementSize(et)
+          )
+      )
     }
     def genClass(t: AST.Typed.Name, mangledName: ST): Unit = {
-      halt("TODO") // TODO
+      halt(s"TODO: $t") // TODO
     }
     def genTrait(t: AST.Typed.Name, mangledName: ST): Unit = {
-      halt("TODO") // TODO
+      halt(s"TODO: $t") // TODO
     }
     def genSubZ(t: AST.Typed.Name, mangledName: ST): Unit = {
-      halt("TODO") // TODO
+      halt(s"TODO: $t") // TODO
     }
     def genTypedTuple(t: AST.Typed.Tuple, mangledName: ST): Unit = {
-      halt("TODO") // TODO
+      halt(s"TODO: $t") // TODO
     }
     def genTypedFun(t: AST.Typed.Fun, mangledName: ST): Unit = {
-      halt("TODO") // TODO
+      halt(s"TODO: $t") // TODO
     }
     def genTypedEnum(t: AST.Typed.Enum, mangledName: ST): Unit = {
-      halt("TODO") // TODO
+      halt(s"TODO: $t") // TODO
     }
     def genType(t: AST.Typed): ST = {
       def fprint: String = {
@@ -210,7 +264,7 @@ import StaticTranspiler._
       val (r, fprinted): (ST, B) = t match {
         case t: AST.Typed.Name =>
           val p: (ST, B) = if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
-          if (!builtInTypes.contains(t) && t != AST.Typed.string) {
+          if (!builtInTypes.contains(t)) {
             typeKind(t) match {
               case TypeKind.Scalar => genSubZ(t, p._1)
               case TypeKind.Immutable => genClass(t, p._1)
@@ -253,7 +307,7 @@ import StaticTranspiler._
     }
 
     genType(AST.Typed.string)
-    // TODO: genType(iszStringType)
+    genType(iszStringType)
 
     for (nts <- ts.nameTypes.values; nt <- nts.elements) {
       ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
@@ -322,12 +376,11 @@ import StaticTranspiler._
     val key: QName = info.owner.size match {
       case z"0" => info.owner
       case n if n >= 3 && ops.ISZOps(info.owner).take(3) == AST.Typed.sireumName =>
-        "sireum" +: ops.ISZOps(compName(info.owner)).drop(3)
+        sireumDir +: ops.ISZOps(compName(info.owner)).drop(3)
       case _ => compName(info.owner)
     }
 
-    val value: Compiled = compiledMap.get(key).get
-
+    val value = getCompiled(key)
     compiledMap = compiledMap + key ~> value(header = value.header :+ header, impl = value.impl :+ impl)
 
     nextTempNum = oldNextTempNum
@@ -906,7 +959,7 @@ import StaticTranspiler._
     val t = typeNameMap.get(tpe).get
     val r: ST = if (isPtr) {
       val tk = typeKind(tpe)
-      if (tk == TypeKind.ImmutableTrait || tk == TypeKind.MutableTrait)  st"union $t"
+      if (tk == TypeKind.ImmutableTrait || tk == TypeKind.MutableTrait) st"union $t"
       else st"struct $t"
     } else {
       st"$t"
@@ -922,17 +975,23 @@ import StaticTranspiler._
       case AST.Typed.f32 =>
       case AST.Typed.f64 =>
       case AST.Typed.r =>
-      case t: AST.Typed.Name if t.args.isEmpty =>
-        ts.typeHierarchy.typeMap.get(t.ids).get match {
-          case _: TypeInfo.SubZ =>
-          case _: TypeInfo.Enum =>
-          case info: TypeInfo.AbstractDatatype =>
-            return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
-            else if (info.ast.isRoot) TypeKind.MutableTrait
-            else TypeKind.Mutable
-          case info: TypeInfo.Sig =>
-            return if (info.ast.isImmutable) TypeKind.ImmutableTrait else TypeKind.MutableTrait
-          case _ => halt("Infeasible")
+      case t: AST.Typed.Name =>
+        if (t.ids == AST.Typed.isName) {
+          return TypeKind.IS
+        } else if (t.ids == AST.Typed.msName) {
+          return TypeKind.MS
+        } else {
+          ts.typeHierarchy.typeMap.get(t.ids).get match {
+            case _: TypeInfo.SubZ =>
+            case _: TypeInfo.Enum =>
+            case info: TypeInfo.AbstractDatatype =>
+              return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
+              else if (info.ast.isRoot) TypeKind.MutableTrait
+              else TypeKind.Mutable
+            case info: TypeInfo.Sig =>
+              return if (info.ast.isImmutable) TypeKind.ImmutableTrait else TypeKind.MutableTrait
+            case _ => halt("Infeasible")
+          }
         }
       case t: AST.Typed.Tuple =>
         for (targ <- t.args) {
