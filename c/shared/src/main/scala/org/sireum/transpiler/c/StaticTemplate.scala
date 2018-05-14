@@ -296,6 +296,32 @@ object StaticTemplate {
     return r
   }
 
+  @pure def enum(tpe: String, name: ST, elements: ISZ[String]): ST = {
+    @pure def enumCase(element: String): ST = {
+      val r = st"""case ${name}_$element: stringCopy(string("$element"), r); break;"""
+      return r
+    }
+
+    val r =
+      st"""// $tpe
+      |typedef enum {
+      |  ${(for (e <- elements) yield st"${name}_$e", ",\n")}
+      |} $name;
+      |
+      |static inline Z ${name}_ordinal($name this) {
+      |  return (Z) this;
+      |}
+      |
+      |static inline struct StaticString ${name}_name($name this) {
+      |  DeclNewString(r);
+      |  switch (this) {
+      |    ${(for (e <- elements) yield enumCase(e), "\n")}
+      |  }
+      |  return r;
+      |}"""
+    return r
+  }
+
   @pure def dotName(ids: QName): String = {
     return st"${(ids, ".")}".render
   }
