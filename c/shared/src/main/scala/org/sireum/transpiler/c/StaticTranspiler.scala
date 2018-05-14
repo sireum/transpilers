@@ -903,8 +903,15 @@ import StaticTranspiler._
   }
 
   @pure def transpileType(tpe: AST.Typed, isPtr: B): ST = {
-    val r = typeNameMap.get(tpe).get
-    return if (isPtr) st"struct $r" else st"$r"
+    val t = typeNameMap.get(tpe).get
+    val r: ST = if (isPtr) {
+      val tk = typeKind(tpe)
+      if (tk == TypeKind.ImmutableTrait || tk == TypeKind.MutableTrait)  st"union $t"
+      else st"struct $t"
+    } else {
+      st"$t"
+    }
+    return r
   }
 
   @pure def typeKind(t: AST.Typed): TypeKind.Type = {
