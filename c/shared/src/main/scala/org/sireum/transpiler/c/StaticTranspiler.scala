@@ -6,7 +6,6 @@ import org.sireum.message._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
 import org.sireum.lang.symbol.Resolver.QName
-import org.sireum.transpiler.c.util.Fingerprint
 import org.sireum.transpilers.common.TypeSpecializer
 
 object StaticTranspiler {
@@ -130,18 +129,14 @@ import StaticTranspiler._
       }
       r = r + ISZ(runtimeDir, ztypeFilename) ~> ztype
 
-      r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
-        for (e <- mangledTypeNameMap.entries) yield (e._1, prettyType(e._2).render)
-      )
-
-      val typeNames: ISZ[String] = {
-        var tn: ISZ[String] = ISZ()
+      val typeNames: ISZ[(String, ST)] = {
+        var tn: ISZ[(String, ST)] = ISZ()
         for (e <- typeNameMap.entries) {
           if (!builtInTypes.contains(e._1) || e._1 == AST.Typed.string) {
-            tn = tn :+ e._2.render
+            tn = tn :+ ((e._1.string, e._2))
           }
         }
-        ops.ISZOps(tn).sortWith((s1, s2) => s1 <= s2)
+        ops.ISZOps(tn).sortWith((p1, p2) => p1._1 <= p2._1)
       }
 
       val typeQNames = compiledMap.keys
@@ -155,6 +150,9 @@ import StaticTranspiler._
       r = r + ISZ[String]("all.h") ~> allH(typeQNames)
       r = r ++ compiled(compiledMap)
       r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
+      r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
+        for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
+      )
     }
 
     genTypeNames()
@@ -171,22 +169,6 @@ import StaticTranspiler._
     }
   }
 
-  @memoize def prettyType(t: AST.Typed): ST = {
-    t match {
-      case t: AST.Typed.Name =>
-        return if (t.args.size == z"0") st"${(t.ids, ".")}"
-        else st"${(t.ids, ".")}[${(t.args.map(prettyType), ", ")}]"
-      case t: AST.Typed.Tuple => return st"(${(t.args.map(prettyType), ", ")})"
-      case t: AST.Typed.Fun =>
-        t.args.size match {
-          case z"1" => return st"${prettyType(t.args(0))} => ${prettyType(t.ret)}"
-          case _ => return st"(${(t.args.map(prettyType), ", ")}) => ${prettyType(t.ret)}"
-        }
-      case _ =>
-    }
-    halt("Infeasible")
-  }
-
   def getCompiled(key: QName): Compiled = {
     compiledMap.get(key) match {
       case Some(r) => return r
@@ -195,21 +177,25 @@ import StaticTranspiler._
   }
 
   def genTypeNames(): Unit = {
-    @pure def typeFilename(t: AST.Typed): ST = {
-      t match {
-        case t: AST.Typed.Name => filenameOf(t.ids)
-        case t: AST.Typed.Tuple => filenameOf(AST.Typed.sireumName :+ s"Tuple${t.args.size}")
-        case t: AST.Typed.Fun => filenameOf(AST.Typed.sireumName :+ s"Fun${t.args.size}")
-        case t: AST.Typed.Enum => filenameOf(t.name)
+    @pure def typeFilename(name: QName, t: AST.Typed): Option[QName] = {
+      val tname: QName = t match {
+        case t: AST.Typed.Name => t.ids
+        case t: AST.Typed.Tuple => AST.Typed.sireumName :+ s"Tuple${t.args.size}"
+        case t: AST.Typed.Fun => AST.Typed.sireumName :+ s"Fun${t.args.size}"
+        case t: AST.Typed.Enum => t.name
         case _ => halt("Infeasible")
       }
+      return if (tname == name) None() else Some(tname)
     }
 
-    @pure def includes(ts: ISZ[AST.Typed]): ISZ[ST] = {
+    @pure def includes(name: QName, ts: ISZ[AST.Typed]): ISZ[ST] = {
       var r = ISZ[ST]()
       for (t <- ts) {
         if (!builtInTypes.contains(t)) {
-          r = r :+ st"#include <type-${typeFilename(t)}.h>"
+          typeFilename(name, t) match {
+            case Some(n) => r = r :+ st"#include <${typeHeaderFilename(filenameOf(n))}>"
+            case _ =>
+          }
         }
       }
       return r
@@ -225,8 +211,8 @@ import StaticTranspiler._
       compiledMap = compiledMap + key ~> value(
         typeHeader = value.typeHeader :+
           array(
-            includes(ISZ(it, et)),
-            prettyType(t),
+            includes(key, ISZ(it, et)),
+            t.string,
             mangledName,
             indexType,
             elementType,
@@ -293,13 +279,15 @@ import StaticTranspiler._
       if (fprinted) {
         val tString = r.render
         mangledTypeNameMap.get(tString) match {
-          case Some(t2) if t != t2 =>
-            reporter.error(
-              None(),
-              transKind,
-              st"Type name mangling collision is detected for '${prettyType(t2)}' and '${prettyType(t)}' as '$tString' as (please increase fingerprint width).".render
-            )
-          case _ =>
+          case Some(t2) =>
+            if (t != t2) {
+              reporter.error(
+                None(),
+                transKind,
+                st"Type name mangling collision is detected for '$t2' and '$t}' as '$tString' as (please increase fingerprint width).".render
+              )
+            }
+          case _ => mangledTypeNameMap = mangledTypeNameMap + tString ~> t
         }
       }
       typeNameMap = typeNameMap + t ~> r

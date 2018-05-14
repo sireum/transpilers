@@ -1,5 +1,5 @@
 // #Sireum
-package org.sireum.transpiler.c.util
+package org.sireum.transpiler.c
 
 import org.sireum._
 

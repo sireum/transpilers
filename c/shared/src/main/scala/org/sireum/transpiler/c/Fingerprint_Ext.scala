@@ -1,10 +1,9 @@
-package org.sireum.transpiler.c.util
+package org.sireum.transpiler.c
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 import org.sireum._
-import org.sireum.U32._
 
 object Fingerprint_Ext {
 

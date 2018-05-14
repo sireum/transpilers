@@ -14,7 +14,7 @@ object StaticTemplate {
   val libraryDir: String = "library"
   val worksheetFilename: ST = st"worksheet"
 
-  @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[String]): ST = {
+  @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[(String, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
       |#define SIREUM_GEN_TYPE_H
@@ -24,7 +24,8 @@ object StaticTemplate {
       |#include <stackframe.h>
       |
       |typedef enum {
-      |  ${(for (tn <- typeNames) yield st"T$tn", ",\n")}
+      |  T${typeNames(0)._2}, // ${typeNames(0)._1}
+      |  ${(for (tn <- ops.ISZOps(typeNames).drop(1)) yield st"T${tn._2}, // ${tn._1}", "\n")}
       |} TYPE;
       |
       |typedef struct Type *Type;
@@ -85,14 +86,13 @@ object StaticTemplate {
     return r
   }
 
-  @pure def typesC(typeNames: ISZ[String]): ST = {
+  @pure def typesC(typeNames: ISZ[(String, ST)]): ST = {
     val r =
       st"""#include <types.h>
       |
       |size_t sizeOf(Type t) {
       |  switch (t->type) {
-      |    ${(for (tn <- typeNames) yield st"case T$tn: return sizeof(struct $tn);", "\n")}
-      |    default: exit(1);
+      |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return sizeof(struct ${tn._2}); // ${tn._1}", "\n")}
       |  }
       |}
       |
@@ -180,6 +180,10 @@ object StaticTemplate {
     return if (name.size == z"1") worksheetFilename else st"${(name, "_")}"
   }
 
+  @pure def typeHeaderFilename(filename: ST): ST = {
+    return st"type-$filename.h"
+  }
+
   @pure def compiled(compiledMap: HashMap[QName, Compiled]): ISZ[(QName, ST)] = {
     val entries = compiledMap.entries
     val sortedEntries = ops.ISZOps(entries).sortWith((p1, p2) => qnameLt(p1._1, p2._1))
@@ -189,10 +193,10 @@ object StaticTemplate {
       val dir = dirOf(qname)
       val filename = filenameOf(qname)
       val comp = e._2
-      val typeHeaderFilename = st"type-$filename.h".render
+      val tHeaderFilename = typeHeaderFilename(filename).render
       val headerFilename = st"$filename.h".render
       val implFilename = st"$filename.c".render
-      r = r :+ ((dir :+ typeHeaderFilename, st"""#ifndef SIREUM_TYPE_H_$filename
+      r = r :+ ((dir :+ tHeaderFilename, st"""#ifndef SIREUM_TYPE_H_$filename
       |#define SIREUM_TYPE_H_$filename
       |#include <type.h>
       |
@@ -261,7 +265,7 @@ object StaticTemplate {
 
   @pure def array(
     includes: ISZ[ST],
-    tpe: ST,
+    tpe: String,
     name: ST,
     indexType: ST,
     elementType: ST,
