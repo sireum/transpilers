@@ -152,8 +152,8 @@ import StaticTranspiler._
       r = r + ISZ[String]("types.h") ~> typesH(typeQNames)
       r = r + ISZ[String]("types.c") ~> typesC(typeNames)
       r = r + ISZ[String]("all.h") ~> allH(typeQNames)
-      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
       r = r ++ compiled(compiledMap)
+      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
     }
 
     genTypeNames()
@@ -169,7 +169,6 @@ import StaticTranspiler._
       case t: AST.Typed.Tuple => return st"(${(t.args.map(prettyType), ", ")})"
       case t: AST.Typed.Fun =>
         t.args.size match {
-          case z"0" =>
           case z"1" => return st"${prettyType(t.args(0))} => ${prettyType(t.ret)}"
           case _ => return st"(${(t.args.map(prettyType), ", ")}) => ${prettyType(t.ret)}"
         }
@@ -179,21 +178,62 @@ import StaticTranspiler._
   }
 
   def genTypeNames(): Unit = {
+    def genArray(t: AST.Typed.Name, mangledName: ST): Unit = {
+      halt("TODO") // TODO
+    }
+    def genClass(t: AST.Typed.Name, mangledName: ST): Unit = {
+      halt("TODO") // TODO
+    }
+    def genTrait(t: AST.Typed.Name, mangledName: ST): Unit = {
+      halt("TODO") // TODO
+    }
+    def genSubZ(t: AST.Typed.Name, mangledName: ST): Unit = {
+      halt("TODO") // TODO
+    }
+    def genTypedTuple(t: AST.Typed.Tuple, mangledName: ST): Unit = {
+      halt("TODO") // TODO
+    }
+    def genTypedFun(t: AST.Typed.Fun, mangledName: ST): Unit = {
+      halt("TODO") // TODO
+    }
+    def genTypedEnum(t: AST.Typed.Enum, mangledName: ST): Unit = {
+      halt("TODO") // TODO
+    }
     def genType(t: AST.Typed): ST = {
       def fprint: String = {
         return Fingerprint.string(t.string, config.fprintWidth)
       }
       typeNameMap.get(t) match {
-        case Some(tr) =>
-          return tr
+        case Some(tr) => return tr
         case _ =>
       }
       val (r, fprinted): (ST, B) = t match {
         case t: AST.Typed.Name =>
-          if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
-        case t: AST.Typed.Tuple => (st"Tuple${t.args.size}_$fprint", T)
-        case t: AST.Typed.Fun => (st"Fun${t.args.size}_$fprint", T)
-        case t: AST.Typed.Enum => (mangleName(t.name), F)
+          val p: (ST, B) = if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
+          if (!builtInTypes.contains(t) && t != AST.Typed.string) {
+            typeKind(t) match {
+              case TypeKind.Scalar => genSubZ(t, p._1)
+              case TypeKind.Immutable => genClass(t, p._1)
+              case TypeKind.ImmutableTrait => genTrait(t, p._1)
+              case TypeKind.Mutable => genClass(t, p._1)
+              case TypeKind.MutableTrait => genTrait(t, p._1)
+              case TypeKind.IS => genArray(t, p._1)
+              case TypeKind.MS => genArray(t, p._1)
+            }
+          }
+          p
+        case t: AST.Typed.Tuple =>
+          val p = (st"Tuple${t.args.size}_$fprint", T)
+          genTypedTuple(t, p._1)
+          p
+        case t: AST.Typed.Fun =>
+          val p = (st"Fun${t.args.size}_$fprint", T)
+          genTypedFun(t, p._1)
+          p
+        case t: AST.Typed.Enum =>
+          val p = (mangleName(t.name), F)
+          genTypedEnum(t, p._1)
+          p
         case _ => halt("Infeasible: $t")
       }
       if (fprinted) {
@@ -253,6 +293,15 @@ import StaticTranspiler._
   }
 
   def transpileMethod(method: TypeSpecializer.Method): Unit = {
+    @pure def compName(name: QName): QName = {
+      var infoOpt = ts.typeHierarchy.nameMap.get(name)
+      var currName = name
+      while (infoOpt.isEmpty) {
+        currName = ops.ISZOps(name).dropRight(1)
+        infoOpt = ts.typeHierarchy.nameMap.get(currName)
+      }
+      return currName
+    }
     val oldNextTempNum = nextTempNum
     val oldStmts = stmts
 
@@ -270,7 +319,16 @@ import StaticTranspiler._
       |  ${(stmts, "\n")}
       |}"""
 
-    // TODO: add header, impl
+    val key: QName = info.owner.size match {
+      case z"0" => info.owner
+      case n if n >= 3 && ops.ISZOps(info.owner).take(3) == AST.Typed.sireumName =>
+        "sireum" +: ops.ISZOps(compName(info.owner)).drop(3)
+      case _ => compName(info.owner)
+    }
+
+    val value: Compiled = compiledMap.get(key).get
+
+    compiledMap = compiledMap + key ~> value(header = value.header :+ header, impl = value.impl :+ impl)
 
     nextTempNum = oldNextTempNum
     stmts = oldStmts
@@ -829,12 +887,14 @@ import StaticTranspiler._
     val tpe = res.tpeOpt.get
     val retType = transpileType(tpe.ret, F)
 
-    // TODO: receiver
+    val preParams: ST = method.receiverOpt match {
+      case Some(receiver) => st"Stackframe caller, ${transpileType(receiver, T)} this"
+      case _ => st"StackFrame caller"
+    }
     val params: ST =
-      if (res.paramNames.isEmpty)
-        st"void"
+      if (res.paramNames.isEmpty) preParams
       else
-        st"${(
+        st"$preParams, ${(
           for (p <- ops.ISZOps(tpe.args).zip(res.paramNames))
             yield st"${transpileType(p._1, T)} ${localName(p._2)}",
           ", "
