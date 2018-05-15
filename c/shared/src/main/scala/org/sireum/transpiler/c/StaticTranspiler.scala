@@ -226,7 +226,8 @@ import StaticTranspiler._
         }
       }
       val value = getCompiled(key)
-      val (typeHeader, header) = array(
+      val newValue = array(
+        value,
         includes(key, ISZ(it, et)),
         t.string,
         t.ids == AST.Typed.isName,
@@ -238,10 +239,7 @@ import StaticTranspiler._
         transpileType(et, T),
         maxElementSize(et)
       )
-      compiledMap = compiledMap + key ~> value(
-        typeHeader = value.typeHeader :+ typeHeader,
-        header = value.header :+ header
-      )
+      compiledMap = compiledMap + key ~> newValue
     }
     def genClass(t: AST.Typed.Name, mangledName: ST): Unit = {
       halt(s"TODO: $t") // TODO
@@ -581,23 +579,22 @@ import StaticTranspiler._
   }
 
   def transToString(s: ST, exp: AST.Exp): Unit = {
-    // TODO: Gen string on demand
     val tmp = transpileExp(exp)
     exp.typedOpt.get match {
       case t: AST.Typed.Name =>
         if (t.ids == AST.Typed.isName || t.ids == AST.Typed.msName) {
-          stmts = stmts :+ st"A_string_${Fingerprint.string(t.args(0).string, config.fprintWidth)}(sf, $tmp, $s);"
+          stmts = stmts :+ st"A_string_${Fingerprint.string(t.args(0).string, config.fprintWidth)}($s, sf, $tmp);"
         } else if (t.args.isEmpty) {
           stmts = stmts :+ st"${mangleName(t.ids)}_string($tmp, $s);"
         } else {
-          stmts = stmts :+ st"${mangleName(t.ids)}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}(sf, $tmp, $s);"
+          stmts = stmts :+ st"${mangleName(t.ids)}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}($s, sf, $tmp);"
         }
       case t: AST.Typed.Tuple =>
-        stmts = stmts :+ st"Tuple${t.args.size}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}(sf, $tmp, $s);"
+        stmts = stmts :+ st"Tuple${t.args.size}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}($s, sf, $tmp);"
       case t: AST.Typed.Enum =>
-        stmts = stmts :+ st"${mangleName(t.name)}_string(sf, $tmp, $s);"
+        stmts = stmts :+ st"${mangleName(t.name)}_string($s, sf, $tmp);"
       case t: AST.Typed.Fun =>
-        stmts = stmts :+ st"Fun_string_${Fingerprint.string(t.string, config.fprintWidth)}(sf, $tmp, $s);"
+        stmts = stmts :+ st"Fun_string_${Fingerprint.string(t.string, config.fprintWidth)}($s, sf, $tmp);"
       case _ => halt("Infeasible")
     }
   }
@@ -608,18 +605,18 @@ import StaticTranspiler._
     exp.typedOpt.get match {
       case t: AST.Typed.Name =>
         if (t.ids == AST.Typed.isName || t.ids == AST.Typed.msName) {
-          stmts = stmts :+ st"A_cprint_${Fingerprint.string(t.args(0).string, config.fprintWidth)}($isOut, $tmp);"
+          stmts = stmts :+ st"A_cprint_${Fingerprint.string(t.args(0).string, config.fprintWidth)}($tmp, $isOut);"
         } else if (t.args.isEmpty) {
-          stmts = stmts :+ st"${mangleName(t.ids)}_cprint($isOut, $tmp);"
+          stmts = stmts :+ st"${mangleName(t.ids)}_cprint($tmp, $isOut);"
         } else {
-          stmts = stmts :+ st"${mangleName(t.ids)}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($isOut, $tmp);"
+          stmts = stmts :+ st"${mangleName(t.ids)}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp, $isOut);"
         }
       case t: AST.Typed.Tuple =>
-        stmts = stmts :+ st"Tuple${t.args.size}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($isOut, $tmp);"
+        stmts = stmts :+ st"Tuple${t.args.size}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp, $isOut);"
       case t: AST.Typed.Enum =>
-        stmts = stmts :+ st"${mangleName(t.name)}_cprint($isOut, $tmp);"
+        stmts = stmts :+ st"${mangleName(t.name)}_cprint($tmp, $isOut);"
       case t: AST.Typed.Fun =>
-        stmts = stmts :+ st"Fun_cprint_${Fingerprint.string(t.string, config.fprintWidth)}($isOut, $tmp);"
+        stmts = stmts :+ st"Fun_cprint_${Fingerprint.string(t.string, config.fprintWidth)}($tmp, $isOut);"
       case _ => halt("Infeasible")
     }
   }
