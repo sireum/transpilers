@@ -109,6 +109,15 @@ import StaticTranspiler._
       }
     }
 
+    def work(): Unit = {
+      for (ms <- ts.methods.values; m <- ms.elements) {
+        transpileMethod(m)
+      }
+      for (m <- ts.traitMethods.elements) {
+        transpileTraitMethod(m)
+      }
+    }
+
     def genFiles(): Unit = {
 
       val runtimeDir = string"runtime"
@@ -157,6 +166,7 @@ import StaticTranspiler._
 
     genTypeNames()
     transEntryPoints()
+    work()
     genFiles()
 
     return Result(r)
@@ -332,6 +342,10 @@ import StaticTranspiler._
       transpileStmt(stmt)
     }
     return (if (i == z"0") exeName else if (exeName == string"main") s"main$i" else exeName, worksheet(fname, stmts))
+  }
+
+  def transpileTraitMethod(method: TypeSpecializer.SMethod): Unit = {
+    halt("TODO") // TODO
   }
 
   def transpileMethod(method: TypeSpecializer.Method): Unit = {
