@@ -39,42 +39,33 @@ object StaticTemplate {
       |struct String {
       |  TYPE type;
       |  Z size;
-      |  C *value;
+      |  C value[];
       |};
       |
       |struct StaticString {
       |  TYPE type;
       |  Z size;
-      |  C *value;
-      |  C data[MaxString + 1];
+      |  C value[MaxString + 1];
       |};
       |
-      |#define string(v) &((struct String) { .type = TString, .size = Z_C(sizeof(v) - 1), .value = (C *) (v) })
+      |#define string(v) (String) &((struct { TYPE type; Z size; C value[sizeof(v)]; }) { TString, Z_C(sizeof (v) - 1), v })
+      |#define DeclNewString(x) struct StaticString x; memset(&(x), 0, sizeof(struct StaticString)); (x).type = TString
       |
-      |#define DeclString(x, e) struct StaticString x = e
-      |#define DeclNewString(x) DeclString(x, ((struct StaticString) { .type = TYPE_String, .size = Z_C(0), .value = NULL, .data = {0} })); (x).value = (x).data
+      |static inline B String_eq(String this, String other) {
+      |  Z thisSize = this->size;
+      |  if (thisSize != other->size) return F;
+      |  return memcmp(this->value, other->value, (size_t) thisSize) == 0;
+      |}
       |
-      |#define MaxAString $isStringMax
-      |
-      |typedef struct AString *AString;
-      |struct AString {
-      |  TYPE type;
-      |  Z size;
-      |  struct StaticString value[MaxAString];
-      |};
-      |
-      |#define DeclAString(x, e)    struct AString x = e
-      |#define NewAString()         ((struct AString) { TYPE_AString, Z_C(0) })
-      |#define DeclNewAString(x)    DeclAString(x, NewAString())
-      |#define AString_size(this)   (this)->size
-      |#define AString_up(this, i)  (this)->value[i]
-      |#define AString_at(this, i)  (String) &(AString_up(this, i))
+      |static inline B String_ne(String this, String other) {
+      |  return !String_eq(this, other);
+      |}
       |
       |#endif"""
     return r
   }
 
-  @pure def typesH(names: ISZ[QName]): ST = {
+  @pure def typesH(names: ISZ[QName], typeNames: ISZ[(String, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_H
       |#define SIREUM_GEN_H
@@ -82,23 +73,23 @@ object StaticTemplate {
       |#include <misc.h>
       |${(for (name <- ops.ISZOps(names).sortWith(qnameLt)) yield st"#include <type-${(name, "_")}.h>", "\n")}
       |
-      |#endif"""
-    return r
-  }
-
-  @pure def typesC(typeNames: ISZ[(String, ST)]): ST = {
-    val r =
-      st"""#include <types.h>
-      |
-      |size_t sizeOf(Type t) {
+      |static inline size_t sizeOf(Type t) {
       |  switch (t->type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return sizeof(struct ${tn._2}); // ${tn._1}", "\n")}
       |  }
       |}
       |
-      |void clone(Type src, Type dest) {
-      |  size_t srcSize = sizeOf(src);
-      |  size_t destSize = sizeOf(dest);
+      |void Type_assign(void *dest, void *src, size_t destSize);
+      |#endif"""
+    return r
+  }
+
+  @pure def typesC(): ST = {
+    val r =
+      st"""#include <types.h>
+      |
+      |void Type_assign(void *dest, void *src, size_t destSize) {
+      |  size_t srcSize = sizeOf((Type) src);
       |  memcpy(dest, src, srcSize);
       |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
       |}"""
@@ -266,13 +257,143 @@ object StaticTemplate {
   @pure def array(
     includes: ISZ[ST],
     tpe: String,
+    isImmutable: B,
     name: ST,
     indexType: ST,
+    minIndex: Z,
+    isIndexTypeScalar: B,
     elementType: ST,
     elementTypePtr: ST,
     maxElement: Z
-  ): ST = {
-    val r =
+  ): (ST, ST) = {
+    val offset: ST = if (minIndex == z"0") st"" else st"- ${indexType}_C($minIndex)"
+    val sName: String = if (isImmutable) "IS" else "MS"
+    val header: ST =
+      if (isIndexTypeScalar)
+        st""" // $tpe
+        |
+        |static inline void ${name}_append(StackFrame caller, $name this, $elementTypePtr value, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType size = thisSize + 1;
+        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  Type_assign(result, this, sizeof(struct $name));
+        |  result->value[thisSize] = value;
+        |  result->size = size;
+        |}
+        |
+        |static inline void ${name}_prepend(StackFrame caller, $name this, $elementTypePtr value, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType size = thisSize + 1;
+        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  result->value[0] = value;
+        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++)
+        |    result->value[i + 1] = this->value[i];
+        |  result->size = size;
+        |}
+        |
+        |static inline void ${name}_appendAll(StackFrame caller, $name this, $name other, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "++", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType otherSize = other->size;
+        |  $indexType size = thisSize + otherSize;
+        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  Type_assign(result, this, sizeof($name));
+        |  for ($indexType i = ${indexType}_C(0); i < otherSize; i++)
+        |    result->value[thisSize + i] = other->value[i];
+        |  result->size = size;
+        |}
+        |
+        |static inline void ${name}_remove(StackFrame caller, $name this, $elementTypePtr value, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "-", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType k = ${indexType}_C(0);
+        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++) {
+        |    $elementTypePtr o = this->value[i];
+        |    if (${elementTypePtr}_ne(o, value)) result->value[k++] = o;
+        |  }
+        |  result->size = k;
+        |}
+        |
+        |static inline void ${name}_removeAll(StackFrame caller, $name this, $name other, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "--", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType otherSize = other->size;
+        |  $indexType k = ${indexType}_C(0);
+        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++) {
+        |    B found = F;
+        |    $elementTypePtr o = this->value[i];
+        |    for ($indexType j = ${indexType}_C(0); j < otherSize && !found; j++)
+        |      if (${elementTypePtr}_eq(o, other->value[j])) found = T;
+        |    if (!found) result->value[k++] = o;
+        |  }
+        |  result->size = k;
+        |}"""
+      else
+        st""" // $tpe
+        |
+        |static inline void ${name}_append(StackFrame caller, $name this, $elementTypePtr value, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType size = thisSize + 1;
+        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  Type_assign(result, this, sizeof(struct $name));
+        |  Type_assign(&result->value[thisSize], value, sizeof($elementType));
+        |  result->size = size;
+        |}
+        |
+        |static inline void ${name}_prepend(StackFrame caller, $name this, $elementTypePtr value, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType size = thisSize + 1;
+        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  Type_assign(&result->value[0], value, sizeof($elementType));
+        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++)
+        |    Type_assign(&result->value[i + 1], &this->value[i], sizeof($elementType));
+        |  result->size = size;
+        |}
+        |
+        |static inline void ${name}_appendAll(StackFrame caller, $name this, $name other, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "++", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType otherSize = other->size;
+        |  $indexType size = thisSize + otherSize;
+        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  Type_assign(result, this, sizeof(struct $name));
+        |  for ($indexType i = ${indexType}_C(0); i < otherSize; i++)
+        |    Type_assign(&result->value[thisSize + i], &other->value[i], sizeof($elementType));
+        |  result->size = size;
+        |}
+        |
+        |static inline void ${name}_remove(StackFrame caller, $name this, $elementTypePtr value, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "-", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType k = ${indexType}_C(0);
+        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++) {
+        |    $elementTypePtr o = &this->value[i];
+        |    if (${elementTypePtr}_ne(o, value))
+        |      Type_assign(&result->value[k++], o, sizeof($elementType));
+        |  }
+        |  result->size = k;
+        |}
+        |
+        |static inline void ${name}_removeAll(StackFrame caller, $name this, $name other, $name result) {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "--", 0);
+        |  $indexType thisSize = this->size;
+        |  $indexType otherSize = other->size;
+        |  $indexType k = ${indexType}_C(0);
+        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++) {
+        |    B found = F;
+        |    $elementTypePtr o = &this->value[i];
+        |    for ($indexType j = ${indexType}_C(0); j < otherSize && !found; j++)
+        |      if (${elementTypePtr}_eq(o, &other->value[j])) found = T;
+        |    if (!found) Type_assign(&result->value[k++], o, sizeof($elementType));
+        |  }
+        |  result->size = k;
+        |}"""
+
+    val typeHeader =
       st"""// $tpe
       |${(includes, "\n")}
       |
@@ -287,18 +408,15 @@ object StaticTemplate {
       |  $elementType value[Max$name];
       |};
       |
-      |#define Decl$name(x, e) struct $name x = e
-      |#define New$name() ((struct $name) { TYPE_$name, ${indexType}_C(0) })
-      |#define DeclNew$name(x) Decl$name(x, New$name())
+      |#define DeclNew$name(x) struct $name; memset(&$name, 0, sizeof(struct $name)); $name.type = T$name
       |#define ${name}_size(this) ((this)->size)
-      |#define ${name}_up(this, i) ((this)->value[i])
-      |#define ${name}_at(this, i) (($elementTypePtr) &(AString_up(this, i)))"""
-    return r
+      |#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[i$offset]))"""
+    return (typeHeader, header)
   }
 
   @pure def enum(tpe: String, name: ST, elements: ISZ[String]): ST = {
     @pure def enumCase(element: String): ST = {
-      val r = st"""case ${name}_$element: stringCopy(string("$element"), r); break;"""
+      val r = st"""case ${name}_$element: String_assign(r, string("$element")); break;"""
       return r
     }
 

@@ -154,8 +154,8 @@ import StaticTranspiler._
         maxElementSize(iszStringType),
         typeNames
       )
-      r = r + ISZ[String]("types.h") ~> typesH(typeQNames)
-      r = r + ISZ[String]("types.c") ~> typesC(typeNames)
+      r = r + ISZ[String]("types.h") ~> typesH(typeQNames, typeNames)
+      r = r + ISZ[String]("types.c") ~> typesC()
       r = r + ISZ[String]("all.h") ~> allH(typeQNames)
       r = r ++ compiled(compiledMap)
       r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
@@ -217,18 +217,30 @@ import StaticTranspiler._
       val et = t.args(1)
       val indexType = genType(it)
       val elementType = genType(et)
+      val minIndex: Z = if (it == AST.Typed.z) {
+        0
+      } else {
+        ts.typeHierarchy.typeMap.get(it.asInstanceOf[AST.Typed.Name].ids).get match {
+          case info: TypeInfo.SubZ => if (info.ast.isZeroIndex) 0 else info.ast.min
+          case _ => halt("Infeasible")
+        }
+      }
       val value = getCompiled(key)
+      val (typeHeader, header) = array(
+        includes(key, ISZ(it, et)),
+        t.string,
+        t.ids == AST.Typed.isName,
+        mangledName,
+        indexType,
+        minIndex,
+        typeKind(it) == TypeKind.Scalar,
+        elementType,
+        transpileType(et, T),
+        maxElementSize(et)
+      )
       compiledMap = compiledMap + key ~> value(
-        typeHeader = value.typeHeader :+
-          array(
-            includes(key, ISZ(it, et)),
-            t.string,
-            mangledName,
-            indexType,
-            elementType,
-            transpileType(et, T),
-            maxElementSize(et)
-          )
+        typeHeader = value.typeHeader :+ typeHeader,
+        header = value.header :+ header
       )
     }
     def genClass(t: AST.Typed.Name, mangledName: ST): Unit = {
@@ -959,14 +971,16 @@ import StaticTranspiler._
 
   @pure def transpileType(tpe: AST.Typed, isPtr: B): ST = {
     val t = typeNameMap.get(tpe).get
-    val r: ST = if (isPtr) {
-      val tk = typeKind(tpe)
-      if (tk == TypeKind.ImmutableTrait || tk == TypeKind.MutableTrait) st"union $t"
-      else st"struct $t"
+    if (isPtr) {
+      return st"$t"
     } else {
-      st"$t"
+      typeKind(tpe) match {
+        case TypeKind.ImmutableTrait => return st"union $t"
+        case TypeKind.MutableTrait => return st"union $t"
+        case TypeKind.Scalar => return st"$t"
+        case _ => return st"struct $t"
+      }
     }
-    return r
   }
 
   @pure def typeKind(t: AST.Typed): TypeKind.Type = {
@@ -977,6 +991,7 @@ import StaticTranspiler._
       case AST.Typed.f32 =>
       case AST.Typed.f64 =>
       case AST.Typed.r =>
+      case AST.Typed.string => return TypeKind.Immutable
       case t: AST.Typed.Name =>
         if (t.ids == AST.Typed.isName) {
           return TypeKind.IS
