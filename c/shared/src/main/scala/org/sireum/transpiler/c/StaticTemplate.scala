@@ -657,7 +657,7 @@ object StaticTemplate {
     val stringHeader = st"void ${mangledName}_string(String result, StackFrame caller, $mangledName this)"
     val stringImpl =
       st"""$stringHeader {
-      |  DeclNewStackFrame(caller, "$uri.scala", "$mangledName", "string", 0);
+      |  DeclNewStackFrame(caller, "$uri", "$mangledName", "string", 0);
       |  switch (this) {
       |    ${(
         for (e <- elements) yield st"""case ${elementName(e)}: String_string(result, sf, string("$e")); return;""",
