@@ -12,7 +12,6 @@ object StaticTemplate {
 
   val sireumDir: String = "sireum"
   val libraryDir: String = "library"
-  val worksheetFilename: ST = st"worksheet"
 
   val keywords: HashSet[String] = HashSet ++ ISZ(
     "auto",
@@ -207,7 +206,7 @@ object StaticTemplate {
   }
 
   @pure def filenameOf(name: QName): ST = {
-    return if (name.size == z"1") worksheetFilename else st"${(name, "_")}"
+    return st"${(name, "_")}"
   }
 
   @pure def typeHeaderFilename(filename: ST): ST = {
@@ -323,7 +322,7 @@ object StaticTemplate {
       |  $elementType value[Max$name];
       |};
       |
-      |#define DeclNew$name(x) struct $name = { .type = T$name }
+      |#define DeclNew$name(x) struct $name x = { .type = T$name }
       |#define ${name}_size(this) ((this)->size)
       |#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[i$offset]))"""
     val appendHeader = st"void ${name}_append($name result, StackFrame caller, $name this, $elementTypePtr value)"
@@ -543,8 +542,13 @@ object StaticTemplate {
     )
   }
 
+  @pure def elementName(owner: QName, id: String): ST = {
+    return st"${mangleName(owner)}_${enumName(id)}"
+  }
+
   @pure def enum(
     compiled: Compiled,
+    uri: String,
     name: QName,
     elements: ISZ[String],
     optElementType: ST,
@@ -552,12 +556,12 @@ object StaticTemplate {
     noneElementType: ST,
     iszElementType: ST
   ): Compiled = {
+    val mangledName = mangleName(name)
+
     @pure def enumCase(element: String): ST = {
-      val r = st"""case ${name}_${enumName(element)}: String_assign(r, string("$element")); break;"""
+      val r = st"""case ${mangledName}_${enumName(element)}: String_assign(result, string("$element")); return;"""
       return r
     }
-
-    val mangledName = mangleName(name)
 
     @pure def elementName(id: String): ST = {
       return st"${mangledName}_${enumName(id)}"
@@ -566,36 +570,7 @@ object StaticTemplate {
     val indices = elements.indices.map((n: Z) => n)
 
     val tpe = dotName(name)
-    val byNameHeader = st"void ${mangledName}_byName($optElementType result, String s)"
-    val byNameImpl =
-      st"""
-      |$byNameHeader {
-      |  ${(for (e <- elements) yield st"""if (String_eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(e)} }), sizeof(union $optElementType));""", "\nelse")}
-      |  else Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType));
-      |}"""
 
-    val byOrdinalHeader = st"void ${mangledName}_byName($optElementType result, Z n)"
-    val byOrdinalImpl =
-      st"""
-      |$byOrdinalHeader {
-      |  switch (($mangledName) n) {
-      |    ${(for (e <- elements) yield st"""case ${elementName(e)}: Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(e)} }), sizeof(union $optElementType)); return;""", "\n")}
-      |    default: Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType)); return;
-      |  }
-      |}"""
-    val elementsHeader = st"void ${mangledName}_elements($iszElementType result, StackFrame caller, String s)"
-    val elementsImpl =
-      st"""
-      |$elementsHeader {
-      |  result->size = Z_C(${elements.size});
-      |  ${(for (p <- ops.ISZOps(elements).zip(indices)) yield st"result->value[${p._2}] = ${elementName(p._1)};", "\n")}
-      |}"""
-    val numOfElementsHeader = st"Z ${mangledName}_numOfElements(StackFrame caller, String s)"
-    val numOfElementsImpl =
-      st"""
-      |$numOfElementsHeader {
-      |  return Z_C(${elements.size});
-      }"""
     val typeHeader =
       st"""// $tpe
       |typedef enum {
@@ -606,29 +581,102 @@ object StaticTemplate {
       )}
       |} $mangledName;
       |
+      |static inline B ${mangledName}_eq($mangledName this, $mangledName other) {
+      |  return this == other;
+      |}
+      |
+      |static inline B ${mangledName}_ne($mangledName this, $mangledName other) {
+      |  return this != other;
+      |}
+      |
       |static inline Z ${mangledName}_ordinal($mangledName this) {
       |  return (Z) this;
       |}
       |
-      |static inline struct StaticString ${mangledName}_name($mangledName this) {
-      |  DeclNewString(r);
+      |static inline void ${mangledName}_name(String result, $mangledName this) {
       |  switch (this) {
       |    ${(for (e <- elements) yield enumCase(e), "\n")}
       |  }
-      |  return r;
+      |}"""
+
+    val byNameHeader = st"void ${mangledName}_byName($optElementType result, String s)"
+    val byNameImpl =
+      st"""
+      |$byNameHeader {
+      |  ${(
+        for (e <- elements)
+          yield
+            st"""if (String_eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
+              e
+            )} }), sizeof(union $optElementType));""",
+        "\nelse"
+      )}
+      |  else Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType));
+      |}"""
+
+    val byOrdinalHeader = st"void ${mangledName}_byName($optElementType result, Z n)"
+    val byOrdinalImpl =
+      st"""
+      |$byOrdinalHeader {
+      |  switch (($mangledName) n) {
+      |    ${(
+        for (e <- elements)
+          yield
+            st"""case ${elementName(e)}: Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
+              e
+            )} }), sizeof(union $optElementType)); return;""",
+        "\n"
+      )}
+      |    default: Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType)); return;
+      |  }
+      |}"""
+    val elementsHeader = st"void ${mangledName}_elements($iszElementType result)"
+    val elementsImpl =
+      st"""
+      |$elementsHeader {
+      |  result->size = Z_C(${elements.size});
+      |  ${(for (p <- ops.ISZOps(elements).zip(indices)) yield st"result->value[${p._2}] = ${elementName(p._1)};", "\n")}
+      |}"""
+    val numOfElementsHeader = st"Z ${mangledName}_numOfElements()"
+    val numOfElementsImpl =
+      st"""
+      |$numOfElementsHeader {
+      |  return Z_C(${elements.size});
+      }"""
+    val cprintHeader = st"void ${mangledName}_cprint($mangledName this, B isOut)"
+    val cprintImpl =
+      st"""
+      |$cprintHeader {
+      |  switch (this) {
+      |    ${(
+        for (e <- elements) yield st"""case ${elementName(e)}: String_cprint(string("$e"), isOut); return;""",
+        "\n"
+      )}
+      |  }
+      |}"""
+    val stringHeader = st"void ${mangledName}_string(String result, StackFrame caller, $mangledName this)"
+    val stringImpl =
+      st"""$stringHeader {
+      |  DeclNewStackFrame(caller, "$uri.scala", "$mangledName", "string", 0);
+      |  switch (this) {
+      |    ${(
+        for (e <- elements) yield st"""case ${elementName(e)}: String_string(result, sf, string("$e")); return;""",
+        "\n"
+      )}
+      |  }
       |}"""
     val header =
       st"""// $tpe
-      |$byNameHeader;
-      |$byOrdinalHeader;
       |$elementsHeader;
-      |$numOfElementsHeader;"""
+      |$numOfElementsHeader;
+      |$cprintHeader;
+      |$stringHeader;"""
     val impl =
       st"""// $tpe
-      |$byNameImpl
-      |$byOrdinalImpl
       |$elementsImpl
-      |$numOfElementsImpl"""
+      |$numOfElementsImpl
+      |$cprintImpl
+      |$stringImpl"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
       header = compiled.header :+ header,
@@ -665,8 +713,8 @@ object StaticTemplate {
     return st"$id" // TODO
   }
 
-  @pure def typeName(tOpt: Option[AST.Typed]): QName = {
-    return tOpt.get.asInstanceOf[AST.Typed.Name].ids
+  @pure def typeName(t: AST.Typed): QName = {
+    return t.asInstanceOf[AST.Typed.Name].ids
   }
 
   @pure def removeExt(filename: String): String = {
@@ -679,7 +727,7 @@ object StaticTemplate {
     }
   }
 
-  @pure def filename(uriOpt: Option[String]): String = {
+  @pure def filename(uriOpt: Option[String], default: String): String = {
     uriOpt match {
       case Some(uri) =>
         val sops = ops.StringOps(uri)
@@ -688,14 +736,14 @@ object StaticTemplate {
           return uri
         }
         return sops.substring(i + 1, uri.size)
-      case _ => return "main"
+      case _ => return default
     }
   }
 
-  @pure def filenameOfPosOpt(posOpt: Option[Position]): String = {
+  @pure def filenameOfPosOpt(posOpt: Option[Position], default: String): String = {
     posOpt match {
-      case Some(pos) => return filename(pos.uriOpt)
-      case _ => return filename(None())
+      case Some(pos) => return filename(pos.uriOpt, default)
+      case _ => return default
     }
   }
 }

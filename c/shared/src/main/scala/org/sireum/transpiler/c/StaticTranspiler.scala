@@ -151,9 +151,9 @@ import StaticTranspiler._
       r = r + ISZ(runtimeDir, ztypeFilename) ~> ztype
 
       val typeNames: ISZ[(String, ST)] = {
-        var tn: ISZ[(String, ST)] = ISZ()
+        var tn: ISZ[(String, ST)] = ISZ((dotName(AST.Typed.stringName), st"${mangleName(AST.Typed.stringName)}"))
         for (e <- typeNameMap.entries) {
-          if (!builtInTypes.contains(e._1) || e._1 == AST.Typed.string) {
+          if (!builtInTypes.contains(e._1) && !isScalar(typeKind(e._1))) {
             tn = tn :+ ((e._1.string, e._2))
           }
         }
@@ -185,6 +185,14 @@ import StaticTranspiler._
   }
 
   @pure def minIndexMaxElementSize(indexType: AST.Typed, elementType: AST.Typed): (Z, Z) = {
+    elementType match {
+      case elementType: AST.Typed.Name if elementType.args.isEmpty =>
+        ts.typeHierarchy.typeMap.get(elementType.ids).get match {
+          case info: TypeInfo.Enum => return (z"0", info.elements.size)
+          case _ =>
+        }
+      case _ =>
+    }
     val size: Z = config.customArraySizes.get(elementType) match {
       case Some(n) => n
       case _ => config.maxArraySize
@@ -224,10 +232,13 @@ import StaticTranspiler._
     }
     t match {
       case t: AST.Typed.Name =>
-        return if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
+        ts.typeHierarchy.typeMap.get(t.ids).get match {
+          case _: TypeInfo.Enum => return (mangleName(ops.ISZOps(t.ids).dropRight(1)), F)
+          case _ => return if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
+        }
       case t: AST.Typed.Tuple => return (st"Tuple${t.args.size}_$fprint", T)
       case t: AST.Typed.Fun => return (st"Fun${t.args.size}_$fprint", T)
-      case _ => halt("Infeasible")
+      case _ => halt(s"Infeasible: $t")
     }
   }
 
@@ -239,13 +250,13 @@ import StaticTranspiler._
         case t: AST.Typed.Fun => AST.Typed.sireumName :+ s"Fun${t.args.size}"
         case _ => halt("Infeasible")
       }
-      return if (tname == name) None() else Some(tname)
+      return if (tname == name) None() else if (tname.size == z"1") None() else Some(tname)
     }
 
     @pure def includes(name: QName, ts: ISZ[AST.Typed]): ISZ[ST] = {
       var r = ISZ[ST]()
       for (t <- ts) {
-        if (!builtInTypes.contains(t)) {
+        if (!builtInTypes.contains(t) && !isScalar(typeKind(t))) {
           typeFilename(name, t) match {
             case Some(n) => r = r :+ st"#include <${typeHeaderFilename(filenameOf(n))}>"
             case _ =>
@@ -278,11 +289,11 @@ import StaticTranspiler._
       )
       compiledMap = compiledMap + key ~> newValue
     }
-    def genEnum(t: AST.Typed.Name): Unit = {
+    def genEnum(t: AST.Typed.Name): ST = {
       val name = ops.ISZOps(t.ids).dropRight(1)
       val info = ts.typeHierarchy.nameMap.get(name).get.asInstanceOf[Info.Enum]
       val elements = info.elements.keys
-      val elementType = info.elementsTypedOpt.get
+      val elementType = info.elementTypedOpt.get
       val optionElementType = AST.Typed.Name(optionName, ISZ(elementType))
       val someElementType = AST.Typed.Name(someName, ISZ(elementType))
       val noneElementType = AST.Typed.Name(noneName, ISZ(elementType))
@@ -290,6 +301,7 @@ import StaticTranspiler._
       val value = getCompiled(name)
       val newValue = enum(
         value,
+        filenameOfPosOpt(info.posOpt, ""),
         name,
         elements,
         fingerprint(optionElementType)._1,
@@ -298,6 +310,7 @@ import StaticTranspiler._
         fingerprint(iszElementType)._1
       )
       compiledMap = compiledMap + name ~> newValue
+      return mangleName(name)
     }
     def genClass(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
@@ -321,7 +334,6 @@ import StaticTranspiler._
       }
       t match {
         case t: AST.Typed.Name =>
-          val p: (ST, B) = fingerprint(t)
           if (!builtInTypes.contains(t)) {
             typeKind(t) match {
               case TypeKind.Immutable => genClass(t)
@@ -330,7 +342,7 @@ import StaticTranspiler._
               case TypeKind.MutableTrait => genTrait(t)
               case TypeKind.IS => genArray(t)
               case TypeKind.MS => genArray(t)
-              case TypeKind.Enum => genEnum(t)
+              case TypeKind.Enum => val r = genEnum(t); typeNameMap = typeNameMap + t ~> r; return r
               case _ => genSubZ(t)
             }
           }
@@ -379,7 +391,7 @@ import StaticTranspiler._
       case Some(pos) => pos.uriOpt
       case _ => None()
     }
-    val fname = filename(fileUriOpt)
+    val fname = filename(fileUriOpt, "main")
     val exeName = removeExt(fname)
     return (
       if (i == z"0") exeName else if (exeName == string"main") s"main$i" else exeName,
@@ -388,7 +400,7 @@ import StaticTranspiler._
   }
 
   def transpileWorksheet(program: AST.TopUnit.Program, i: Z): (String, ST) = {
-    val fname = filename(program.fileUriOpt)
+    val fname = filename(program.fileUriOpt, "main")
     val exeName = removeExt(fname)
     stmts = ISZ()
     nextTempNum = 0
@@ -426,7 +438,7 @@ import StaticTranspiler._
     }
     val impl =
       st"""$header {
-      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.info.ast.posOpt)}", "${dotName(info.owner)}", "${info.id}", 0);
+      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.info.ast.posOpt, "")}", "${dotName(info.owner)}", "${info.id}", 0);
       |  ${(stmts, "\n")}
       |}"""
 
@@ -510,7 +522,7 @@ import StaticTranspiler._
     }
 
     @pure def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
-      val tname = typeName(exp.attr.typedOpt)
+      val tname = typeName(expType(exp))
       val info: TypeInfo.SubZ = ts.typeHierarchy.typeMap.get(tname).get.asInstanceOf[TypeInfo.SubZ]
       val n = Z(exp.lits(0).value).get
       checkBitWidth(n, info.ast.bitWidth)
@@ -537,7 +549,7 @@ import StaticTranspiler._
     def transBinary(exp: AST.Exp.Binary): ST = {
       exp.attr.resOpt.get match {
         case res: AST.ResolvedInfo.BuiltIn =>
-          val tname = typeName(exp.left.typedOpt)
+          val tname = typeName(expType(exp.left))
           res.kind match {
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryImply =>
               return st"(!(${transpileExp(exp.left)}) || ${transpileExp(exp.right)})"
@@ -583,7 +595,7 @@ import StaticTranspiler._
           if (res.kind == AST.ResolvedInfo.BuiltIn.Kind.UnaryNot) {
             return st"!${transpileExp(exp.exp)}"
           } else {
-            val tname = typeName(exp.typedOpt)
+            val tname = typeName(expType(exp))
             val op: String = res.kind match {
               case AST.ResolvedInfo.BuiltIn.Kind.UnaryComplement => "_complement"
               case AST.ResolvedInfo.BuiltIn.Kind.UnaryPlus => "_plus"
@@ -597,13 +609,36 @@ import StaticTranspiler._
     }
 
     def isSubZLit(exp: AST.Exp.StringInterpolate): B = {
-      exp.attr.typedOpt.get match {
+      expType(exp) match {
         case t: AST.Typed.Name if t.args.isEmpty =>
           ts.typeHierarchy.typeMap.get(t.ids) match {
             case Some(_: TypeInfo.SubZ) => return T
             case _ => return F
           }
         case _ => return F
+      }
+    }
+
+    def transSelect(select: AST.Exp.Select): ST = {
+      select.attr.resOpt.get match {
+        case res: AST.ResolvedInfo.EnumElement => return elementName(res.owner, res.name)
+        case res: AST.ResolvedInfo.BuiltIn =>
+          res.kind match {
+            case AST.ResolvedInfo.BuiltIn.Kind.EnumElements =>
+              val owner = expType(select.receiverOpt.get).asInstanceOf[AST.Typed.Enum].name
+              val iszType = fingerprint(expType(select))._1
+              val temp = freshTempName()
+              stmts = stmts :+ st"DeclNew$iszType($temp);"
+              stmts = stmts :+ st"${mangleName(owner)}_elements(&$temp);"
+              return st"(&$temp)"
+            case AST.ResolvedInfo.BuiltIn.Kind.EnumNumOfElements =>
+              val owner = expType(select.receiverOpt.get).asInstanceOf[AST.Typed.Enum].name
+              val temp = freshTempName()
+              stmts = stmts :+ st"Z $temp = ${mangleName(owner)}_numOfElements();"
+              return temp
+            case _ => halt(s"TODO: ${res.kind}") // TODO
+          }
+        case res => halt(s"TODO: $res") // TODO
       }
     }
 
@@ -619,44 +654,27 @@ import StaticTranspiler._
       case exp: AST.Exp.Ident => val r = transIdent(exp); return r
       case exp: AST.Exp.Binary => val r = transBinary(exp); return r
       case exp: AST.Exp.Unary => val r = transUnary(exp); return r
+      case exp: AST.Exp.Select => val r = transSelect(exp); return r
       case _ => halt(s"TODO: $exp") // TODO
     }
   }
 
   def transToString(s: ST, exp: AST.Exp): Unit = {
     val tmp = transpileExp(exp)
-    exp.typedOpt.get match {
-      case t: AST.Typed.Name =>
-        if (t.args.isEmpty) {
-          stmts = stmts :+ st"${mangleName(t.ids)}_string($s, sf, $tmp);"
-        } else {
-          stmts = stmts :+ st"${mangleName(t.ids)}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}($s, sf, $tmp);"
-        }
-      case t: AST.Typed.Tuple =>
-        stmts = stmts :+ st"Tuple${t.args.size}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}($s, sf, $tmp);"
-      case t: AST.Typed.Fun =>
-        stmts = stmts :+ st"Fun_string_${Fingerprint.string(t.string, config.fprintWidth)}($s, sf, $tmp);"
-      case _ => halt("Infeasible")
-    }
+    val mangledName = fingerprint(expType(exp))._1
+    stmts = stmts :+ st"${mangledName}_string($s, sf, $tmp);"
   }
 
   def transPrintH(isOut: ST, exp: AST.Exp): Unit = {
-    // TODO: Gen print on demand
     val tmp = transpileExp(exp)
+    val mangledName = fingerprint(expType(exp))._1
+    stmts = stmts :+ st"${mangledName}_cprint($tmp, $isOut);"
+  }
+
+  def expType(exp: AST.Exp): AST.Typed = {
     exp.typedOpt.get match {
-      case t: AST.Typed.Name =>
-        if (t.ids == AST.Typed.isName || t.ids == AST.Typed.msName) {
-          stmts = stmts :+ st"A_cprint_${Fingerprint.string(t.args(0).string, config.fprintWidth)}($tmp, $isOut);"
-        } else if (t.args.isEmpty) {
-          stmts = stmts :+ st"${mangleName(t.ids)}_cprint($tmp, $isOut);"
-        } else {
-          stmts = stmts :+ st"${mangleName(t.ids)}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp, $isOut);"
-        }
-      case t: AST.Typed.Tuple =>
-        stmts = stmts :+ st"Tuple${t.args.size}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp, $isOut);"
-      case t: AST.Typed.Fun =>
-        stmts = stmts :+ st"Fun_cprint_${Fingerprint.string(t.string, config.fprintWidth)}($tmp, $isOut);"
-      case _ => halt("Infeasible")
+      case t: AST.Typed.Method if t.tpe.isByName => return t.tpe.ret
+      case t => return t
     }
   }
 
@@ -747,7 +765,7 @@ import StaticTranspiler._
 
     def transAssign(stmt: AST.Stmt.Assign, rhs: AST.Stmt.Expr): Unit = {
       transpileLoc(stmt)
-      val t = stmt.lhs.typedOpt.get
+      val t = expType(stmt.lhs)
       if (isScalar(typeKind(t))) {
         stmt.lhs match {
           case lhs: AST.Exp.Ident =>

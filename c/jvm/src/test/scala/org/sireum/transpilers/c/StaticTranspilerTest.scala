@@ -41,6 +41,22 @@ class StaticTranspilerTest extends TestSuite {
                         |  i = i + 1
                         |}""".stripMargin)
 
+    * - testWorksheet("""@enum object Direction {
+                        |  'Left
+                        |  'Right
+                        |}
+                        |
+                        |println(Direction.Left)
+                        |println(Direction.Right)
+                        |//println(Direction.byName("Left"))
+                        |//println(Direction.byName("Right"))
+                        |//println(Direction.byName(""))
+                        |//println(Direction.byOrdinal(0))
+                        |//println(Direction.byOrdinal(1))
+                        |//println(Direction.byOrdinal(2))
+                        |println(Direction.elements)
+                        |println(Direction.numOfElements)""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Boolean = {
