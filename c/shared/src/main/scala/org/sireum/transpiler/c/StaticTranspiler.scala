@@ -17,12 +17,13 @@ object StaticTranspiler {
     'Mutable
     'IS
     'MS
-    'Scalar1
-    'Scalar8
-    'Scalar16
-    'Scalar32
-    'Scalar64
     'R
+    'Scalar64
+    'Scalar32
+    'Enum
+    'Scalar16
+    'Scalar8
+    'Scalar1
   }
 
   type SubstMap = HashMap[String, AST.Typed]
@@ -71,6 +72,12 @@ object StaticTranspiler {
 
   val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
   val mainType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(iszStringType), AST.Typed.unit)
+  val optionName: QName = AST.Typed.optionName
+  val someName: QName = AST.Typed.optionName
+  val noneName: QName = AST.Typed.optionName
+  val eitherName: QName = AST.Typed.sireumName :+ "Either"
+  val moptionName: QName = AST.Typed.sireumName :+ "MOption"
+  val meitherName: QName = AST.Typed.sireumName :+ "MEither"
 }
 
 import StaticTemplate._
@@ -185,7 +192,8 @@ import StaticTranspiler._
     if (indexType == AST.Typed.z) {
       return (z"0", size)
     }
-    val ast = ts.typeHierarchy.typeMap.get(indexType.asInstanceOf[AST.Typed.Name].ids).get.asInstanceOf[TypeInfo.SubZ].ast
+    val ast =
+      ts.typeHierarchy.typeMap.get(indexType.asInstanceOf[AST.Typed.Name].ids).get.asInstanceOf[TypeInfo.SubZ].ast
     if (ast.isZeroIndex) {
       if (ast.hasMin && ast.hasMax) {
         val d = ast.max + -ast.min
@@ -210,13 +218,25 @@ import StaticTranspiler._
     }
   }
 
+  @pure def fingerprint(t: AST.Typed): (ST, B) = {
+    def fprint: String = {
+      return Fingerprint.string(t.string, config.fprintWidth)
+    }
+    t match {
+      case t: AST.Typed.Name =>
+        return if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
+      case t: AST.Typed.Tuple => return (st"Tuple${t.args.size}_$fprint", T)
+      case t: AST.Typed.Fun => return (st"Fun${t.args.size}_$fprint", T)
+      case _ => halt("Infeasible")
+    }
+  }
+
   def genTypeNames(): Unit = {
     @pure def typeFilename(name: QName, t: AST.Typed): Option[QName] = {
       val tname: QName = t match {
         case t: AST.Typed.Name => t.ids
         case t: AST.Typed.Tuple => AST.Typed.sireumName :+ s"Tuple${t.args.size}"
         case t: AST.Typed.Fun => AST.Typed.sireumName :+ s"Fun${t.args.size}"
-        case t: AST.Typed.Enum => t.name
         case _ => halt("Infeasible")
       }
       return if (tname == name) None() else Some(tname)
@@ -235,7 +255,7 @@ import StaticTranspiler._
       return r
     }
 
-    def genArray(t: AST.Typed.Name, mangledName: ST): Unit = {
+    def genArray(t: AST.Typed.Name): Unit = {
       val key = t.ids
       val it = t.args(0)
       val et = t.args(1)
@@ -248,7 +268,7 @@ import StaticTranspiler._
         includes(key, ISZ(it, et)),
         t.string,
         t.ids == AST.Typed.isName,
-        mangledName,
+        fingerprint(t)._1,
         indexType,
         minIndex,
         isScalar(typeKind(it)),
@@ -258,63 +278,71 @@ import StaticTranspiler._
       )
       compiledMap = compiledMap + key ~> newValue
     }
-    def genClass(t: AST.Typed.Name, mangledName: ST): Unit = {
+    def genEnum(t: AST.Typed.Name): Unit = {
+      val name = ops.ISZOps(t.ids).dropRight(1)
+      val info = ts.typeHierarchy.nameMap.get(name).get.asInstanceOf[Info.Enum]
+      val elements = info.elements.keys
+      val elementType = info.elementsTypedOpt.get
+      val optionElementType = AST.Typed.Name(optionName, ISZ(elementType))
+      val someElementType = AST.Typed.Name(someName, ISZ(elementType))
+      val noneElementType = AST.Typed.Name(noneName, ISZ(elementType))
+      val iszElementType = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, elementType))
+      val value = getCompiled(name)
+      val newValue = enum(
+        value,
+        name,
+        elements,
+        fingerprint(optionElementType)._1,
+        fingerprint(someElementType)._1,
+        fingerprint(noneElementType)._1,
+        fingerprint(iszElementType)._1
+      )
+      compiledMap = compiledMap + name ~> newValue
+    }
+    def genClass(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
     }
-    def genTrait(t: AST.Typed.Name, mangledName: ST): Unit = {
+    def genTrait(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
     }
-    def genSubZ(t: AST.Typed.Name, mangledName: ST): Unit = {
+    def genSubZ(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
     }
-    def genTypedTuple(t: AST.Typed.Tuple, mangledName: ST): Unit = {
+    def genTuple(t: AST.Typed.Tuple): Unit = {
       halt(s"TODO: $t") // TODO
     }
-    def genTypedFun(t: AST.Typed.Fun, mangledName: ST): Unit = {
-      halt(s"TODO: $t") // TODO
-    }
-    def genTypedEnum(t: AST.Typed.Enum, mangledName: ST): Unit = {
+    def genFun(t: AST.Typed.Fun): Unit = {
       halt(s"TODO: $t") // TODO
     }
     def genType(t: AST.Typed): ST = {
-      def fprint: String = {
-        return Fingerprint.string(t.string, config.fprintWidth)
-      }
       typeNameMap.get(t) match {
         case Some(tr) => return tr
         case _ =>
       }
-      val (r, fprinted): (ST, B) = t match {
+      t match {
         case t: AST.Typed.Name =>
-          val p: (ST, B) = if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
+          val p: (ST, B) = fingerprint(t)
           if (!builtInTypes.contains(t)) {
             typeKind(t) match {
-              case TypeKind.Immutable => genClass(t, p._1)
-              case TypeKind.ImmutableTrait => genTrait(t, p._1)
-              case TypeKind.Mutable => genClass(t, p._1)
-              case TypeKind.MutableTrait => genTrait(t, p._1)
-              case TypeKind.IS => genArray(t, p._1)
-              case TypeKind.MS => genArray(t, p._1)
-              case _ => genSubZ(t, p._1)
+              case TypeKind.Immutable => genClass(t)
+              case TypeKind.ImmutableTrait => genTrait(t)
+              case TypeKind.Mutable => genClass(t)
+              case TypeKind.MutableTrait => genTrait(t)
+              case TypeKind.IS => genArray(t)
+              case TypeKind.MS => genArray(t)
+              case TypeKind.Enum => genEnum(t)
+              case _ => genSubZ(t)
             }
           }
-          p
         case t: AST.Typed.Tuple =>
-          val p = (st"Tuple${t.args.size}_$fprint", T)
-          genTypedTuple(t, p._1)
-          p
+          genTuple(t)
         case t: AST.Typed.Fun =>
-          val p = (st"Fun${t.args.size}_$fprint", T)
-          genTypedFun(t, p._1)
-          p
-        case t: AST.Typed.Enum =>
-          val p = (mangleName(t.name), F)
-          genTypedEnum(t, p._1)
-          p
+          genFun(t)
         case _ => halt("Infeasible: $t")
       }
-      if (fprinted) {
-        val tString = r.render
+      val p = fingerprint(t)
+      if (p._2) {
+        val tString = p._1.render
         mangledTypeNameMap.get(tString) match {
           case Some(t2) =>
             if (t != t2) {
@@ -327,8 +355,8 @@ import StaticTranspiler._
           case _ => mangledTypeNameMap = mangledTypeNameMap + tString ~> t
         }
       }
-      typeNameMap = typeNameMap + t ~> r
-      return r
+      typeNameMap = typeNameMap + t ~> p._1
+      return p._1
     }
 
     genType(AST.Typed.string)
@@ -599,17 +627,13 @@ import StaticTranspiler._
     val tmp = transpileExp(exp)
     exp.typedOpt.get match {
       case t: AST.Typed.Name =>
-        if (t.ids == AST.Typed.isName || t.ids == AST.Typed.msName) {
-          stmts = stmts :+ st"A_string_${Fingerprint.string(t.args(0).string, config.fprintWidth)}($s, sf, $tmp);"
-        } else if (t.args.isEmpty) {
-          stmts = stmts :+ st"${mangleName(t.ids)}_string($tmp, $s);"
+        if (t.args.isEmpty) {
+          stmts = stmts :+ st"${mangleName(t.ids)}_string($s, sf, $tmp);"
         } else {
           stmts = stmts :+ st"${mangleName(t.ids)}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}($s, sf, $tmp);"
         }
       case t: AST.Typed.Tuple =>
         stmts = stmts :+ st"Tuple${t.args.size}_string_${Fingerprint.string(t.args.string, config.fprintWidth)}($s, sf, $tmp);"
-      case t: AST.Typed.Enum =>
-        stmts = stmts :+ st"${mangleName(t.name)}_string($s, sf, $tmp);"
       case t: AST.Typed.Fun =>
         stmts = stmts :+ st"Fun_string_${Fingerprint.string(t.string, config.fprintWidth)}($s, sf, $tmp);"
       case _ => halt("Infeasible")
@@ -630,8 +654,6 @@ import StaticTranspiler._
         }
       case t: AST.Typed.Tuple =>
         stmts = stmts :+ st"Tuple${t.args.size}_cprint_${Fingerprint.string(t.args.string, config.fprintWidth)}($tmp, $isOut);"
-      case t: AST.Typed.Enum =>
-        stmts = stmts :+ st"${mangleName(t.name)}_cprint($tmp, $isOut);"
       case t: AST.Typed.Fun =>
         stmts = stmts :+ st"Fun_cprint_${Fingerprint.string(t.string, config.fprintWidth)}($tmp, $isOut);"
       case _ => halt("Infeasible")
@@ -1004,6 +1026,7 @@ import StaticTranspiler._
       case TypeKind.Scalar32 =>
       case TypeKind.Scalar64 =>
       case TypeKind.R =>
+      case TypeKind.Enum =>
       case _ => return F
     }
     return T
@@ -1035,7 +1058,7 @@ import StaticTranspiler._
     t match {
       case AST.Typed.b => return TypeKind.Scalar1
       case AST.Typed.c => return TypeKind.Scalar8
-      case AST.Typed.z => return bitWidthKind(config.defaultBitWidth)
+      case AST.Typed.z => bitWidthKind(config.defaultBitWidth)
       case AST.Typed.f32 => return TypeKind.Scalar32
       case AST.Typed.f64 => return TypeKind.Scalar64
       case AST.Typed.r => return TypeKind.R
@@ -1048,7 +1071,7 @@ import StaticTranspiler._
         } else {
           ts.typeHierarchy.typeMap.get(t.ids).get match {
             case info: TypeInfo.SubZ => return bitWidthKind(info.ast.bitWidth)
-            case info: TypeInfo.Enum => return bitWidthKindNumber(info.elements.size)
+            case info: TypeInfo.Enum => return TypeKind.Enum
             case info: TypeInfo.AbstractDatatype =>
               return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
               else if (info.ast.isRoot) TypeKind.MutableTrait

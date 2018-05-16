@@ -5,6 +5,6 @@ import org.sireum._
 
 @ext object Fingerprint {
 
-  def string(s: String, width: Z): String = $
+  @pure def string(s: String, width: Z): String = $
 
 }

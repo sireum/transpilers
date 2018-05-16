@@ -4,7 +4,6 @@ package org.sireum.transpilers.common
 
 import org.sireum._
 import org.sireum.alir.CallGraph
-import org.sireum.lang.ast.{Exp, MTransformer}
 import org.sireum.message._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
@@ -519,12 +518,9 @@ import TypeSpecializer._
           case _ => set + key
         }
         nameTypes = nameTypes + o.ids ~> newSet
-      case _: AST.Typed.Enum => otherTypes = otherTypes + o
+      case _: AST.Typed.Enum => // skip
       case _: AST.Typed.Tuple => otherTypes = otherTypes + o
-      case o: AST.Typed.Fun =>
-        if (!o.isByName) {
-          otherTypes = otherTypes + o
-        }
+      case _: AST.Typed.Fun => // skip
       case _: AST.Typed.Object => // skip
       case _: AST.Typed.Method => // skip
       case _: AST.Typed.Methods => halt("Infeasible")
@@ -595,7 +591,7 @@ import TypeSpecializer._
     return AST.MTransformer.PreResultResolvedAttr
   }
 
-  override def preExpIdent(o: Exp.Ident): MTransformer.PreResult[Exp] = {
+  override def preExpIdent(o: AST.Exp.Ident): AST.MTransformer.PreResult[AST.Exp] = {
     o.attr.resOpt.get match {
       case v: AST.ResolvedInfo.Var if !v.isInObject =>
         currSMethodOpt match {
@@ -626,7 +622,13 @@ import TypeSpecializer._
         }
       case _ =>
     }
+    otherTypes = otherTypes + o.typedOpt.get
     return AST.MTransformer.PreResultExpEta
+  }
+
+  override def preExpFun(o: AST.Exp.Fun): AST.MTransformer.PreResult[AST.Exp] = {
+    otherTypes = otherTypes + o.typedOpt.get
+    return AST.MTransformer.PreResultExpFun
   }
 
   override def preExpSelect(o: AST.Exp.Select): AST.MTransformer.PreResult[AST.Exp] = {
@@ -667,14 +669,9 @@ import TypeSpecializer._
     return AST.MTransformer.PreResultExpInvokeNamed
   }
 
-  override def postTyped(o: AST.Typed): MOption[AST.Typed] = {
+  override def preTyped(o: AST.Typed): AST.MTransformer.PreResult[AST.Typed] = {
     addType(o)
-    return MNone()
-  }
-
-  override def postTypedFun(o: AST.Typed.Fun): MOption[AST.Typed] = {
-    addType(o)
-    return MNone()
+    return AST.MTransformer.PreResultTypedName
   }
 
 }
