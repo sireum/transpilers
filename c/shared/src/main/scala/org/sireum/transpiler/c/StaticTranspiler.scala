@@ -11,13 +11,18 @@ import org.sireum.transpilers.common.TypeSpecializer
 object StaticTranspiler {
 
   @enum object TypeKind {
-    'Scalar
     'ImmutableTrait
-    'Immutable
     'MutableTrait
+    'Immutable
     'Mutable
     'IS
     'MS
+    'Scalar1
+    'Scalar8
+    'Scalar16
+    'Scalar32
+    'Scalar64
+    'R
   }
 
   type SubstMap = HashMap[String, AST.Typed]
@@ -151,7 +156,7 @@ import StaticTranspiler._
       val typeQNames = compiledMap.keys
       r = r + ISZ[String]("type-composite.h") ~> typeCompositeH(
         config.maxStringSize,
-        maxElementSize(iszStringType),
+        minIndexMaxElementSize(AST.Typed.z, AST.Typed.string)._2,
         typeNames
       )
       r = r + ISZ[String]("types.h") ~> typesH(typeQNames, typeNames)
@@ -172,10 +177,29 @@ import StaticTranspiler._
     return Result(r)
   }
 
-  @pure def maxElementSize(t: AST.Typed): Z = {
-    config.customArraySizes.get(t) match {
-      case Some(n) => return n
-      case _ => return config.maxArraySize
+  @pure def minIndexMaxElementSize(indexType: AST.Typed, elementType: AST.Typed): (Z, Z) = {
+    val size: Z = config.customArraySizes.get(elementType) match {
+      case Some(n) => n
+      case _ => config.maxArraySize
+    }
+    if (indexType == AST.Typed.z) {
+      return (z"0", size)
+    }
+    val ast = ts.typeHierarchy.typeMap.get(indexType.asInstanceOf[AST.Typed.Name].ids).get.asInstanceOf[TypeInfo.SubZ].ast
+    if (ast.isZeroIndex) {
+      if (ast.hasMin && ast.hasMax) {
+        val d = ast.max + -ast.min
+        return (z"0", if (d < size) d else size)
+      } else {
+        return (z"0", size)
+      }
+    } else {
+      if (ast.hasMax) {
+        val d = ast.max + -ast.min
+        return (ast.min, if (d < size) d else size)
+      } else {
+        return (ast.min, size)
+      }
     }
   }
 
@@ -217,15 +241,8 @@ import StaticTranspiler._
       val et = t.args(1)
       val indexType = genType(it)
       val elementType = genType(et)
-      val minIndex: Z = if (it == AST.Typed.z) {
-        0
-      } else {
-        ts.typeHierarchy.typeMap.get(it.asInstanceOf[AST.Typed.Name].ids).get match {
-          case info: TypeInfo.SubZ => if (info.ast.isZeroIndex) 0 else info.ast.min
-          case _ => halt("Infeasible")
-        }
-      }
       val value = getCompiled(key)
+      val (minIndex, maxElementSize) = minIndexMaxElementSize(it, et)
       val newValue = array(
         value,
         includes(key, ISZ(it, et)),
@@ -234,10 +251,10 @@ import StaticTranspiler._
         mangledName,
         indexType,
         minIndex,
-        typeKind(it) == TypeKind.Scalar,
+        isScalar(typeKind(it)),
         elementType,
         transpileType(et, T),
-        maxElementSize(et)
+        maxElementSize
       )
       compiledMap = compiledMap + key ~> newValue
     }
@@ -272,13 +289,13 @@ import StaticTranspiler._
           val p: (ST, B) = if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
           if (!builtInTypes.contains(t)) {
             typeKind(t) match {
-              case TypeKind.Scalar => genSubZ(t, p._1)
               case TypeKind.Immutable => genClass(t, p._1)
               case TypeKind.ImmutableTrait => genTrait(t, p._1)
               case TypeKind.Mutable => genClass(t, p._1)
               case TypeKind.MutableTrait => genTrait(t, p._1)
               case TypeKind.IS => genArray(t, p._1)
               case TypeKind.MS => genArray(t, p._1)
+              case _ => genSubZ(t, p._1)
             }
           }
           p
@@ -694,10 +711,10 @@ import StaticTranspiler._
         case Some(tipe) => tipe.typedOpt.get
         case _ => init.typedOpt.get
       }
-      typeKind(t) match {
-        case TypeKind.Scalar =>
-          stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transpileExp(init.exp)};"
-        case _ => halt("TODO") // TODO
+      if (isScalar(typeKind(t))) {
+        stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transpileExp(init.exp)};"
+      } else {
+        halt("TODO") // TODO
       }
     }
 
@@ -709,24 +726,24 @@ import StaticTranspiler._
     def transAssign(stmt: AST.Stmt.Assign, rhs: AST.Stmt.Expr): Unit = {
       transpileLoc(stmt)
       val t = stmt.lhs.typedOpt.get
-      typeKind(t) match {
-        case TypeKind.Scalar =>
-          stmt.lhs match {
-            case lhs: AST.Exp.Ident =>
-              lhs.attr.resOpt.get match {
-                case res: AST.ResolvedInfo.LocalVar =>
-                  res.scope match {
-                    case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
-                    case _ => stmts = stmts :+ st"${localName(lhs.id.value)} = ${transpileExp(rhs.exp)};"
-                  }
-                case res: AST.ResolvedInfo.Var => halt("TODO") // TODO
-                case _ => halt("Infeasible")
-              }
-            case lhs: AST.Exp.Select => halt("TODO") // TODO
-            case lhs: AST.Exp.Invoke => halt("TODO") // TODO
-            case _ => halt("Infeasible")
-          }
-        case _ => halt("TODO") // TODO
+      if (isScalar(typeKind(t))) {
+        stmt.lhs match {
+          case lhs: AST.Exp.Ident =>
+            lhs.attr.resOpt.get match {
+              case res: AST.ResolvedInfo.LocalVar =>
+                res.scope match {
+                  case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
+                  case _ => stmts = stmts :+ st"${localName(lhs.id.value)} = ${transpileExp(rhs.exp)};"
+                }
+              case res: AST.ResolvedInfo.Var => halt("TODO") // TODO
+              case _ => halt("Infeasible")
+            }
+          case lhs: AST.Exp.Select => halt("TODO") // TODO
+          case lhs: AST.Exp.Invoke => halt("TODO") // TODO
+          case _ => halt("Infeasible")
+        }
+      } else {
+        halt("TODO") // TODO
       }
     }
 
@@ -974,20 +991,54 @@ import StaticTranspiler._
       typeKind(tpe) match {
         case TypeKind.ImmutableTrait => return st"union $t"
         case TypeKind.MutableTrait => return st"union $t"
-        case TypeKind.Scalar => return st"$t"
-        case _ => return st"struct $t"
+        case kind => return if (isScalar(kind)) st"$t" else st"struct $t"
       }
     }
   }
 
-  @pure def typeKind(t: AST.Typed): TypeKind.Type = {
+  @pure def isScalar(kind: TypeKind.Type): B = {
+    kind match {
+      case TypeKind.Scalar1 =>
+      case TypeKind.Scalar8 =>
+      case TypeKind.Scalar16 =>
+      case TypeKind.Scalar32 =>
+      case TypeKind.Scalar64 =>
+      case TypeKind.R =>
+      case _ => return F
+    }
+    return T
+  }
+
+  @memoize def typeKind(t: AST.Typed): TypeKind.Type = {
+    @pure def bitWidthKindNumber(size: Z): TypeKind.Type = {
+      if (size < u8Max) {
+        return TypeKind.Scalar8
+      } else if (size < u16Max) {
+        return TypeKind.Scalar16
+      } else if (size < u32Max) {
+        return TypeKind.Scalar32
+      } else if (size < u64Max) {
+        return TypeKind.Scalar64
+      } else {
+        halt("Infeasible")
+      }
+    }
+    @pure def bitWidthKind(n: Z): TypeKind.Type = {
+      n match {
+        case z"8" => return TypeKind.Scalar8
+        case z"16" => return TypeKind.Scalar16
+        case z"32" => return TypeKind.Scalar32
+        case z"64" => return TypeKind.Scalar64
+        case _ => halt("Infeasible")
+      }
+    }
     t match {
-      case AST.Typed.b =>
-      case AST.Typed.c =>
-      case AST.Typed.z =>
-      case AST.Typed.f32 =>
-      case AST.Typed.f64 =>
-      case AST.Typed.r =>
+      case AST.Typed.b => return TypeKind.Scalar1
+      case AST.Typed.c => return TypeKind.Scalar8
+      case AST.Typed.z => return bitWidthKind(config.defaultBitWidth)
+      case AST.Typed.f32 => return TypeKind.Scalar32
+      case AST.Typed.f64 => return TypeKind.Scalar64
+      case AST.Typed.r => return TypeKind.R
       case AST.Typed.string => return TypeKind.Immutable
       case t: AST.Typed.Name =>
         if (t.ids == AST.Typed.isName) {
@@ -996,8 +1047,8 @@ import StaticTranspiler._
           return TypeKind.MS
         } else {
           ts.typeHierarchy.typeMap.get(t.ids).get match {
-            case _: TypeInfo.SubZ =>
-            case _: TypeInfo.Enum =>
+            case info: TypeInfo.SubZ => return bitWidthKind(info.ast.bitWidth)
+            case info: TypeInfo.Enum => return bitWidthKindNumber(info.elements.size)
             case info: TypeInfo.AbstractDatatype =>
               return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
               else if (info.ast.isRoot) TypeKind.MutableTrait
@@ -1019,7 +1070,6 @@ import StaticTranspiler._
         return TypeKind.Immutable
       case _ => return TypeKind.Immutable
     }
-    return TypeKind.Scalar
   }
 
   @pure def methodName(method: AST.ResolvedInfo.Method): ST = {
