@@ -317,7 +317,7 @@ object StaticTemplate {
     name: ST,
     indexType: ST,
     minIndex: Z,
-    isIndexTypeScalar: B,
+    isElementTypeScalar: B,
     elementType: ST,
     elementTypePtr: ST,
     maxElement: Z
@@ -335,13 +335,14 @@ object StaticTemplate {
       |typedef struct $name *$name;
       |struct $name {
       |  TYPE type;
-      |  $indexType size;
+      |  size_t size;
       |  $elementType value[Max$name];
       |};
       |
       |#define DeclNew$name(x) struct $name x = { .type = T$name }
-      |#define ${name}_size(this) ((this)->size)
-      |#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[i$offset]))"""
+      |#define ${name}_size(this) (($indexType) (this)->size)
+      |#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[(size_t) i$offset]))"""
+    val eqHeader = st"B ${name}_eq($name this, $name other)"
     val appendHeader = st"void ${name}_append($name result, StackFrame caller, $name this, $elementTypePtr value)"
     val prependHeader = st"void ${name}_prepend($name result, StackFrame caller, $name this, $elementTypePtr value)"
     val appendAllHeader = st"void ${name}_appendAll($name result, StackFrame caller, $name this, $name other)"
@@ -351,22 +352,36 @@ object StaticTemplate {
     val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
     val header =
       st"""// $tpe
+      |$eqHeader;
       |$appendHeader;
       |$prependHeader;
       |$appendAllHeader;
       |$removeHeader;
       |$removeAllHeader;
       |$cprintHeader;
-      |$stringHeader;"""
+      |$stringHeader;
+      |
+      |static inline B ${name}_ne($name this, $name other) {
+      |  return !${name}_eq(this, other);
+      |}"""
     val impl: ST =
-      if (isIndexTypeScalar)
-        st""" // $tpe
+      if (isElementTypeScalar)
+        st"""// $tpe
+        |
+        |$eqHeader {
+        |  size_t size = this->size;
+        |  if (size != other->size) return F;
+        |  for (size_t i = 0; i < size; i++) {
+        |    if (${elementTypePtr}_ne(this->value[i], other->value[i])) return F;
+        |  }
+        |  return T;
+        |}
         |
         |$appendHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType size = thisSize + 1;
-        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  size_t thisSize = this->size;
+        |  size_t size = thisSize + 1;
+        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof(struct $name));
         |  result->value[thisSize] = value;
         |  result->size = size;
@@ -374,32 +389,32 @@ object StaticTemplate {
         |
         |$prependHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType size = thisSize + 1;
-        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  size_t thisSize = this->size;
+        |  size_t size = thisSize + 1;
+        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
         |  result->value[0] = value;
-        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++)
+        |  for (size_t i = 0; i < thisSize; i++)
         |    result->value[i + 1] = this->value[i];
         |  result->size = size;
         |}
         |
         |$appendAllHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "++", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType otherSize = other->size;
-        |  $indexType size = thisSize + otherSize;
-        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  size_t thisSize = this->size;
+        |  size_t otherSize = other->size;
+        |  size_t size = thisSize + otherSize;
+        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof($name));
-        |  for ($indexType i = ${indexType}_C(0); i < otherSize; i++)
+        |  for (size_t i = 0; i < otherSize; i++)
         |    result->value[thisSize + i] = other->value[i];
         |  result->size = size;
         |}
         |
         |$removeHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "-", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType k = ${indexType}_C(0);
-        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++) {
+        |  size_t thisSize = this->size;
+        |  size_t k = 0;
+        |  for (size_t i = 0; i < thisSize; i++) {
         |    $elementTypePtr o = this->value[i];
         |    if (${elementTypePtr}_ne(o, value)) result->value[k++] = o;
         |  }
@@ -408,13 +423,13 @@ object StaticTemplate {
         |
         |$removeAllHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "--", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType otherSize = other->size;
-        |  $indexType k = ${indexType}_C(0);
-        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++) {
+        |  size_t thisSize = this->size;
+        |  size_t otherSize = other->size;
+        |  size_t k = 0;
+        |  for (size_t i = 0; i < thisSize; i++) {
         |    B found = F;
         |    $elementTypePtr o = this->value[i];
-        |    for ($indexType j = ${indexType}_C(0); j < otherSize && !found; j++)
+        |    for (size_t j = 0; j < otherSize && !found; j++)
         |      if (${elementTypePtr}_eq(o, other->value[j])) found = T;
         |    if (!found) result->value[k++] = o;
         |  }
@@ -423,13 +438,13 @@ object StaticTemplate {
         |
         |$cprintHeader {
         |  String_cprint(string("["), isOut);
-        |  $indexType size = this->size;
-        |  if (size > ${indexType}_C(0)) {
+        |  size_t size = this->size;
+        |  if (size > 0) {
         |    $elementType *value = this->value;
         |    String space = string(" ");
         |    String_cprint(space, isOut);
         |    ${elementTypePtr}_cprint(value[0], isOut);
-        |    for ($indexType i = ${indexType}_C(1); i < size; i++) {
+        |    for (size_t i = 1; i < size; i++) {
         |      String_cprint(string(", "), isOut);
         |      ${elementTypePtr}_cprint(value[i], isOut);
         |    }
@@ -441,13 +456,13 @@ object StaticTemplate {
         |$stringHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "string", 0);
         |  String_string(result, sf, string("["));
-        |  $indexType size = this->size;
-        |  if (size > ${indexType}_C(0)) {
+        |  size_t size = this->size;
+        |  if (size > 0) {
         |    $elementType *value = this->value;
         |    String space = string(" ");
         |    String_string(result, sf, space);
         |    ${elementTypePtr}_string(result, sf, value[0]);
-        |    for ($indexType i = ${indexType}_C(1); i < size; i++) {
+        |    for (size_t i = 1; i < size; i++) {
         |      String_string(result, sf, string(", "));
         |      ${elementTypePtr}_string(result, sf, value[i]);
         |    }
@@ -460,9 +475,9 @@ object StaticTemplate {
         |
         |$appendHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType size = thisSize + 1;
-        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  size_t thisSize = this->size;
+        |  size_t size = thisSize + 1;
+        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof(struct $name));
         |  Type_assign(&result->value[thisSize], value, sizeof($elementType));
         |  result->size = size;
@@ -470,32 +485,32 @@ object StaticTemplate {
         |
         |$prependHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType size = thisSize + 1;
-        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  size_t thisSize = this->size;
+        |  size_t size = thisSize + 1;
+        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(&result->value[0], value, sizeof($elementType));
-        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++)
+        |  for (size_t i = 0; i < thisSize; i++)
         |    Type_assign(&result->value[i + 1], &this->value[i], sizeof($elementType));
         |  result->size = size;
         |}
         |
         |$appendAllHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "++", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType otherSize = other->size;
-        |  $indexType size = thisSize + otherSize;
-        |  sfAssert(!(${indexType}_C(0) <= size && size <= Max$name), "Insufficient maximum for $tpe elements.");
+        |  size_t thisSize = this->size;
+        |  size_t otherSize = other->size;
+        |  size_t size = thisSize + otherSize;
+        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof(struct $name));
-        |  for ($indexType i = ${indexType}_C(0); i < otherSize; i++)
+        |  for (size_t i = 0; i < otherSize; i++)
         |    Type_assign(&result->value[thisSize + i], &other->value[i], sizeof($elementType));
         |  result->size = size;
         |}
         |
         |$removeHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "-", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType k = ${indexType}_C(0);
-        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++) {
+        |  size_t thisSize = this->size;
+        |  size_t k = 0;
+        |  for (size_t i = 0; i < thisSize; i++) {
         |    $elementTypePtr o = &this->value[i];
         |    if (${elementTypePtr}_ne(o, value))
         |      Type_assign(&result->value[k++], o, sizeof($elementType));
@@ -505,13 +520,13 @@ object StaticTemplate {
         |
         |$removeAllHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "--", 0);
-        |  $indexType thisSize = this->size;
-        |  $indexType otherSize = other->size;
-        |  $indexType k = ${indexType}_C(0);
-        |  for ($indexType i = ${indexType}_C(0); i < thisSize; i++) {
+        |  size_t thisSize = this->size;
+        |  size_t otherSize = other->size;
+        |  size_t k = 0;
+        |  for (size_t i = 0; i < thisSize; i++) {
         |    B found = F;
         |    $elementTypePtr o = &this->value[i];
-        |    for ($indexType j = ${indexType}_C(0); j < otherSize && !found; j++)
+        |    for (size_t j = 0; j < otherSize && !found; j++)
         |      if (${elementTypePtr}_eq(o, &other->value[j])) found = T;
         |    if (!found) Type_assign(&result->value[k++], o, sizeof($elementType));
         |  }
@@ -520,13 +535,13 @@ object StaticTemplate {
         |
         |$cprintHeader {
         |  String_cprint(string("["), isOut);
-        |  $indexType size = this->size;
-        |  if (size > ${indexType}_C(0)) {
+        |  size_t size = this->size;
+        |  if (size > 0) {
         |    $elementType *value = this->value;
         |    String space = string(" ");
         |    String_cprint(space, isOut);
         |    ${elementTypePtr}_cprint(&(value[0]), isOut);
-        |    for ($indexType i = ${indexType}_C(1); i < size; i++) {
+        |    for (size_t i = 1; i < size; i++) {
         |      String_cprint(string(", "), isOut);
         |      ${elementTypePtr}_cprint(&(value[i]), isOut);
         |    }
@@ -538,13 +553,13 @@ object StaticTemplate {
         |$stringHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "string", 0);
         |  String_string(result, sf, string("["));
-        |  $indexType size = this->size;
-        |  if (size > ${indexType}_C(0)) {
+        |  size_t size = this->size;
+        |  if (size > 0) {
         |    $elementType *value = this->value;
         |    String space = string(" ");
         |    String_string(result, sf, space);
         |    ${elementTypePtr}_string(result, sf, (&(value[0])));
-        |    for ($indexType i = ${indexType}_C(1); i < size; i++) {
+        |    for (size_t i = 1; i < size; i++) {
         |      String_string(result, sf, string(", "));
         |      ${elementTypePtr}_string(result, sf, &(value[i]));
         |    }
@@ -945,6 +960,89 @@ object StaticTemplate {
       |  else Type_assign(result, &((struct $someName) { .type = T$someName, .value = F }));
       |}"""
     return (header, impl)
+  }
+
+  @pure def tuple(
+    compiled: Compiled,
+    tpe: ST,
+    includes: ISZ[ST],
+    name: ST,
+    elements: ISZ[ST],
+    constructorParams: ISZ[(ST, ST)],
+    constructorBody: ISZ[ST],
+    accessorHeaders: ISZ[ST],
+    accessorImpls: ISZ[ST],
+  ): Compiled = {
+    val size = constructorParams.size
+    val cParams: ISZ[ST] = for (p <- constructorParams) yield st"${p._1} ${p._2}"
+    val cParamTypes: ISZ[ST] = for (p <- constructorParams) yield p._1
+    val typeHeader =
+      st"""// $tpe
+      |${(includes, "\n")}
+      |  
+      |typedef struct $name *$name;
+      |struct $name {
+      |  TYPE type;
+      |  ${(elements, "\n")}
+      |};"""
+
+    val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this, ${(cParams, ", ")})"
+    val eqHeader = st"B ${name}_eq($name this, $name other);"
+    val cprintHeader = st"void ${name}_string($name this, B isOut)"
+    val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
+    val header =
+      st"""// $tpe
+      |$constructorHeader;
+      |${(accessorHeaders, "\n")}
+      |$eqHeader;
+      |$cprintHeader;
+      |$stringHeader;
+      |
+      |static inline B ${name}_ne($name this, $name other) {
+      |  return !${name}_eq(this, other);
+      |}"""
+    val impl =
+      st"""// $tpe
+      |
+      |$constructorHeader {
+      |  DeclNewStackFrame(caller, "Tuple$size.scala", "org.sireum.Tuple$size", "apply", 0);
+      |  ${(constructorBody, "\n")}
+      |}
+      |
+      |${(accessorImpls, "\n\n")}
+      |
+      |$eqHeader {
+      |  ${(
+        for (i <- cParamTypes.indices)
+          yield st"if (${cParamTypes(i)}_ne(${name}_${i + 1}(this), ${name}_${i + 1}(other))) return F;",
+        "\n"
+      )}
+      |  return T;
+      |}
+      |
+      |$cprintHeader {
+      |  String sep = string(", ");
+      |  String_cprint(string("("), isOut);
+      |  ${cParamTypes(0)}_cprint(${name}_1(this), isOut);
+      |  ${(for (i <- z"1" until size) yield st"""String_cprint(sep, isOut);
+      |${cParamTypes(i)}_cprint(${name}_${i + 1}(this), isOut);""", "\n")}
+      |  String_cprint(string(")"), isOut);
+      |}
+      |
+      |$stringHeader {
+      |  DeclNewStackFrame(caller, "Tuple$size.scala", "org.sireum.Tuple$size", "string", 0);
+      |  String sep = string(", ");
+      |  String_string(result, sf, string("("));
+      |  ${cParamTypes(0)}_string(result, sf, ${name}_1(this));
+      |  ${(for (i <- z"1" until size) yield st"""String_string(result, sf, sep); 
+      |${cParamTypes(i)}_string(result, sf, ${name}_${i + 1}(this));""", "\n")}
+      |  String_string(result, sf, string(")"));
+      |}"""
+    return compiled(
+      typeHeader = compiled.typeHeader :+ typeHeader,
+      header = compiled.header :+ header,
+      impl = compiled.impl :+ impl
+    )
   }
 
   @pure def dotName(ids: QName): String = {
