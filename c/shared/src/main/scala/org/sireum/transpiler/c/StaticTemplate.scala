@@ -106,14 +106,14 @@ object StaticTemplate {
       |#define string(v) (String) &((struct { TYPE type; Z size; C value[sizeof(v)]; }) { TString, Z_C(sizeof (v) - 1), v })
       |#define DeclNewString(x) struct StaticString x = { .type = TString }
       |
-      |static inline B String_eq(String this, String other) {
+      |static inline B String__eq(String this, String other) {
       |  Z thisSize = this->size;
       |  if (thisSize != other->size) return F;
       |  return memcmp(this->value, other->value, (size_t) thisSize) == 0;
       |}
       |
-      |static inline B String_ne(String this, String other) {
-      |  return !String_eq(this, other);
+      |static inline B String__ne(String this, String other) {
+      |  return !String__eq(this, other);
       |}
       |
       |#endif"""
@@ -342,12 +342,12 @@ object StaticTemplate {
       |#define DeclNew$name(x) struct $name x = { .type = T$name }
       |#define ${name}_size(this) (($indexType) (this)->size)
       |#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[(size_t) i$offset]))"""
-    val eqHeader = st"B ${name}_eq($name this, $name other)"
-    val appendHeader = st"void ${name}_append($name result, StackFrame caller, $name this, $elementTypePtr value)"
-    val prependHeader = st"void ${name}_prepend($name result, StackFrame caller, $name this, $elementTypePtr value)"
-    val appendAllHeader = st"void ${name}_appendAll($name result, StackFrame caller, $name this, $name other)"
-    val removeHeader = st"void ${name}_remove($name result, StackFrame caller, $name this, $elementTypePtr value)"
-    val removeAllHeader = st"void ${name}_removeAll($name result, StackFrame caller, $name this, $name other)"
+    val eqHeader = st"B ${name}__eq($name this, $name other)"
+    val appendHeader = st"void ${name}__append($name result, StackFrame caller, $name this, $elementTypePtr value)"
+    val prependHeader = st"void ${name}__prepend($name result, StackFrame caller, $name this, $elementTypePtr value)"
+    val appendAllHeader = st"void ${name}__appendAll($name result, StackFrame caller, $name this, $name other)"
+    val removeHeader = st"void ${name}__remove($name result, StackFrame caller, $name this, $elementTypePtr value)"
+    val removeAllHeader = st"void ${name}__removeAll($name result, StackFrame caller, $name this, $name other)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
     val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
     val header =
@@ -361,8 +361,8 @@ object StaticTemplate {
       |$cprintHeader;
       |$stringHeader;
       |
-      |static inline B ${name}_ne($name this, $name other) {
-      |  return !${name}_eq(this, other);
+      |static inline B ${name}__ne($name this, $name other) {
+      |  return !${name}__eq(this, other);
       |}"""
     val impl: ST =
       if (isElementTypeScalar)
@@ -372,7 +372,7 @@ object StaticTemplate {
         |  size_t size = this->size;
         |  if (size != other->size) return F;
         |  for (size_t i = 0; i < size; i++) {
-        |    if (${elementTypePtr}_ne(this->value[i], other->value[i])) return F;
+        |    if (${elementTypePtr}__ne(this->value[i], other->value[i])) return F;
         |  }
         |  return T;
         |}
@@ -416,7 +416,7 @@ object StaticTemplate {
         |  size_t k = 0;
         |  for (size_t i = 0; i < thisSize; i++) {
         |    $elementTypePtr o = this->value[i];
-        |    if (${elementTypePtr}_ne(o, value)) result->value[k++] = o;
+        |    if (${elementTypePtr}__ne(o, value)) result->value[k++] = o;
         |  }
         |  result->size = k;
         |}
@@ -430,7 +430,7 @@ object StaticTemplate {
         |    B found = F;
         |    $elementTypePtr o = this->value[i];
         |    for (size_t j = 0; j < otherSize && !found; j++)
-        |      if (${elementTypePtr}_eq(o, other->value[j])) found = T;
+        |      if (${elementTypePtr}__eq(o, other->value[j])) found = T;
         |    if (!found) result->value[k++] = o;
         |  }
         |  result->size = k;
@@ -512,7 +512,7 @@ object StaticTemplate {
         |  size_t k = 0;
         |  for (size_t i = 0; i < thisSize; i++) {
         |    $elementTypePtr o = &this->value[i];
-        |    if (${elementTypePtr}_ne(o, value))
+        |    if (${elementTypePtr}__ne(o, value))
         |      Type_assign(&result->value[k++], o, sizeof($elementType));
         |  }
         |  result->size = k;
@@ -527,7 +527,7 @@ object StaticTemplate {
         |    B found = F;
         |    $elementTypePtr o = &this->value[i];
         |    for (size_t j = 0; j < otherSize && !found; j++)
-        |      if (${elementTypePtr}_eq(o, &other->value[j])) found = T;
+        |      if (${elementTypePtr}__eq(o, &other->value[j])) found = T;
         |    if (!found) Type_assign(&result->value[k++], o, sizeof($elementType));
         |  }
         |  result->size = k;
@@ -611,15 +611,15 @@ object StaticTemplate {
       )}
       |} $mangledName;
       |
-      |static inline B ${mangledName}_eq($mangledName this, $mangledName other) {
+      |static inline B ${mangledName}__eq($mangledName this, $mangledName other) {
       |  return this == other;
       |}
       |
-      |static inline B ${mangledName}_ne($mangledName this, $mangledName other) {
+      |static inline B ${mangledName}__ne($mangledName this, $mangledName other) {
       |  return this != other;
       |}
       |
-      |static inline Z ${mangledName}_ordinal($mangledName this) {
+      |static inline Z ${mangledName}__ordinal($mangledName this) {
       |  return (Z) this;
       |}
       |
@@ -641,7 +641,7 @@ object StaticTemplate {
           |  ${(
             for (e <- elements)
               yield
-                st"""if (String_eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
+                st"""if (String__eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
                   e
                 )} }), sizeof(union $optElementType));""",
             "\nelse"
@@ -743,27 +743,27 @@ object StaticTemplate {
     val pr = st"PRI${if (isUnsigned) "u" else "d"}$bitWidth"
     val shift: ST = if (!isBitVector) { st"" } else if (isUnsigned) {
       st"""
-      |static inline $mangledName ${mangledName}_shl($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
       |  return un1 << un2;
       |}
       |
-      |static inline $mangledName ${mangledName}_shr($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__shr($mangledName n1, $mangledName n2) {
       |  return un1 >> un2;
       |}
       |
-      |static inline $mangledName ${mangledName}_ushr($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2) {
       |  return un1 >> un2;
       |}
       |
-      |static inline $mangledName ${mangledName}_and($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__and($mangledName n1, $mangledName n2) {
       |  return un1 & un2;
       |}
       |
-      |static inline $mangledName ${mangledName}_or($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__or($mangledName n1, $mangledName n2) {
       |  return un1 | un2;
       |}
       |
-      |static inline $mangledName ${mangledName}_xor($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__xor($mangledName n1, $mangledName n2) {
       |  return un1 ^ un2;
       |}"""
     } else {
@@ -774,37 +774,37 @@ object StaticTemplate {
         case z"64" => "uint64_t"
       }
       st"""
-      |static inline $mangledName ${mangledName}_shl($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
       |  $unsigned un1 = ($unsigned) n1;
       |  $unsigned un2 = ($unsigned) n2;
       |  return ($mangledName) (un1 << un2);
       |}
       |
-      |static inline $mangledName ${mangledName}_shr($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__shr($mangledName n1, $mangledName n2) {
       |  $unsigned un1 = ($unsigned) n1;
       |  $unsigned un2 = ($unsigned) n2;
       |  return ($mangledName) (un1 >> un2);
       |}
       |
-      |static inline $mangledName ${mangledName}_ushr($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2) {
       |  $unsigned un1 = ($unsigned) n1;
       |  $unsigned un2 = ($unsigned) n2;
       |  return ($mangledName) (un1 >> un2);
       |}
       |
-      |static inline $mangledName ${mangledName}_and($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__and($mangledName n1, $mangledName n2) {
       |  $unsigned un1 = ($unsigned) n1;
       |  $unsigned un2 = ($unsigned) n2;
       |  return ($mangledName) (un1 & un2);
       |}
       |
-      |static inline $mangledName ${mangledName}_or($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__or($mangledName n1, $mangledName n2) {
       |  $unsigned un1 = ($unsigned) n1;
       |  $unsigned un2 = ($unsigned) n2;
       |  return ($mangledName) (un1 | un2);
       |}
       |
-      |static inline $mangledName ${mangledName}_xor($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__xor($mangledName n1, $mangledName n2) {
       |  $unsigned un1 = ($unsigned) n1;
       |  $unsigned un2 = ($unsigned) n2;
       |  return ($mangledName) (un1 ^ un2);
@@ -834,47 +834,47 @@ object StaticTemplate {
       |  return ($mangledName) -n;
       |}
       |
-      |static inline $mangledName ${mangledName}_add($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__add($mangledName n1, $mangledName n2) {
       |  return ($mangledName) (n1 + n2);
       |}
       |
-      |static inline $mangledName ${mangledName}_sub($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__sub($mangledName n1, $mangledName n2) {
       |  return ($mangledName) (n1 - n2);
       |}
       |
-      |static inline $mangledName ${mangledName}_mul($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__mul($mangledName n1, $mangledName n2) {
       |  return ($mangledName) (n1 * n2);
       |}
       |
-      |static inline $mangledName ${mangledName}_div($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__div($mangledName n1, $mangledName n2) {
       |  return ($mangledName) (n1 / n2);
       |}
       |
-      |static inline $mangledName ${mangledName}_rem($mangledName n1, $mangledName n2) {
+      |static inline $mangledName ${mangledName}__rem($mangledName n1, $mangledName n2) {
       |  return ($mangledName) (n1 % n2);
       |}
       |
-      |static inline B ${mangledName}_eq($mangledName n1, $mangledName n2) {
+      |static inline B ${mangledName}__eq($mangledName n1, $mangledName n2) {
       |  return (B) (n1 == n2);
       |}
       |
-      |static inline B ${mangledName}_ne($mangledName n1, $mangledName n2) {
+      |static inline B ${mangledName}__ne($mangledName n1, $mangledName n2) {
       |  return (B) (n1 != n2);
       |}
       |
-      |static inline B ${mangledName}_lt($mangledName n1, $mangledName n2) {
+      |static inline B ${mangledName}__lt($mangledName n1, $mangledName n2) {
       |  return (B) (n1 < n2);
       |}
       |
-      |static inline B ${mangledName}_le($mangledName n1, $mangledName n2) {
+      |static inline B ${mangledName}__le($mangledName n1, $mangledName n2) {
       |  return (B) (n1 == n2);
       |}
       |
-      |static inline B ${mangledName}_gt($mangledName n1, $mangledName n2) {
+      |static inline B ${mangledName}__gt($mangledName n1, $mangledName n2) {
       |  return (B) (n1 > n2);
       |}
       |
-      |static inline B ${mangledName}_ge($mangledName n1, $mangledName n2) {
+      |static inline B ${mangledName}__ge($mangledName n1, $mangledName n2) {
       |  return (B) (n1 >= n2);
       |}
       |$shift"""
@@ -987,7 +987,7 @@ object StaticTemplate {
       |};"""
 
     val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this, ${(cParams, ", ")})"
-    val eqHeader = st"B ${name}_eq($name this, $name other);"
+    val eqHeader = st"B ${name}__eq($name this, $name other);"
     val cprintHeader = st"void ${name}_string($name this, B isOut)"
     val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
     val header =
@@ -998,8 +998,8 @@ object StaticTemplate {
       |$cprintHeader;
       |$stringHeader;
       |
-      |static inline B ${name}_ne($name this, $name other) {
-      |  return !${name}_eq(this, other);
+      |static inline B ${name}__ne($name this, $name other) {
+      |  return !${name}__eq(this, other);
       |}"""
     val impl =
       st"""// $tpe
@@ -1014,7 +1014,7 @@ object StaticTemplate {
       |$eqHeader {
       |  ${(
         for (i <- cParamTypes.indices)
-          yield st"if (${cParamTypes(i)}_ne(${name}_${i + 1}(this), ${name}_${i + 1}(other))) return F;",
+          yield st"if (${cParamTypes(i)}__ne(${name}_${i + 1}(this), ${name}_${i + 1}(other))) return F;",
         "\n"
       )}
       |  return T;
