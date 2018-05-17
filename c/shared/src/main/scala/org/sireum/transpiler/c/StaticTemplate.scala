@@ -714,14 +714,18 @@ object StaticTemplate {
     return (header, impl)
   }
 
-  @pure def strToNum(name: QName, optName: ST, someName: ST, noneName: ST, cType: String, cStrTo: String): (ST, ST) = {
+  @pure def strToNum(name: QName, optName: ST, someName: ST, noneName: ST, cType: String, cStrTo: String, hasBase: B): (
+    ST,
+    ST
+  ) = {
     val mangledName = mangleName(name)
     val header = st"void ${mangledName}_apply($optName result, String s)"
+    val base: ST = if (hasBase) st", 0" else st""
     val impl =
       st"""$header {
       |  char *endptr;
       |  errno = 0;
-      |  $cType n = $cStrTo(s->value, &endptr, 0);
+      |  $cType n = $cStrTo(s->value, &endptr$base);
       |  if (errno) {
       |    errno = 0;
       |    Type_assign(result, &((struct $noneName) { .type = T$noneName }));
