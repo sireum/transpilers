@@ -168,14 +168,6 @@ import StaticTranspiler._
   }
 
   @pure def minIndexMaxElementSize(indexType: AST.Typed, elementType: AST.Typed): (Z, Z) = {
-    elementType match {
-      case elementType: AST.Typed.Name if elementType.args.isEmpty =>
-        ts.typeHierarchy.typeMap.get(elementType.ids).get match {
-          case info: TypeInfo.Enum => return (z"0", info.elements.size)
-          case _ =>
-        }
-      case _ =>
-    }
     val size: Z = config.customArraySizes.get(elementType) match {
       case Some(n) => n
       case _ => config.maxArraySize

@@ -81,8 +81,8 @@ class StaticTranspilerTest extends TestSuite {
       lineNumber = T,
       fprintWidth = 3,
       defaultBitWidth = 64,
-      maxStringSize = 511,
-      maxArraySize = 128,
+      maxStringSize = 500,
+      maxArraySize = 100,
       customArraySizes = HashMap.empty
     )
 
