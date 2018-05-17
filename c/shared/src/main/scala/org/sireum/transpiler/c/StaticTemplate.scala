@@ -8,6 +8,22 @@ import org.sireum.message._
 
 object StaticTemplate {
 
+  @enum object TypeKind {
+    'ImmutableTrait
+    'MutableTrait
+    'Immutable
+    'Mutable
+    'IS
+    'MS
+    'R
+    'Scalar64
+    'Scalar32
+    'Enum
+    'Scalar16
+    'Scalar8
+    'Scalar1
+  }
+
   @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
 
   val sireumDir: String = "sireum"
@@ -968,38 +984,65 @@ object StaticTemplate {
     return (header, impl)
   }
 
+  @pure def tupleName(size: Z): QName = {
+    return AST.Typed.sireumName :+ s"Tuple$size"
+  }
+
   @pure def tuple(
     compiled: Compiled,
-    tpe: ST,
+    tpe: String,
     includes: ISZ[ST],
     name: ST,
-    elements: ISZ[ST],
-    constructorParams: ISZ[(ST, ST)],
-    constructorBody: ISZ[ST],
-    accessorHeaders: ISZ[ST],
-    accessorImpls: ISZ[ST],
+    constructorParamTypes: ISZ[(TypeKind.Type, ST)]
   ): Compiled = {
-    val size = constructorParams.size
-    val cParams: ISZ[ST] = for (p <- constructorParams) yield st"${p._1} ${p._2}"
-    val cParamTypes: ISZ[ST] = for (p <- constructorParams) yield p._1
+    val indices = constructorParamTypes.indices.map((n: Z) => n)
+    var members = ISZ[ST]()
+    for (p <- ops.ISZOps(ops.ISZOps(constructorParamTypes).zip(indices)).sortWith((p1, p2) => p1._1._1.ordinal < p2._1._1.ordinal)) {
+      val ((kind, t), i) = p
+      val index = i + 1
+      val us: String = if (isScalar(kind)) "" else if (isTrait(kind)) "union " else "struct "
+      members = members :+ st"$us$t _$index;"
+    }
     val typeHeader =
       st"""// $tpe
       |${(includes, "\n")}
-      |  
+      |
       |typedef struct $name *$name;
       |struct $name {
       |  TYPE type;
-      |  ${(elements, "\n")}
+      |  ${(members, "\n")}
       |};"""
-
+    val cParamTypes: ISZ[ST] = for (p <- constructorParamTypes) yield p._2
+    val cParams: ISZ[ST] = for (p <- ops.ISZOps(cParamTypes).zip(indices)) yield st"${p._1} _${p._2 + 1}"
     val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this, ${(cParams, ", ")})"
+    val typesIndices: ISZ[((TypeKind.Type, ST), Z)] = ops.ISZOps(constructorParamTypes).zip(indices)
+    var accessors = ISZ[(ST, ST)]()
+    var constructorStmts = ISZ[ST]()
+    for (p <- typesIndices) {
+      val ((kind, t), i) = p
+      val index = i + 1
+      if (isScalar(kind)) {
+        accessors = accessors :+ ((st"$t ${name}_$index($name this)", st"return this->_$index;"))
+        constructorStmts = constructorStmts :+ st"this->_$index = _$index;"
+      } else {
+        val us: String = if (isTrait(kind)) "union" else "struct"
+        accessors = accessors :+ (
+          (
+            st"void ${name}_$index($t result, $name this)",
+            st"Type_assign(result, &(this->_$index), sizeof($us $t));"
+          )
+        )
+        constructorStmts = constructorStmts :+
+          st"Type_assign(&(this->_$index), _$index, sizeof($us $t));"
+      }
+    }
     val eqHeader = st"B ${name}__eq($name this, $name other);"
     val cprintHeader = st"void ${name}_string($name this, B isOut)"
     val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
     val header =
       st"""// $tpe
       |$constructorHeader;
-      |${(accessorHeaders, "\n")}
+      |${(for (p <- accessors) yield p._1, "\n")}
       |$eqHeader;
       |$cprintHeader;
       |$stringHeader;
@@ -1007,22 +1050,22 @@ object StaticTemplate {
       |static inline B ${name}__ne($name this, $name other) {
       |  return !${name}__eq(this, other);
       |}"""
+    val eqStmts: ISZ[ST] = for (i <- cParamTypes.indices)
+      yield st"if (${cParamTypes(i)}__ne(${name}_${i + 1}(this), ${name}_${i + 1}(other))) return F;"
+    val size = constructorParamTypes.size
     val impl =
       st"""// $tpe
       |
       |$constructorHeader {
-      |  DeclNewStackFrame(caller, "Tuple$size.scala", "org.sireum.Tuple$size", "apply", 0);
-      |  ${(constructorBody, "\n")}
+      |  DeclNewStackFrame(caller, "Tuple$size.scala", "${dotName(tupleName(size))}", "apply", 0);
+      |  ${(constructorStmts, "\n")}
       |}
       |
-      |${(accessorImpls, "\n\n")}
+      |${(for (p <- accessors) yield st"""${p._1}
+      |  ${p._2}""", "\n\n")}
       |
       |$eqHeader {
-      |  ${(
-        for (i <- cParamTypes.indices)
-          yield st"if (${cParamTypes(i)}__ne(${name}_${i + 1}(this), ${name}_${i + 1}(other))) return F;",
-        "\n"
-      )}
+      |  ${(eqStmts, "\n")}
       |  return T;
       |}
       |
@@ -1040,7 +1083,7 @@ object StaticTemplate {
       |  String sep = string(", ");
       |  String_string(result, sf, string("("));
       |  ${cParamTypes(0)}_string(result, sf, ${name}_1(this));
-      |  ${(for (i <- z"1" until size) yield st"""String_string(result, sf, sep); 
+      |  ${(for (i <- z"1" until size) yield st"""String_string(result, sf, sep);
       |${cParamTypes(i)}_string(result, sf, ${name}_${i + 1}(this));""", "\n")}
       |  String_string(result, sf, string(")"));
       |}"""
@@ -1112,5 +1155,28 @@ object StaticTemplate {
       case Some(pos) => return filename(pos.uriOpt, default)
       case _ => return default
     }
+  }
+
+  @pure def isTrait(kind: TypeKind.Type): B = {
+    kind match {
+      case TypeKind.ImmutableTrait =>
+      case TypeKind.MutableTrait =>
+      case _ => return F
+    }
+    return T
+  }
+
+  @pure def isScalar(kind: TypeKind.Type): B = {
+    kind match {
+      case TypeKind.Scalar1 =>
+      case TypeKind.Scalar8 =>
+      case TypeKind.Scalar16 =>
+      case TypeKind.Scalar32 =>
+      case TypeKind.Scalar64 =>
+      case TypeKind.R =>
+      case TypeKind.Enum =>
+      case _ => return F
+    }
+    return T
   }
 }

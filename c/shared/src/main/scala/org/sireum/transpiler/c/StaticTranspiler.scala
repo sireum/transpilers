@@ -10,22 +10,6 @@ import org.sireum.transpilers.common.TypeSpecializer
 
 object StaticTranspiler {
 
-  @enum object TypeKind {
-    'ImmutableTrait
-    'MutableTrait
-    'Immutable
-    'Mutable
-    'IS
-    'MS
-    'R
-    'Scalar64
-    'Scalar32
-    'Enum
-    'Scalar16
-    'Scalar8
-    'Scalar1
-  }
-
   type SubstMap = HashMap[String, AST.Typed]
 
   @datatype class Config(
@@ -56,8 +40,8 @@ object StaticTranspiler {
   val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
   val mainType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(iszStringType), AST.Typed.unit)
   val optionName: QName = AST.Typed.optionName
-  val someName: QName = AST.Typed.optionName
-  val noneName: QName = AST.Typed.optionName
+  val someName: QName = AST.Typed.sireumName :+ "Some"
+  val noneName: QName = AST.Typed.sireumName :+ "None"
   val eitherName: QName = AST.Typed.sireumName :+ "Either"
   val moptionName: QName = AST.Typed.sireumName :+ "MOption"
   val meitherName: QName = AST.Typed.sireumName :+ "MEither"
@@ -323,13 +307,22 @@ import StaticTranspiler._
       )
       compiledMap = compiledMap + name ~> newValue
     }
+    def genTuple(t: AST.Typed.Tuple): Unit = {
+      val name = tupleName(t.args.size)
+      val value = getCompiled(name)
+      val newValue = tuple(
+        value,
+        t.string,
+        includes(name, t.args),
+        fingerprint(t)._1,
+        for (arg <- t.args) yield (typeKind(arg), fingerprint(arg)._1)
+      )
+      compiledMap = compiledMap + name ~> newValue
+    }
     def genClass(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
     }
     def genTrait(t: AST.Typed.Name): Unit = {
-      halt(s"TODO: $t") // TODO
-    }
-    def genTuple(t: AST.Typed.Tuple): Unit = {
       halt(s"TODO: $t") // TODO
     }
     def genFun(t: AST.Typed.Fun): Unit = {
@@ -1041,20 +1034,6 @@ import StaticTranspiler._
         case kind => return if (isScalar(kind)) st"$t" else st"struct $t"
       }
     }
-  }
-
-  @pure def isScalar(kind: TypeKind.Type): B = {
-    kind match {
-      case TypeKind.Scalar1 =>
-      case TypeKind.Scalar8 =>
-      case TypeKind.Scalar16 =>
-      case TypeKind.Scalar32 =>
-      case TypeKind.Scalar64 =>
-      case TypeKind.R =>
-      case TypeKind.Enum =>
-      case _ => return F
-    }
-    return T
   }
 
   @memoize def typeKind(t: AST.Typed): TypeKind.Type = {
