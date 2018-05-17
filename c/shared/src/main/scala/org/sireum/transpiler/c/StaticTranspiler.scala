@@ -291,26 +291,32 @@ import StaticTranspiler._
     }
     def genEnum(t: AST.Typed.Name): ST = {
       val name = ops.ISZOps(t.ids).dropRight(1)
+      val mangledName = mangleName(name)
+      typeNameMap = typeNameMap + t ~> mangledName
       val info = ts.typeHierarchy.nameMap.get(name).get.asInstanceOf[Info.Enum]
       val elements = info.elements.keys
       val elementType = info.elementTypedOpt.get
       val optionElementType = AST.Typed.Name(optionName, ISZ(elementType))
-      val someElementType = AST.Typed.Name(someName, ISZ(elementType))
-      val noneElementType = AST.Typed.Name(noneName, ISZ(elementType))
+      val optElementTypeOpt: Option[(ST, ST, ST)] = ts.nameTypes.get(optionName) match {
+        case Some(s) if s.contains(TypeSpecializer.NamedType(optionElementType, Map.empty, Map.empty)) =>
+          val someElementType = AST.Typed.Name(someName, ISZ(elementType))
+          val noneElementType = AST.Typed.Name(noneName, ISZ(elementType))
+          genType(someElementType)
+          genType(noneElementType)
+          Some((fingerprint(optionElementType)._1, fingerprint(someElementType)._1, fingerprint(noneElementType)._1))
+        case _ => None()
+      }
       val iszElementType = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, elementType))
+      val iszElementTypeOpt: Option[ST] = ts.nameTypes.get(AST.Typed.isName) match {
+        case Some(s) if s.contains(TypeSpecializer.NamedType(iszElementType, Map.empty, Map.empty)) =>
+          Some(fingerprint(iszElementType)._1)
+        case _ => None()
+      }
       val value = getCompiled(name)
-      val newValue = enum(
-        value,
-        filenameOfPosOpt(info.posOpt, ""),
-        name,
-        elements,
-        fingerprint(optionElementType)._1,
-        fingerprint(someElementType)._1,
-        fingerprint(noneElementType)._1,
-        fingerprint(iszElementType)._1
-      )
+      val newValue =
+        enum(value, filenameOfPosOpt(info.posOpt, ""), name, elements, optElementTypeOpt, iszElementTypeOpt)
       compiledMap = compiledMap + name ~> newValue
-      return mangleName(name)
+      return mangledName
     }
     def genClass(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
@@ -342,7 +348,7 @@ import StaticTranspiler._
               case TypeKind.MutableTrait => genTrait(t)
               case TypeKind.IS => genArray(t)
               case TypeKind.MS => genArray(t)
-              case TypeKind.Enum => val r = genEnum(t); typeNameMap = typeNameMap + t ~> r; return r
+              case TypeKind.Enum => val r = genEnum(t); return r
               case _ => genSubZ(t)
             }
           }
@@ -372,7 +378,6 @@ import StaticTranspiler._
     }
 
     genType(AST.Typed.string)
-    genType(iszStringType)
 
     for (nts <- ts.nameTypes.values; nt <- nts.elements) {
       ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {

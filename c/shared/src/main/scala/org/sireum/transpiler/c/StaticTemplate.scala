@@ -551,10 +551,8 @@ object StaticTemplate {
     uri: String,
     name: QName,
     elements: ISZ[String],
-    optElementType: ST,
-    someElementType: ST,
-    noneElementType: ST,
-    iszElementType: ST
+    optElementTypeOpt: Option[(ST, ST, ST)],
+    iszElementTypeOpt: Option[ST]
   ): Compiled = {
     val mangledName = mangleName(name)
 
@@ -599,54 +597,71 @@ object StaticTemplate {
       |  }
       |}"""
 
-    val byNameHeader = st"void ${mangledName}_byName($optElementType result, String s)"
-    val byNameImpl =
-      st"""
-      |$byNameHeader {
-      |  ${(
-        for (e <- elements)
-          yield
-            st"""if (String_eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
-              e
-            )} }), sizeof(union $optElementType));""",
-        "\nelse"
-      )}
-      |  else Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType));
-      |}"""
+    var header: ISZ[ST] = ISZ()
+    var impl: ISZ[ST] = ISZ()
 
-    val byOrdinalHeader = st"void ${mangledName}_byName($optElementType result, Z n)"
-    val byOrdinalImpl =
-      st"""
-      |$byOrdinalHeader {
-      |  switch (($mangledName) n) {
-      |    ${(
-        for (e <- elements)
-          yield
-            st"""case ${elementName(e)}: Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
-              e
-            )} }), sizeof(union $optElementType)); return;""",
-        "\n"
-      )}
-      |    default: Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType)); return;
-      |  }
-      |}"""
-    val elementsHeader = st"void ${mangledName}_elements($iszElementType result)"
-    val elementsImpl =
-      st"""
-      |$elementsHeader {
-      |  result->size = Z_C(${elements.size});
-      |  ${(for (p <- ops.ISZOps(elements).zip(indices)) yield st"result->value[${p._2}] = ${elementName(p._1)};", "\n")}
-      |}"""
+    optElementTypeOpt match {
+      case Some((optElementType, someElementType, noneElementType)) =>
+        val byNameHeader = st"void ${mangledName}_byName($optElementType result, String s)"
+        header = header :+ byNameHeader
+        impl = impl :+
+          st"""$byNameHeader {
+          |  ${(
+            for (e <- elements)
+              yield
+                st"""if (String_eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
+                  e
+                )} }), sizeof(union $optElementType));""",
+            "\nelse"
+          )}
+          |  else Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType));
+          |}"""
+
+        val byOrdinalHeader = st"void ${mangledName}_byName($optElementType result, Z n)"
+        header = header :+ byOrdinalHeader
+        impl = impl :+
+          st"""$byOrdinalHeader {
+          |  switch (($mangledName) n) {
+          |    ${(
+            for (e <- elements)
+              yield
+                st"""case ${elementName(e)}: Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
+                  e
+                )} }), sizeof(union $optElementType)); return;""",
+            "\n"
+          )}
+          |    default: Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType)); return;
+          |  }
+          |}"""
+      case _ =>
+    }
+
+    iszElementTypeOpt match {
+      case Some(iszElementType) =>
+        val elementsHeader = st"void ${mangledName}_elements($iszElementType result)"
+        header = header :+ elementsHeader
+        impl = impl :+
+          st"""$elementsHeader {
+          |  result->size = Z_C(${elements.size});
+          |  ${(
+            for (p <- ops.ISZOps(elements).zip(indices)) yield st"result->value[${p._2}] = ${elementName(p._1)};",
+            "\n"
+          )}
+          |}"""
+      case _ =>
+    }
+
     val numOfElementsHeader = st"Z ${mangledName}_numOfElements()"
-    val numOfElementsImpl =
-      st"""
-      |$numOfElementsHeader {
+    header = header :+ numOfElementsHeader
+    impl = impl :+
+      st"""$numOfElementsHeader {
       |  return Z_C(${elements.size});
       }"""
+
     val cprintHeader = st"void ${mangledName}_cprint($mangledName this, B isOut)"
-    val cprintImpl =
-      st"""
-      |$cprintHeader {
+    header = header :+ cprintHeader
+    impl = impl :+
+      st"""$cprintHeader {
       |  switch (this) {
       |    ${(
         for (e <- elements) yield st"""case ${elementName(e)}: String_cprint(string("$e"), isOut); return;""",
@@ -654,8 +669,10 @@ object StaticTemplate {
       )}
       |  }
       |}"""
+
     val stringHeader = st"void ${mangledName}_string(String result, StackFrame caller, $mangledName this)"
-    val stringImpl =
+    header = header :+ stringHeader
+    impl = impl :+
       st"""$stringHeader {
       |  DeclNewStackFrame(caller, "$uri", "$mangledName", "string", 0);
       |  switch (this) {
@@ -665,23 +682,55 @@ object StaticTemplate {
       )}
       |  }
       |}"""
-    val header =
-      st"""// $tpe
-      |$elementsHeader;
-      |$numOfElementsHeader;
-      |$cprintHeader;
-      |$stringHeader;"""
-    val impl =
-      st"""// $tpe
-      |$elementsImpl
-      |$numOfElementsImpl
-      |$cprintImpl
-      |$stringImpl"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
-      header = compiled.header :+ header,
-      impl = compiled.impl :+ impl
+      header = compiled.header :+
+        st"""// $tpe
+        |${(header, ";\n")};""",
+      impl = compiled.impl :+
+        st"""// $tpe
+        |
+        |${(impl, "\n\n")}"""
     )
+  }
+
+  @pure def strToB(optName: ST, someName: ST, noneName: ST): (ST, ST) = {
+    val header = st"void B_apply($optName result, String s)"
+    val impl =
+      st"""$header {
+      |  B r;
+      |  B noResult = F;
+      |  if (s->size == 1)
+      |    if (s->value[0] == 'T') r = T;
+      |    else if (s->value[0] == 'F') r = F;
+      |    else noResult = T;
+      |  else if (s->size == 4 && memcmp(s->value, "true", 4) == 0) r = T;
+      |  else if (s->size == 5 && memcmp(s->value, "false", 5) == 0) r = F;
+      |  else noResult = T;
+      |  if (noResult) Type_assign(result, &((struct $noneName) { .type = T$noneName }))
+      |  else if (r) Type_assign(result, &((struct $someName) { .type = T$someName, .value = T }));
+      |  else Type_assign(result, &((struct $someName) { .type = T$someName, .value = F }));
+      |}"""
+    return (header, impl)
+  }
+
+  @pure def strToNum(name: QName, optName: ST, someName: ST, noneName: ST, cType: String, cStrTo: String): (ST, ST) = {
+    val mangledName = mangleName(name)
+    val header = st"void ${mangledName}_apply($optName result, String s)"
+    val impl =
+      st"""$header {
+      |  char *endptr;
+      |  errno = 0;
+      |  $cType n = $cStrTo(s->value, &endptr, 0);
+      |  if (errno) {
+      |    errno = 0;
+      |    Type_assign(result, &((struct $noneName) { .type = T$noneName }));
+      |    return;
+      |  }
+      |  if (s->value - endptr == 0) Type_assign(result, &((struct $someName) { .type = T$someName, .value = ($mangledName) n }));
+      |  else Type_assign(result, &((struct $noneName) { .type = T$noneName }));
+      |}"""
+    return (header, impl)
   }
 
   @pure def dotName(ids: QName): String = {
