@@ -243,7 +243,7 @@ import StaticTranspiler._
         minIndex,
         isScalar(typeKind(it)),
         elementType,
-        transpileType(et, T),
+        transpileType(et),
         maxElementSize
       )
       compiledMap = compiledMap + key ~> newValue
@@ -310,13 +310,12 @@ import StaticTranspiler._
     def genTuple(t: AST.Typed.Tuple): Unit = {
       val name = tupleName(t.args.size)
       val value = getCompiled(name)
-      val newValue = tuple(
-        value,
-        t.string,
-        includes(name, t.args),
-        fingerprint(t)._1,
-        for (arg <- t.args) yield (typeKind(arg), fingerprint(arg)._1)
-      )
+      var paramTypes = ISZ[(TypeKind.Type, ST)]()
+      for (arg <- t.args) {
+        genType(arg)
+        paramTypes = paramTypes :+ ((typeKind(arg), fingerprint(arg)._1))
+      }
+      val newValue = tuple(value, t.string, includes(name, t.args), fingerprint(t)._1, paramTypes)
       compiledMap = compiledMap + name ~> newValue
     }
     def genClass(t: AST.Typed.Name): Unit = {
@@ -597,9 +596,9 @@ import StaticTranspiler._
           } else {
             val tname = typeName(expType(exp))
             val op: String = res.kind match {
-              case AST.ResolvedInfo.BuiltIn.Kind.UnaryComplement => "_complement"
-              case AST.ResolvedInfo.BuiltIn.Kind.UnaryPlus => "_plus"
-              case AST.ResolvedInfo.BuiltIn.Kind.UnaryMinus => "_minus"
+              case AST.ResolvedInfo.BuiltIn.Kind.UnaryComplement => "__complement"
+              case AST.ResolvedInfo.BuiltIn.Kind.UnaryPlus => "__plus"
+              case AST.ResolvedInfo.BuiltIn.Kind.UnaryMinus => "__minus"
               case _ => halt("Infeasible")
             }
             return st"${mangleName(tname)}$op(${transpileExp(exp.exp)})"
@@ -619,14 +618,43 @@ import StaticTranspiler._
       }
     }
 
+    def transTuple(tuple: AST.Exp.Tuple): ST = {
+      val tpe = transpileType(tuple.typedOpt.get)
+      val temp = freshTempName()
+      var args = ISZ[ST]()
+      for (arg <- tuple.args) {
+        val a = transpileExp(arg)
+        args = args :+ a
+      }
+      stmts = stmts :+ st"DeclNew$tpe($temp);"
+      stmts = stmts :+ st"${tpe}_apply(sf, &$temp, ${(args, ", ")});"
+      return st"(&$temp)"
+    }
+
     def transSelect(select: AST.Exp.Select): ST = {
       select.attr.resOpt.get match {
+        case res: AST.ResolvedInfo.Tuple =>
+          val receiver = select.receiverOpt.get
+          val o = transpileExp(receiver)
+          val index = res.index
+          val t = receiver.typedOpt.get.asInstanceOf[AST.Typed.Tuple]
+          val tpe = transpileType(t)
+          val et = t.args(index - 1)
+          if (isScalar(typeKind(et))) {
+            return st"${tpe}_$index($o)"
+          } else {
+            val temp = freshTempName()
+            val etpe = transpileType(et)
+            stmts = stmts :+ st"DeclNew$etpe($temp);"
+            stmts = stmts :+ st"${tpe}_$index(&$temp, $o);"
+            return st"(&$temp)"
+          }
         case res: AST.ResolvedInfo.EnumElement => return elementName(res.owner, res.name)
         case res: AST.ResolvedInfo.BuiltIn =>
           res.kind match {
             case AST.ResolvedInfo.BuiltIn.Kind.EnumElements =>
               val owner = expType(select.receiverOpt.get).asInstanceOf[AST.Typed.Enum].name
-              val iszType = fingerprint(expType(select))._1
+              val iszType = transpileType(expType(select))
               val temp = freshTempName()
               stmts = stmts :+ st"DeclNew$iszType($temp);"
               stmts = stmts :+ st"${mangleName(owner)}_elements(&$temp);"
@@ -655,19 +683,20 @@ import StaticTranspiler._
       case exp: AST.Exp.Binary => val r = transBinary(exp); return r
       case exp: AST.Exp.Unary => val r = transUnary(exp); return r
       case exp: AST.Exp.Select => val r = transSelect(exp); return r
+      case exp: AST.Exp.Tuple => val r = transTuple(exp); return r
       case _ => halt(s"TODO: $exp") // TODO
     }
   }
 
   def transToString(s: ST, exp: AST.Exp): Unit = {
     val tmp = transpileExp(exp)
-    val mangledName = fingerprint(expType(exp))._1
+    val mangledName = transpileType(expType(exp))
     stmts = stmts :+ st"${mangledName}_string($s, sf, $tmp);"
   }
 
   def transPrintH(isOut: ST, exp: AST.Exp): Unit = {
     val tmp = transpileExp(exp)
-    val mangledName = fingerprint(expType(exp))._1
+    val mangledName = transpileType(expType(exp))
     stmts = stmts :+ st"${mangledName}_cprint($tmp, $isOut);"
   }
 
@@ -751,10 +780,12 @@ import StaticTranspiler._
         case Some(tipe) => tipe.typedOpt.get
         case _ => init.typedOpt.get
       }
-      if (isScalar(typeKind(t))) {
-        stmts = stmts :+ st"${transpileType(t, F)} ${localName(stmt.id.value)} = ${transpileExp(init.exp)};"
-      } else {
-        halt("TODO") // TODO
+      val rhs = transpileExp(init.exp)
+      val local = localName(stmt.id.value)
+      val tpe = transpileType(t)
+      stmts = stmts :+ st"$tpe $local = $rhs;"
+      if (!isScalar(typeKind(t)) && !stmt.isVal) {
+        stmts = stmts :+ st"DeclNew$tpe(_$local);"
       }
     }
 
@@ -1005,35 +1036,26 @@ import StaticTranspiler._
   @pure def methodHeader(method: TypeSpecializer.Method): ST = {
     val res = method.info.methodRes
     val name = methodName(res)
-    val tpe = res.tpeOpt.get
-    val retType = transpileType(tpe.ret, F)
-
+    val t = res.tpeOpt.get
+    val tpe = transpileType(t.ret)
+    val (retType, retTypeDecl): (ST, ST) = if (isScalar(typeKind(t.ret))) (st"", tpe) else (st"$tpe result, ", st"void")
     val preParams: ST = method.receiverOpt match {
-      case Some(receiver) => st"Stackframe caller, ${transpileType(receiver, T)} this"
-      case _ => st"StackFrame caller"
+      case Some(receiver) => st"${retType}Stackframe caller, ${transpileType(receiver)} this"
+      case _ => st"${retType}StackFrame caller"
     }
     val params: ST =
       if (res.paramNames.isEmpty) preParams
       else
         st"$preParams, ${(
-          for (p <- ops.ISZOps(tpe.args).zip(res.paramNames))
-            yield st"${transpileType(p._1, T)} ${localName(p._2)}",
+          for (p <- ops.ISZOps(t.args).zip(res.paramNames))
+            yield st"${transpileType(p._1)} ${localName(p._2)}",
           ", "
         )}"
-    return st"$retType $name($params)"
+    return st"$retTypeDecl $name($params)"
   }
 
-  @pure def transpileType(tpe: AST.Typed, isPtr: B): ST = {
-    val t = typeNameMap.get(tpe).get
-    if (isPtr) {
-      return st"$t"
-    } else {
-      typeKind(tpe) match {
-        case TypeKind.ImmutableTrait => return st"union $t"
-        case TypeKind.MutableTrait => return st"union $t"
-        case kind => return if (isScalar(kind)) st"$t" else st"struct $t"
-      }
-    }
+  @pure def transpileType(tpe: AST.Typed): ST = {
+    return st"${typeNameMap.get(tpe).get}"
   }
 
   @memoize def typeKind(t: AST.Typed): TypeKind.Type = {

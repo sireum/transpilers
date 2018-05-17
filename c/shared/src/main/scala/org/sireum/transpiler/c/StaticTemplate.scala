@@ -850,9 +850,9 @@ object StaticTemplate {
       |
       |#define ${mangledName}_F "%" PRI$pr ""
       |
-      |#define ${mangledName}_plus(n) n
+      |#define ${mangledName}__plus(n) n
       |
-      |static inline $mangledName ${mangledName}_minus($mangledName n) {
+      |static inline $mangledName ${mangledName}__minus($mangledName n) {
       |  return ($mangledName) -n;
       |}
       |
@@ -997,12 +997,15 @@ object StaticTemplate {
   ): Compiled = {
     val indices = constructorParamTypes.indices.map((n: Z) => n)
     var members = ISZ[ST]()
-    for (p <- ops.ISZOps(ops.ISZOps(constructorParamTypes).zip(indices)).sortWith((p1, p2) => p1._1._1.ordinal < p2._1._1.ordinal)) {
+    for (p <- ops
+        .ISZOps(ops.ISZOps(constructorParamTypes).zip(indices))
+        .sortWith((p1, p2) => p1._1._1.ordinal < p2._1._1.ordinal)) {
       val ((kind, t), i) = p
       val index = i + 1
       val us: String = if (isScalar(kind)) "" else if (isTrait(kind)) "union " else "struct "
       members = members :+ st"$us$t _$index;"
     }
+    val size = constructorParamTypes.size
     val typeHeader =
       st"""// $tpe
       |${(includes, "\n")}
@@ -1011,7 +1014,10 @@ object StaticTemplate {
       |struct $name {
       |  TYPE type;
       |  ${(members, "\n")}
-      |};"""
+      |};
+      |
+      |#define DeclNew$name(x) struct $name x = { .type = T$name }
+      |#define ${name}_size(this) Z_C($size)"""
     val cParamTypes: ISZ[ST] = for (p <- constructorParamTypes) yield p._2
     val cParams: ISZ[ST] = for (p <- ops.ISZOps(cParamTypes).zip(indices)) yield st"${p._1} _${p._2 + 1}"
     val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this, ${(cParams, ", ")})"
@@ -1036,13 +1042,13 @@ object StaticTemplate {
           st"Type_assign(&(this->_$index), _$index, sizeof($us $t));"
       }
     }
-    val eqHeader = st"B ${name}__eq($name this, $name other);"
-    val cprintHeader = st"void ${name}_string($name this, B isOut)"
+    val eqHeader = st"B ${name}__eq($name this, $name other)"
+    val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
     val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
     val header =
       st"""// $tpe
       |$constructorHeader;
-      |${(for (p <- accessors) yield p._1, "\n")}
+      |${(for (p <- accessors) yield p._1, ";\n")};
       |$eqHeader;
       |$cprintHeader;
       |$stringHeader;
@@ -1050,9 +1056,11 @@ object StaticTemplate {
       |static inline B ${name}__ne($name this, $name other) {
       |  return !${name}__eq(this, other);
       |}"""
-    val eqStmts: ISZ[ST] = for (i <- cParamTypes.indices)
-      yield st"if (${cParamTypes(i)}__ne(${name}_${i + 1}(this), ${name}_${i + 1}(other))) return F;"
-    val size = constructorParamTypes.size
+    var eqStmts = ISZ[ST]()
+    for (i <- cParamTypes.indices) {
+      val amp: String = if (isScalar(constructorParamTypes(i)._1)) "" else "&"
+      eqStmts = eqStmts :+ st"if (${cParamTypes(i)}__ne(${amp}this->_${i + 1}, ${amp}other->_${i + 1})) return F;"
+    }
     val impl =
       st"""// $tpe
       |
@@ -1061,8 +1069,9 @@ object StaticTemplate {
       |  ${(constructorStmts, "\n")}
       |}
       |
-      |${(for (p <- accessors) yield st"""${p._1}
-      |  ${p._2}""", "\n\n")}
+      |${(for (p <- accessors) yield st"""${p._1} {
+      |  ${p._2}
+      |}""", "\n\n")}
       |
       |$eqHeader {
       |  ${(eqStmts, "\n")}
@@ -1072,9 +1081,9 @@ object StaticTemplate {
       |$cprintHeader {
       |  String sep = string(", ");
       |  String_cprint(string("("), isOut);
-      |  ${cParamTypes(0)}_cprint(${name}_1(this), isOut);
+      |  ${cParamTypes(0)}_cprint(${if (isScalar(constructorParamTypes(0)._1)) "" else "&"}this->_1, isOut);
       |  ${(for (i <- z"1" until size) yield st"""String_cprint(sep, isOut);
-      |${cParamTypes(i)}_cprint(${name}_${i + 1}(this), isOut);""", "\n")}
+      |${cParamTypes(i)}_cprint(${if (isScalar(constructorParamTypes(i)._1)) "" else "&"}this->_${i + 1}, isOut);""", "\n")}
       |  String_cprint(string(")"), isOut);
       |}
       |
@@ -1082,9 +1091,9 @@ object StaticTemplate {
       |  DeclNewStackFrame(caller, "Tuple$size.scala", "org.sireum.Tuple$size", "string", 0);
       |  String sep = string(", ");
       |  String_string(result, sf, string("("));
-      |  ${cParamTypes(0)}_string(result, sf, ${name}_1(this));
+      |  ${cParamTypes(0)}_string(result, sf, ${if (isScalar(constructorParamTypes(0)._1)) "" else "&"}this->_1);
       |  ${(for (i <- z"1" until size) yield st"""String_string(result, sf, sep);
-      |${cParamTypes(i)}_string(result, sf, ${name}_${i + 1}(this));""", "\n")}
+      |${cParamTypes(i)}_string(result, sf, ${if (isScalar(constructorParamTypes(i)._1)) "" else "&"}this->_${i + 1});""", "\n")}
       |  String_string(result, sf, string(")"));
       |}"""
     return compiled(

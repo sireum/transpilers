@@ -57,6 +57,20 @@ class StaticTranspilerTest extends TestSuite {
                         |println(Direction.elements)
                         |println(Direction.numOfElements)""".stripMargin)
 
+    * - testWorksheet("""val b = T
+                        |val n = 4
+                        |val p = (b, n)
+                        |val t = (p, p, p)
+                        |println(p)
+                        |println(p._1)
+                        |println(p._2)
+                        |println(t)
+                        |println(t._1._1)
+                        |println(t._1._2)
+                        |println(t._2._1)
+                        |println(t._2._2)
+                        |println(t._3._1)
+                        |println(t._3._2)""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Boolean = {
