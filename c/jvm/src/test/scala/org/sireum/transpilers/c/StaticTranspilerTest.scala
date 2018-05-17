@@ -41,6 +41,12 @@ class StaticTranspilerTest extends TestSuite {
                         |  i = i + 1
                         |}""".stripMargin)
 
+    * - testWorksheet("""import org.sireum.U8._
+                        |import org.sireum.N._
+                        |val num = u8"10"
+                        |println(num)
+                        |println(n"1000131384384")""".stripMargin)
+
     * - testWorksheet("""@enum object Direction {
                         |  'Left
                         |  'Right
@@ -60,7 +66,7 @@ class StaticTranspilerTest extends TestSuite {
     * - testWorksheet("""val b = T
                         |val n = 4
                         |val p = (b, n)
-                        |val t = (p, (!p._1, p._2 + 1), (!(!p._1), p._2 + 2))
+                        |val t = (p, !p._1 ~> (p._2 + 1), !(!p._1) ~> (p._2 + 2))
                         |println(p)
                         |println(p._1)
                         |println(p._2)
@@ -76,7 +82,7 @@ class StaticTranspilerTest extends TestSuite {
                         |println(t._3._2)""".stripMargin)
   }
 
-  def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Boolean = {
+  def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, TopUnit.Program) =
       Parser(s"import org.sireum._\n$input")
@@ -85,12 +91,13 @@ class StaticTranspilerTest extends TestSuite {
           val p = FrontEnd.checkWorksheet(Some(typeChecker.typeHierarchy), program, reporter)
           if (reporter.hasIssue) {
             reporter.printMessages()
-            return false
+            assert(F)
           }
           p
         case _ =>
           reporter.printMessages()
-          return false
+          assert(F)
+          halt(())
       }
 
     val config = StaticTranspiler.Config(
@@ -111,7 +118,7 @@ class StaticTranspilerTest extends TestSuite {
 
     if (trans.reporter.hasIssue) {
       trans.reporter.printMessages()
-      return false
+      assert(F)
     }
 
     val resultDir = dir / s"L${line.value}"
@@ -140,7 +147,5 @@ class StaticTranspilerTest extends TestSuite {
     println()
     println(s"Running ${config.projectName} ...")
     %(s"./${config.projectName}")(resultDir)
-
-    return true
   }
 }

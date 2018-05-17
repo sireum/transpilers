@@ -766,27 +766,27 @@ object StaticTemplate {
     val shift: ST = if (!isBitVector) { st"" } else if (isUnsigned) {
       st"""
       |static inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
-      |  return un1 << un2;
+      |  return n1 << n2;
       |}
       |
       |static inline $mangledName ${mangledName}__shr($mangledName n1, $mangledName n2) {
-      |  return un1 >> un2;
+      |  return n1 >> n2;
       |}
       |
       |static inline $mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2) {
-      |  return un1 >> un2;
+      |  return n1 >> n2;
       |}
       |
       |static inline $mangledName ${mangledName}__and($mangledName n1, $mangledName n2) {
-      |  return un1 & un2;
+      |  return n1 & n2;
       |}
       |
       |static inline $mangledName ${mangledName}__or($mangledName n1, $mangledName n2) {
-      |  return un1 | un2;
+      |  return n1 | n2;
       |}
       |
       |static inline $mangledName ${mangledName}__xor($mangledName n1, $mangledName n2) {
-      |  return un1 ^ un2;
+      |  return n1 ^ n2;
       |}"""
     } else {
       val unsigned: String = bitWidth match {
@@ -848,7 +848,7 @@ object StaticTemplate {
       |#define ${mangledName}_Min ${cTypeUp}_MIN
       |#define ${mangledName}_Max ${cTypeUp}_MAX
       |
-      |#define ${mangledName}_F "%" PRI$pr ""
+      |#define ${mangledName}_F "%" $pr ""
       |
       |#define ${mangledName}__plus(n) n
       |

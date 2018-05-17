@@ -294,11 +294,12 @@ import StaticTranspiler._
       }
       val value = getCompiled(name)
       val ast = info.ast
+      val bw = ast.bitWidth
       val newValue = subz(
         value,
         filenameOfPosOpt(info.posOpt, ""),
         name,
-        ast.bitWidth,
+        if (bw == z"0") config.defaultBitWidth else bw,
         ast.isBitVector,
         !ast.isSigned,
         if (ast.hasMin) Some(ast.min) else None(),
@@ -377,6 +378,8 @@ import StaticTranspiler._
       ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
         case _: TypeInfo.AbstractDatatype => genType(nt.tpe)
         case _: TypeInfo.Sig => genType(nt.tpe)
+        case _: TypeInfo.Enum => genType(nt.tpe)
+        case _: TypeInfo.SubZ => genType(nt.tpe)
         case _ =>
       }
     }
@@ -411,7 +414,7 @@ import StaticTranspiler._
   }
 
   def transpileTraitMethod(method: TypeSpecializer.SMethod): Unit = {
-    halt("TODO") // TODO
+    halt(s"TODO: $method") // TODO
   }
 
   def transpileMethod(method: TypeSpecializer.Method): Unit = {
@@ -525,7 +528,7 @@ import StaticTranspiler._
       val info: TypeInfo.SubZ = ts.typeHierarchy.typeMap.get(tname).get.asInstanceOf[TypeInfo.SubZ]
       val n = Z(exp.lits(0).value).get
       checkBitWidth(n, info.ast.bitWidth)
-      return st"${(dotName(tname), "")}_C($n)"
+      return st"${mangleName(tname)}_C($n)"
     }
 
     def transIdent(exp: AST.Exp.Ident): ST = {
@@ -551,12 +554,26 @@ import StaticTranspiler._
           val tname = typeName(expType(exp.left))
           res.kind match {
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryImply =>
-              return st"(!(${transpileExp(exp.left)}) || ${transpileExp(exp.right)})"
+              val left = transpileExp(exp.left)
+              val right = transpileExp(exp.right)
+              return st"(!($left) || $right)"
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondAnd =>
-              return st"(${transpileExp(exp.left)} && ${transpileExp(exp.right)})"
+              val left = transpileExp(exp.left)
+              val right = transpileExp(exp.right)
+              return st"($left && $right)"
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondOr =>
-              return st"(${transpileExp(exp.left)} || ${transpileExp(exp.right)})"
-            case AST.ResolvedInfo.BuiltIn.Kind.BinaryMapsTo => halt("TODO") // TODO
+              val left = transpileExp(exp.left)
+              val right = transpileExp(exp.right)
+              return st"($left || $right)"
+            case AST.ResolvedInfo.BuiltIn.Kind.BinaryMapsTo =>
+              val left = transpileExp(exp.left)
+              val right = transpileExp(exp.right)
+              val t = expType(exp)
+              val tpe = transpileType(t)
+              val temp = freshTempName()
+              stmts = stmts :+ st"DeclNew$tpe($temp);"
+              stmts = stmts :+ st"${tpe}_apply(sf, &$temp, $left, $right);"
+              return st"(&$temp)"
             case _ =>
               val op: String = res.kind match {
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryAdd => "__add"
@@ -582,7 +599,9 @@ import StaticTranspiler._
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryRemoveAll => "__removeall"
                 case _ => halt("TODO") // TODO
               }
-              return st"${mangleName(tname)}$op(${transpileExp(exp.left)}, ${transpileExp(exp.right)})"
+              val left = transpileExp(exp.left)
+              val right = transpileExp(exp.right)
+              return st"${mangleName(tname)}$op($left, $right)"
           }
         case _ => halt("TODO") // TODO
       }
@@ -592,7 +611,8 @@ import StaticTranspiler._
       exp.attr.resOpt.get match {
         case res: AST.ResolvedInfo.BuiltIn =>
           if (res.kind == AST.ResolvedInfo.BuiltIn.Kind.UnaryNot) {
-            return st"!${transpileExp(exp.exp)}"
+            val e = transpileExp(exp.exp)
+            return st"(!$e)"
           } else {
             val tname = typeName(expType(exp))
             val op: String = res.kind match {
@@ -601,9 +621,10 @@ import StaticTranspiler._
               case AST.ResolvedInfo.BuiltIn.Kind.UnaryMinus => "__minus"
               case _ => halt("Infeasible")
             }
-            return st"${mangleName(tname)}$op(${transpileExp(exp.exp)})"
+            val e = transpileExp(exp.exp)
+            return st"${mangleName(tname)}$op($e)"
           }
-        case _ => halt("TODO") // TODO
+        case _ => halt(s"TODO: $exp") // TODO
       }
     }
 
@@ -637,7 +658,7 @@ import StaticTranspiler._
           val receiver = select.receiverOpt.get
           val o = transpileExp(receiver)
           val index = res.index
-          val t = receiver.typedOpt.get.asInstanceOf[AST.Typed.Tuple]
+          val t = expType(receiver).asInstanceOf[AST.Typed.Tuple]
           val tpe = transpileType(t)
           val et = t.args(index - 1)
           if (isScalar(typeKind(et))) {
@@ -1078,7 +1099,7 @@ import StaticTranspiler._
         case z"16" => return TypeKind.Scalar16
         case z"32" => return TypeKind.Scalar32
         case z"64" => return TypeKind.Scalar64
-        case _ => halt("Infeasible")
+        case _ => halt(s"Infeasible: $n")
       }
     }
     t match {
@@ -1096,7 +1117,9 @@ import StaticTranspiler._
           return TypeKind.MS
         } else {
           ts.typeHierarchy.typeMap.get(t.ids).get match {
-            case info: TypeInfo.SubZ => return bitWidthKind(info.ast.bitWidth)
+            case info: TypeInfo.SubZ =>
+              val bw = info.ast.bitWidth
+              return bitWidthKind(if (bw == z"0") config.defaultBitWidth else bw)
             case _: TypeInfo.Enum => return TypeKind.Enum
             case info: TypeInfo.AbstractDatatype =>
               return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
