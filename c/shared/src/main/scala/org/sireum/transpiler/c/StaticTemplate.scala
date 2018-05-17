@@ -325,11 +325,11 @@ object StaticTemplate {
     val offset: ST = if (minIndex == z"0") st"" else st"- ${indexType}_C($minIndex)"
     val sName: String = if (isImmutable) "IS" else "MS"
     val sizeType: String =
-      if (maxElement < u8Max) "uint8_t"
-      else if (maxElement < u16Max) "uint16_t"
-      else if (maxElement < u32Max) "uint32_t"
-      else if (maxElement < u64Max) "uint64_t"
-      else "size_t"
+      if (maxElement < i8Max) "int8_t"
+      else if (maxElement < i16Max) "int16_t"
+      else if (maxElement < i32Max) "int32_t"
+      else if (maxElement < i64Max) "int64_t"
+      else "intmax_t"
     val typeHeader =
       st"""// $tpe
       |${(includes, "\n")}
