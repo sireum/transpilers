@@ -41,23 +41,6 @@ object StaticTranspiler {
   @datatype class Result(files: HashSMap[QName, ST])
 
   val transKind: String = "Static C Transpiler"
-  val empty: ST = st""
-  val trueLit: ST = st"T"
-  val falseLit: ST = st"F"
-  val i8Min: Z = conversions.Z8.toZ(Z8.Min)
-  val i16Min: Z = conversions.Z16.toZ(Z16.Min)
-  val i32Min: Z = conversions.Z32.toZ(Z32.Min)
-  val i64Min: Z = conversions.Z64.toZ(Z64.Min)
-  val i8Max: Z = conversions.Z8.toZ(Z8.Max)
-  val i16Max: Z = conversions.Z16.toZ(Z16.Max)
-  val i32Max: Z = conversions.Z32.toZ(Z32.Max)
-  val i64Max: Z = conversions.Z64.toZ(Z64.Max)
-  val u8Max: Z = conversions.N8.toZ(N8.Max)
-  val u16Max: Z = conversions.N16.toZ(N16.Max)
-  val u32Max: Z = conversions.N32.toZ(N32.Max)
-  val u64Max: Z = conversions.N64.toZ(N64.Max)
-  val abort: ST = st"abort();"
-  val noType: ST = st"TNONE"
 
   val builtInTypes: HashSet[AST.Typed] = HashSet ++ ISZ(
     AST.Typed.unit,
@@ -318,13 +301,40 @@ import StaticTranspiler._
       compiledMap = compiledMap + name ~> newValue
       return mangledName
     }
+    def genSubZ(t: AST.Typed.Name): Unit = {
+      val name = t.ids
+      val mangledName = mangleName(name)
+      typeNameMap = typeNameMap + t ~> mangledName
+      val info = ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.SubZ]
+      val optionType = AST.Typed.Name(optionName, ISZ(t))
+      val optionTypeOpt: Option[(ST, ST, ST)] = ts.nameTypes.get(optionName) match {
+        case Some(s) if s.contains(TypeSpecializer.NamedType(optionType, Map.empty, Map.empty)) =>
+          val someType = AST.Typed.Name(someName, ISZ(t))
+          val noneType = AST.Typed.Name(noneName, ISZ(t))
+          genType(someType)
+          genType(noneType)
+          Some((fingerprint(optionType)._1, fingerprint(someType)._1, fingerprint(noneType)._1))
+        case _ => None()
+      }
+      val value = getCompiled(name)
+      val ast = info.ast
+      val newValue = subz(
+        value,
+        filenameOfPosOpt(info.posOpt, ""),
+        name,
+        ast.bitWidth,
+        ast.isBitVector,
+        !ast.isSigned,
+        if (ast.hasMin) Some(ast.min) else None(),
+        if (ast.hasMax) Some(ast.max) else None(),
+        optionTypeOpt
+      )
+      compiledMap = compiledMap + name ~> newValue
+    }
     def genClass(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
     }
     def genTrait(t: AST.Typed.Name): Unit = {
-      halt(s"TODO: $t") // TODO
-    }
-    def genSubZ(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
     }
     def genTuple(t: AST.Typed.Tuple): Unit = {
@@ -1094,7 +1104,7 @@ import StaticTranspiler._
         } else {
           ts.typeHierarchy.typeMap.get(t.ids).get match {
             case info: TypeInfo.SubZ => return bitWidthKind(info.ast.bitWidth)
-            case info: TypeInfo.Enum => return TypeKind.Enum
+            case _: TypeInfo.Enum => return TypeKind.Enum
             case info: TypeInfo.AbstractDatatype =>
               return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
               else if (info.ast.isRoot) TypeKind.MutableTrait

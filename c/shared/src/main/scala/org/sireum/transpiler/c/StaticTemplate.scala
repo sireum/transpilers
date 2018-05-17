@@ -12,6 +12,23 @@ object StaticTemplate {
 
   val sireumDir: String = "sireum"
   val libraryDir: String = "library"
+  val empty: ST = st""
+  val trueLit: ST = st"T"
+  val falseLit: ST = st"F"
+  val i8Min: Z = conversions.Z8.toZ(Z8.Min)
+  val i16Min: Z = conversions.Z16.toZ(Z16.Min)
+  val i32Min: Z = conversions.Z32.toZ(Z32.Min)
+  val i64Min: Z = conversions.Z64.toZ(Z64.Min)
+  val i8Max: Z = conversions.Z8.toZ(Z8.Max)
+  val i16Max: Z = conversions.Z16.toZ(Z16.Max)
+  val i32Max: Z = conversions.Z32.toZ(Z32.Max)
+  val i64Max: Z = conversions.Z64.toZ(Z64.Max)
+  val u8Max: Z = conversions.N8.toZ(N8.Max)
+  val u16Max: Z = conversions.N16.toZ(N16.Max)
+  val u32Max: Z = conversions.N32.toZ(N32.Max)
+  val u64Max: Z = conversions.N64.toZ(N64.Max)
+  val abort: ST = st"abort();"
+  val noType: ST = st"TNONE"
 
   val keywords: HashSet[String] = HashSet ++ ISZ(
     "auto",
@@ -694,6 +711,222 @@ object StaticTemplate {
     )
   }
 
+  @pure def subz(
+    compiled: Compiled,
+    uri: String,
+    name: QName,
+    bitWidth: Z,
+    isBitVector: B,
+    isUnsigned: B,
+    minOpt: Option[Z],
+    maxOpt: Option[Z],
+    optionTypeOpt: Option[(ST, ST, ST)]
+  ): Compiled = {
+    val mangledName = mangleName(name)
+    val cType = st"${if (isUnsigned) "u" else ""}int${bitWidth}_t"
+    val cTypeUp = st"${if (isUnsigned) "U" else ""}INT$bitWidth"
+    val pr = st"PRI${if (isUnsigned) "u" else "d"}$bitWidth"
+    val shift: ST = if (!isBitVector) { st"" } else if (isUnsigned) {
+      st"""
+      |static inline $mangledName ${mangledName}_shl($mangledName n1, $mangledName n2) {
+      |  return un1 << un2;
+      |}
+      |
+      |static inline $mangledName ${mangledName}_shr($mangledName n1, $mangledName n2) {
+      |  return un1 >> un2;
+      |}
+      |
+      |static inline $mangledName ${mangledName}_ushr($mangledName n1, $mangledName n2) {
+      |  return un1 >> un2;
+      |}
+      |
+      |static inline $mangledName ${mangledName}_and($mangledName n1, $mangledName n2) {
+      |  return un1 & un2;
+      |}
+      |
+      |static inline $mangledName ${mangledName}_or($mangledName n1, $mangledName n2) {
+      |  return un1 | un2;
+      |}
+      |
+      |static inline $mangledName ${mangledName}_xor($mangledName n1, $mangledName n2) {
+      |  return un1 ^ un2;
+      |}"""
+    } else {
+      val unsigned: String = bitWidth match {
+        case z"8" => "uint8_t"
+        case z"16" => "uint16_t"
+        case z"32" => "uint32_t"
+        case z"64" => "uint64_t"
+      }
+      st"""
+      |static inline $mangledName ${mangledName}_shl($mangledName n1, $mangledName n2) {
+      |  $unsigned un1 = ($unsigned) n1;
+      |  $unsigned un2 = ($unsigned) n2;
+      |  return ($mangledName) (un1 << un2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_shr($mangledName n1, $mangledName n2) {
+      |  $unsigned un1 = ($unsigned) n1;
+      |  $unsigned un2 = ($unsigned) n2;
+      |  return ($mangledName) (un1 >> un2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_ushr($mangledName n1, $mangledName n2) {
+      |  $unsigned un1 = ($unsigned) n1;
+      |  $unsigned un2 = ($unsigned) n2;
+      |  return ($mangledName) (un1 >> un2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_and($mangledName n1, $mangledName n2) {
+      |  $unsigned un1 = ($unsigned) n1;
+      |  $unsigned un2 = ($unsigned) n2;
+      |  return ($mangledName) (un1 & un2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_or($mangledName n1, $mangledName n2) {
+      |  $unsigned un1 = ($unsigned) n1;
+      |  $unsigned un2 = ($unsigned) n2;
+      |  return ($mangledName) (un1 | un2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_xor($mangledName n1, $mangledName n2) {
+      |  $unsigned un1 = ($unsigned) n1;
+      |  $unsigned un2 = ($unsigned) n2;
+      |  return ($mangledName) (un1 ^ un2);
+      |}"""
+    }
+    val min: ST = minOpt match {
+      case Some(m) => st"${mangledName}_C($m)"
+      case _ => st"${mangledName}_C(${cTypeUp}_MIN)"
+    }
+    val max: ST = maxOpt match {
+      case Some(m) => st"${mangledName}_C($m)"
+      case _ => st"${mangledName}_C(${cTypeUp}_MAX)"
+    }
+    val typeHeader =
+      st"""typedef $cType $mangledName;
+      |
+      |#define ${mangledName}_C(n) ${cTypeUp}_C(n)
+      |
+      |#define ${mangledName}_Min ${cTypeUp}_MIN
+      |#define ${mangledName}_Max ${cTypeUp}_MAX
+      |
+      |#define ${mangledName}_F "%" PRI$pr ""
+      |
+      |#define ${mangledName}_plus(n) n
+      |
+      |static inline $mangledName ${mangledName}_minus($mangledName n) {
+      |  return ($mangledName) -n;
+      |}
+      |
+      |static inline $mangledName ${mangledName}_add($mangledName n1, $mangledName n2) {
+      |  return ($mangledName) (n1 + n2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_sub($mangledName n1, $mangledName n2) {
+      |  return ($mangledName) (n1 - n2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_mul($mangledName n1, $mangledName n2) {
+      |  return ($mangledName) (n1 * n2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_div($mangledName n1, $mangledName n2) {
+      |  return ($mangledName) (n1 / n2);
+      |}
+      |
+      |static inline $mangledName ${mangledName}_rem($mangledName n1, $mangledName n2) {
+      |  return ($mangledName) (n1 % n2);
+      |}
+      |
+      |static inline B ${mangledName}_eq($mangledName n1, $mangledName n2) {
+      |  return (B) (n1 == n2);
+      |}
+      |
+      |static inline B ${mangledName}_ne($mangledName n1, $mangledName n2) {
+      |  return (B) (n1 != n2);
+      |}
+      |
+      |static inline B ${mangledName}_lt($mangledName n1, $mangledName n2) {
+      |  return (B) (n1 < n2);
+      |}
+      |
+      |static inline B ${mangledName}_le($mangledName n1, $mangledName n2) {
+      |  return (B) (n1 == n2);
+      |}
+      |
+      |static inline B ${mangledName}_gt($mangledName n1, $mangledName n2) {
+      |  return (B) (n1 > n2);
+      |}
+      |
+      |static inline B ${mangledName}_ge($mangledName n1, $mangledName n2) {
+      |  return (B) (n1 >= n2);
+      |}
+      |$shift"""
+    val stringHeader = st"void ${mangledName}_string(String result, StackFrame caller, $mangledName this)"
+
+    var header = ISZ(
+      st"#define ${mangledName}_cprint(this, isOut) { if (isOut) printf(${mangledName}_F, this); else fprintf(stderr, ${mangledName}_F, this); }",
+      stringHeader
+    )
+    var impl = ISZ(st"""$stringHeader {
+    |  DeclNewStackFrame(caller, "$uri", "${dotName(name)}", "string", 0);
+    |  int nSize = sprintf(NULL, 0, ${mangledName}_F, this);
+    |  Z size = result->size;
+    |  Z newSize = size + nSize;
+    |  sfAssert(newSize <= MaxString, "Insufficient maximum for String characters.");
+    |  snprintf(&(result->value[result->size]), nSize, ${mangledName}_F, this);
+    |  result->size = newSize;
+    |}""")
+    optionTypeOpt match {
+      case Some((optionName, someName, noneName)) =>
+        val (ct, strTo): (String, String) =
+          if (isUnsigned) ("unsigned long long", "strtoull") else ("long long", "strtoll")
+        val p = strToNum(name, optionName, someName, noneName, ct, strTo, T, T, min, max)
+        header = header :+ p._1
+        impl = impl :+ p._2
+      case _ =>
+    }
+    return compiled(
+      typeHeader = compiled.typeHeader :+ typeHeader,
+      header = compiled.header :+ st"${(header, ";\n")};",
+      impl = compiled.impl :+ st"${(impl, "\n\n")}"
+    )
+  }
+
+  @pure def strToNum(
+    name: QName,
+    optName: ST,
+    someName: ST,
+    noneName: ST,
+    cType: String,
+    cStrTo: String,
+    hasBase: B,
+    hasRange: B,
+    min: ST,
+    max: ST
+  ): (ST, ST) = {
+    val mangledName = mangleName(name)
+    val header = st"void ${mangledName}_apply($optName result, String s)"
+    val base: ST = if (hasBase) st", 0" else st""
+    val rangeCheck: ST = if (hasRange) st"" else st" && $min <= n && n <= $max"
+    val impl =
+      st"""$header {
+      |  char *endptr;
+      |  errno = 0;
+      |  $cType n = $cStrTo(s->value, &endptr$base);
+      |  if (errno) {
+      |    errno = 0;
+      |    Type_assign(result, &((struct $noneName) { .type = T$noneName }));
+      |    return;
+      |  }
+      |  if (s->value - endptr == 0$rangeCheck)
+      |    Type_assign(result, &((struct $someName) { .type = T$someName, .value = ($mangledName) n }));
+      |  else Type_assign(result, &((struct $noneName) { .type = T$noneName }));
+      |}"""
+    return (header, impl)
+  }
+
   @pure def strToB(optName: ST, someName: ST, noneName: ST): (ST, ST) = {
     val header = st"void B_apply($optName result, String s)"
     val impl =
@@ -710,29 +943,6 @@ object StaticTemplate {
       |  if (noResult) Type_assign(result, &((struct $noneName) { .type = T$noneName }))
       |  else if (r) Type_assign(result, &((struct $someName) { .type = T$someName, .value = T }));
       |  else Type_assign(result, &((struct $someName) { .type = T$someName, .value = F }));
-      |}"""
-    return (header, impl)
-  }
-
-  @pure def strToNum(name: QName, optName: ST, someName: ST, noneName: ST, cType: String, cStrTo: String, hasBase: B): (
-    ST,
-    ST
-  ) = {
-    val mangledName = mangleName(name)
-    val header = st"void ${mangledName}_apply($optName result, String s)"
-    val base: ST = if (hasBase) st", 0" else st""
-    val impl =
-      st"""$header {
-      |  char *endptr;
-      |  errno = 0;
-      |  $cType n = $cStrTo(s->value, &endptr$base);
-      |  if (errno) {
-      |    errno = 0;
-      |    Type_assign(result, &((struct $noneName) { .type = T$noneName }));
-      |    return;
-      |  }
-      |  if (s->value - endptr == 0) Type_assign(result, &((struct $someName) { .type = T$someName, .value = ($mangledName) n }));
-      |  else Type_assign(result, &((struct $noneName) { .type = T$noneName }));
       |}"""
     return (header, impl)
   }
