@@ -89,7 +89,8 @@ class StaticTranspilerTest extends TestSuite {
                         |val s2 = ISZ(s, ISZ("hello"))
                         |println(s2)
                         |val s3 = ZS.create(5, 1)
-                        |println(s3)""".stripMargin)
+                        |println(s3)
+                        |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {

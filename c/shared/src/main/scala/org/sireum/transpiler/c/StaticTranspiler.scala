@@ -756,7 +756,7 @@ import StaticTranspiler._
         if (isScalar(argTypeKind)) {
           for (arg <- invoke.args) {
             val e = transpileExp(arg)
-            stmts = stmts :+ st"$temp->value[${argTpe}_1($e)] = ${argTpe}_2($e);"
+            stmts = stmts :+ st"$temp.value[${argTpe}_1($e)] = ${argTpe}_2($e);"
           }
         } else {
           val elementTpe = transpileType(elementType)
