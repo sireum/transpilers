@@ -331,6 +331,14 @@ object StaticTemplate {
     return r
   }
 
+  @pure def arraySizeType(maxElement: Z): String = {
+    return if (maxElement < i8Max) "int8_t"
+    else if (maxElement < i16Max) "int16_t"
+    else if (maxElement < i32Max) "int32_t"
+    else if (maxElement < i64Max) "int64_t"
+    else "intmax_t"
+  }
+
   @pure def array(
     compiled: Compiled,
     includes: ISZ[ST],
@@ -346,12 +354,9 @@ object StaticTemplate {
   ): Compiled = {
     val offset: ST = if (minIndex == z"0") st"" else st"- ${indexType}_C($minIndex)"
     val sName: String = if (isImmutable) "IS" else "MS"
-    val sizeType: String =
-      if (maxElement < i8Max) "int8_t"
-      else if (maxElement < i16Max) "int16_t"
-      else if (maxElement < i32Max) "int32_t"
-      else if (maxElement < i64Max) "int64_t"
-      else "intmax_t"
+    val sizeType = arraySizeType(maxElement)
+    val at: ST = if(isElementTypeScalar) st"#define ${name}_at(this, i) ((this)->value[($sizeType) i$offset])"
+    else st"#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[($sizeType) i$offset]))"
     val typeHeader =
       st"""// $tpe
       |${(includes, "\n")}
@@ -369,8 +374,9 @@ object StaticTemplate {
       |
       |#define DeclNew$name(x) struct $name x = { .type = T$name }
       |#define ${name}_size(this) (($indexType) (this)->size)
-      |#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[($sizeType) i$offset]))"""
+      |$at"""
     val eqHeader = st"B ${name}__eq($name this, $name other)"
+    val createHeader = st"void ${name}_create($name result, StackFrame caller, $indexType size, $elementTypePtr dflt)"
     val appendHeader = st"void ${name}__append($name result, StackFrame caller, $name this, $elementTypePtr value)"
     val prependHeader = st"void ${name}__prepend($name result, StackFrame caller, $name this, $elementTypePtr value)"
     val appendAllHeader = st"void ${name}__appendAll($name result, StackFrame caller, $name this, $name other)"
@@ -381,6 +387,7 @@ object StaticTemplate {
     val header =
       st"""// $tpe
       |$eqHeader;
+      |$createHeader;
       |$appendHeader;
       |$prependHeader;
       |$appendAllHeader;
@@ -405,11 +412,21 @@ object StaticTemplate {
         |  return T;
         |}
         |
+        |$createHeader {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "create", 0);
+        |  $sizeType zize = ($sizeType) size;
+        |  sfAssert(zize <= Max$name, "Insufficient maximum for $tpe elements.");
+        |  for ($sizeType i = 0; i < zize; i++) {
+        |    result->value[i] = dflt;
+        |  }
+        |  result->size = zize;
+        |}
+        |
         |$appendHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
         |  $sizeType thisSize = this->size;
         |  $sizeType size = thisSize + 1;
-        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof(struct $name));
         |  result->value[thisSize] = value;
         |  result->size = size;
@@ -419,7 +436,7 @@ object StaticTemplate {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
         |  $sizeType thisSize = this->size;
         |  $sizeType size = thisSize + 1;
-        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
         |  result->value[0] = value;
         |  for ($sizeType i = 0; i < thisSize; i++)
         |    result->value[i + 1] = this->value[i];
@@ -431,7 +448,7 @@ object StaticTemplate {
         |  $sizeType thisSize = this->size;
         |  $sizeType otherSize = other->size;
         |  $sizeType size = thisSize + otherSize;
-        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof($name));
         |  for ($sizeType i = 0; i < otherSize; i++)
         |    result->value[thisSize + i] = other->value[i];
@@ -501,11 +518,20 @@ object StaticTemplate {
       else
         st"""// $tpe
         |
+        |$createHeader {
+        |  $sizeType zize = ($sizeType) size;
+        |  sfAssert(zize <= Max$name, "Insufficient maximum for $tpe elements.");
+        |  for ($sizeType i = 0; i < zize; i++) {
+        |    Type_assign(&result->value[i], dflt, sizeof($elementType));
+        |  }
+        |  result->size = zize;
+        |}
+        |
         |$appendHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
         |  $sizeType thisSize = this->size;
         |  $sizeType size = thisSize + 1;
-        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof(struct $name));
         |  Type_assign(&result->value[thisSize], value, sizeof($elementType));
         |  result->size = size;
@@ -515,7 +541,7 @@ object StaticTemplate {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
         |  $sizeType thisSize = this->size;
         |  $sizeType size = thisSize + 1;
-        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(&result->value[0], value, sizeof($elementType));
         |  for ($sizeType i = 0; i < thisSize; i++)
         |    Type_assign(&result->value[i + 1], &this->value[i], sizeof($elementType));
@@ -527,7 +553,7 @@ object StaticTemplate {
         |  $sizeType thisSize = this->size;
         |  $sizeType otherSize = other->size;
         |  $sizeType size = thisSize + otherSize;
-        |  sfAssert(size > Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof(struct $name));
         |  for ($sizeType i = 0; i < otherSize; i++)
         |    Type_assign(&result->value[thisSize + i], &other->value[i], sizeof($elementType));
@@ -1008,7 +1034,7 @@ object StaticTemplate {
         .sortWith((p1, p2) => p1._1._1.ordinal < p2._1._1.ordinal)) {
       val ((kind, t), i) = p
       val index = i + 1
-      val us: String = if (isScalar(kind)) "" else if (isTrait(kind)) "union " else "struct "
+      val us: String = if (isScalar(kind)) "" else typePrefix(kind)
       members = members :+ st"$us$t _$index;"
     }
     val size = constructorParamTypes.size
@@ -1197,5 +1223,9 @@ object StaticTemplate {
       case _ => return F
     }
     return T
+  }
+
+  @pure def typePrefix(kind: TypeKind.Type): String = {
+    return if (isTrait(kind)) "union " else "struct "
   }
 }
