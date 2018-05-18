@@ -362,8 +362,8 @@ object StaticTemplate {
     val offset: ST = if (minIndex == z"0") st"" else st"- ${indexType}_C($minIndex)"
     val sName: String = if (isImmutable) "IS" else "MS"
     val sizeType = arraySizeType(maxElement)
-    val at: ST = if(isElementTypeScalar) st"#define ${name}_at(this, i) ((this)->value[($sizeType) i$offset])"
-    else st"#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[($sizeType) i$offset]))"
+    val at: ST = if(isElementTypeScalar) st"#define ${name}_at(this, i) ((this)->value[($sizeType) (i)$offset])"
+    else st"#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[($sizeType) (i)$offset]))"
     val typeHeader =
       st"""// $tpe
       |${(includes, "\n")}
@@ -432,34 +432,31 @@ object StaticTemplate {
         |$appendHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
         |  $sizeType thisSize = this->size;
-        |  $sizeType size = thisSize + 1;
-        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(thisSize + 1 <= Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof(struct $name));
         |  result->value[thisSize] = value;
-        |  result->size = size;
+        |  result->size = ($sizeType) thisSize + 1;
         |}
         |
         |$prependHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
         |  $sizeType thisSize = this->size;
-        |  $sizeType size = thisSize + 1;
-        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(thisSize + 1 <= Max$name, "Insufficient maximum for $tpe elements.");
         |  result->value[0] = value;
         |  for ($sizeType i = 0; i < thisSize; i++)
         |    result->value[i + 1] = this->value[i];
-        |  result->size = size;
+        |  result->size = ($sizeType) thisSize + 1;
         |}
         |
         |$appendAllHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "++", 0);
         |  $sizeType thisSize = this->size;
         |  $sizeType otherSize = other->size;
-        |  $sizeType size = thisSize + otherSize;
-        |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+        |  sfAssert(thisSize + otherSize <= Max$name, "Insufficient maximum for $tpe elements.");
         |  Type_assign(result, this, sizeof($name));
         |  for ($sizeType i = 0; i < otherSize; i++)
         |    result->value[thisSize + i] = other->value[i];
-        |  result->size = size;
+        |  result->size = ($sizeType) thisSize + otherSize;
         |}
         |
         |$removeHeader {
@@ -525,7 +522,17 @@ object StaticTemplate {
       else
         st"""// $tpe
         |
+        |$eqHeader {
+        |  $sizeType size = this->size;
+        |  if (size != other->size) return F;
+        |  for ($sizeType i = 0; i < size; i++) {
+        |    if (${elementTypePtr}__ne(($elementTypePtr) &this->value[i], ($elementTypePtr) &other->value[i])) return F;
+        |  }
+        |  return T;
+        |}
+        |
         |$createHeader {
+        |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "create", 0);
         |  $sizeType zize = ($sizeType) size;
         |  sfAssert(zize <= Max$name, "Insufficient maximum for $tpe elements.");
         |  for ($sizeType i = 0; i < zize; i++) {
@@ -572,7 +579,7 @@ object StaticTemplate {
         |  $sizeType thisSize = this->size;
         |  $sizeType k = 0;
         |  for ($sizeType i = 0; i < thisSize; i++) {
-        |    $elementTypePtr o = &this->value[i];
+        |    $elementTypePtr o = ($elementTypePtr) &this->value[i];
         |    if (${elementTypePtr}__ne(o, value))
         |      Type_assign(&result->value[k++], o, sizeof($elementType));
         |  }
@@ -586,9 +593,9 @@ object StaticTemplate {
         |  $sizeType k = 0;
         |  for ($sizeType i = 0; i < thisSize; i++) {
         |    B found = F;
-        |    $elementTypePtr o = &this->value[i];
+        |    $elementTypePtr o = ($elementTypePtr) &this->value[i];
         |    for ($sizeType j = 0; j < otherSize && !found; j++)
-        |      if (${elementTypePtr}__eq(o, &other->value[j])) found = T;
+        |      if (${elementTypePtr}__eq(o, ($elementTypePtr) &other->value[j])) found = T;
         |    if (!found) Type_assign(&result->value[k++], o, sizeof($elementType));
         |  }
         |  result->size = k;
@@ -601,10 +608,10 @@ object StaticTemplate {
         |    $elementType *value = this->value;
         |    String space = string(" ");
         |    String_cprint(space, isOut);
-        |    ${elementTypePtr}_cprint(&(value[0]), isOut);
+        |    ${elementTypePtr}_cprint(($elementTypePtr) &(value[0]), isOut);
         |    for ($sizeType i = 1; i < size; i++) {
         |      String_cprint(string(", "), isOut);
-        |      ${elementTypePtr}_cprint(&(value[i]), isOut);
+        |      ${elementTypePtr}_cprint(($elementTypePtr) &(value[i]), isOut);
         |    }
         |    String_cprint(space, isOut);
         |  }
@@ -619,10 +626,10 @@ object StaticTemplate {
         |    $elementType *value = this->value;
         |    String space = string(" ");
         |    String_string(result, sf, space);
-        |    ${elementTypePtr}_string(result, sf, (&(value[0])));
+        |    ${elementTypePtr}_string(result, sf, ($elementTypePtr) &(value[0]));
         |    for ($sizeType i = 1; i < size; i++) {
         |      String_string(result, sf, string(", "));
-        |      ${elementTypePtr}_string(result, sf, &(value[i]));
+        |      ${elementTypePtr}_string(result, sf, ($elementTypePtr) &(value[i]));
         |    }
         |    String_string(result, sf, space);
         |  }
@@ -1041,8 +1048,7 @@ object StaticTemplate {
         .sortWith((p1, p2) => p1._1._1.ordinal < p2._1._1.ordinal)) {
       val ((kind, t), i) = p
       val index = i + 1
-      val us: String = if (isScalar(kind)) "" else typePrefix(kind)
-      members = members :+ st"$us$t _$index;"
+      members = members :+ st"${typePrefix(kind)}$t _$index;"
     }
     val size = constructorParamTypes.size
     val typeHeader =
@@ -1233,6 +1239,6 @@ object StaticTemplate {
   }
 
   @pure def typePrefix(kind: TypeKind.Type): String = {
-    return if (isTrait(kind)) "union " else "struct "
+    return if (isScalar(kind)) "" else if (isTrait(kind)) "union " else "struct "
   }
 }

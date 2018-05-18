@@ -650,7 +650,7 @@ import TypeSpecializer._
   }
 
   override def preExpInvoke(o: AST.Exp.Invoke): AST.MTransformer.PreResult[AST.Exp] = {
-    if (o.id.value == string"apply") {
+    if (o.ident.id.value == string"apply") {
       return AST.MTransformer.PreResultExpInvoke
     }
     o.attr.resOpt.get match {

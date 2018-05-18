@@ -72,7 +72,6 @@ import StaticTranspiler._
     var cFilenames: ISZ[String] = ISZ()
 
     def transEntryPoints(): Unit = {
-
       var i = 0
       for (ep <- ts.entryPoints) {
         ep match {
@@ -237,8 +236,9 @@ import StaticTranspiler._
       val key = t.ids
       val it = t.args(0)
       val et = t.args(1)
+      val etKind = typeKind(et)
       val indexType = genType(it)
-      val elementType = genType(et)
+      val elementType: ST = if (et == AST.Typed.string) st"struct StaticString" else st"${typePrefix(etKind)}${genType(et)}"
       val value = getCompiled(key)
       val (minIndex, maxElementSize) = minIndexMaxElementSize(it, et)
       val newValue = array(
@@ -249,7 +249,7 @@ import StaticTranspiler._
         fingerprint(t)._1,
         indexType,
         minIndex,
-        isScalar(typeKind(it)),
+        isScalar(etKind),
         elementType,
         transpileType(et),
         maxElementSize
@@ -691,6 +691,7 @@ import StaticTranspiler._
     }
 
     def transInvoke(invoke: AST.Exp.Invoke): ST = {
+
       def transSApply(): ST = {
         val t = expType(invoke).asInstanceOf[AST.Typed.Name]
         val tpe = transpileType(t)
@@ -719,21 +720,32 @@ import StaticTranspiler._
         }
         return st"(&$temp)"
       }
-      // a.x(0)
+
+      def transReceiver(): ST = {
+        invoke.receiverOpt match {
+          case Some(_) =>
+            val r = transpileExp(AST.Exp.Select(invoke.receiverOpt, invoke.ident.id, invoke.targs, invoke.ident.attr))
+            return r
+          case _ => val r = transpileExp(invoke.ident); return r
+        }
+      }
+
       def transSSelect(name: QName): ST = {
         val arg = invoke.args(0)
         val indexType = expType(arg)
         val elementType = expType(invoke)
         val t = AST.Typed.Name(name, ISZ(indexType, elementType))
         val tpe = transpileType(t)
+        val receiver = transReceiver()
         val e = transpileExp(arg)
-        return st"${tpe}_at($e)"
+        return st"${tpe}_at($receiver, $e)"
       }
+
       def transSStore(name: QName): ST = {
         val t = expType(invoke).asInstanceOf[AST.Typed.Name]
         val tpe = transpileType(t)
         val temp = freshTempName()
-        val receiver = transpileExp(invoke.receiverOpt.get)
+        val receiver = transReceiver()
         stmts = stmts :+ st"DeclNew$tpe($temp);"
         stmts = stmts :+ st"Type_assign(&$temp, $receiver, sizeof(struct $tpe));"
         val indexType = t.args(0)
@@ -755,6 +767,7 @@ import StaticTranspiler._
         }
         return st"(&$temp)"
       }
+
       invoke.attr.resOpt.get match {
         case res: AST.ResolvedInfo.Method =>
           res.mode match {

@@ -80,6 +80,16 @@ class StaticTranspilerTest extends TestSuite {
                         |println(t._3)
                         |println(t._3._1)
                         |println(t._3._2)""".stripMargin)
+
+    * - testWorksheet("""val s = ISZ("a", "b", "c")
+                        |println(s)
+                        |println(s(0))
+                        |println(s(1))
+                        |println(s(2))
+                        |val s2 = ISZ(s, ISZ("hello"))
+                        |println(s2)
+                        |val s3 = ZS.create(5, 1)
+                        |println(s3)""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
