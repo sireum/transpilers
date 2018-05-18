@@ -660,16 +660,17 @@ import StaticTranspiler._
           val index = res.index
           val t = expType(receiver).asInstanceOf[AST.Typed.Tuple]
           val tpe = transpileType(t)
-          val et = t.args(index - 1)
-          if (isScalar(typeKind(et))) {
-            return st"${tpe}_$index($o)"
-          } else {
-            val temp = freshTempName()
-            val etpe = transpileType(et)
-            stmts = stmts :+ st"DeclNew$etpe($temp);"
-            stmts = stmts :+ st"${tpe}_$index(&$temp, $o);"
-            return st"(&$temp)"
-          }
+          //val et = t.args(index - 1)
+          return st"${tpe}_$index($o)"
+//          if (isScalar(typeKind(et))) {
+//            return st"${tpe}_$index($o)"
+//          } else {
+//            val temp = freshTempName()
+//            val etpe = transpileType(et)
+//            stmts = stmts :+ st"DeclNew$etpe($temp);"
+//            stmts = stmts :+ st"${tpe}_$index(&$temp, $o);"
+//            return st"(&$temp)"
+//          }
         case res: AST.ResolvedInfo.EnumElement => return elementName(res.owner, res.name)
         case res: AST.ResolvedInfo.BuiltIn =>
           res.kind match {
@@ -691,6 +692,57 @@ import StaticTranspiler._
       }
     }
 
+    def transInvoke(invoke: AST.Exp.Invoke): ST = {
+      def transSApply(res: AST.ResolvedInfo.Method): ST = {
+        val t = expType(invoke).asInstanceOf[AST.Typed.Name]
+        val tpe = transpileType(t)
+        val temp = freshTempName()
+        val size = invoke.args.size
+        stmts = stmts :+ st"""static_assert($size <= Max$tpe, "Insufficient maximum for $t elements.");"""
+        stmts = stmts :+ st"DeclNew$tpe($temp);"
+        stmts = stmts :+ st"temp.size = $size;"
+        val targ = t.args(1)
+        val targKind = typeKind(targ)
+        if (isScalar(targKind)) {
+          var i = 0
+          for (arg <- invoke.args) {
+            val a = transpileExp(arg)
+            stmts = stmts :+ st"temp.value[$i] = $a;"
+            i = i + 1
+          }
+        } else {
+          var i = 0
+          val pr: String = if (isTrait(targKind)) "union " else "struct "
+          for (arg <- invoke.args) {
+            val a = transpileExp(arg)
+            stmts = stmts :+ st"Type_assign(&temp.value[$i], $a, sizeof($pr ${transpileType(targ)}));"
+            i = i + 1
+          }
+        }
+        return st"(&$temp)"
+      }
+      invoke.attr.resOpt.get match {
+        case res: AST.ResolvedInfo.Method =>
+          res.mode match {
+            case AST.MethodMode.Method => halt(s"TODO: $res")
+            case AST.MethodMode.Spec => halt(s"TODO: $res")
+            case AST.MethodMode.Ext => halt(s"TODO: $res")
+            case AST.MethodMode.Constructor =>
+              res.owner :+ res.id match {
+                case AST.Typed.isName => val r = transSApply(res); return r
+                case AST.Typed.msName => val r = transSApply(res); return r
+                case _ => halt(s"TODO: $res")
+              }
+            case AST.MethodMode.Copy => halt(s"TODO: $res")
+            case AST.MethodMode.Extractor => halt(s"TODO: $res")
+            case AST.MethodMode.ObjectConstructor => halt(s"TODO: $res")
+            case AST.MethodMode.Select => halt(s"TODO: $res")
+            case AST.MethodMode.Store => halt(s"TODO: $res")
+          }
+        case res => halt(s"TODO: $res")
+      }
+    }
+
     exp match {
       case exp: AST.Exp.LitB => val r = transLitB(exp); return r
       case exp: AST.Exp.LitC => val r = transLitC(exp); return r
@@ -698,13 +750,20 @@ import StaticTranspiler._
       case exp: AST.Exp.LitF32 => val r = transLitF32(exp); return r
       case exp: AST.Exp.LitF64 => val r = transLitF64(exp); return r
       case exp: AST.Exp.LitR => val r = transLitR(exp); return r
-      case exp: AST.Exp.StringInterpolate if isSubZLit(exp) => val r = transSubZLit(exp); return r
+      case exp: AST.Exp.StringInterpolate =>
+        if (isSubZLit(exp)) {
+          val r = transSubZLit(exp)
+          return r
+        } else {
+          halt(s"// TODO: $exp") // TODO
+        }
       case exp: AST.Exp.LitString => val r = transLitString(exp); return r
       case exp: AST.Exp.Ident => val r = transIdent(exp); return r
       case exp: AST.Exp.Binary => val r = transBinary(exp); return r
       case exp: AST.Exp.Unary => val r = transUnary(exp); return r
       case exp: AST.Exp.Select => val r = transSelect(exp); return r
       case exp: AST.Exp.Tuple => val r = transTuple(exp); return r
+      case exp: AST.Exp.Invoke => val r = transInvoke(exp); return r
       case _ => halt(s"TODO: $exp") // TODO
     }
   }
@@ -1126,7 +1185,9 @@ import StaticTranspiler._
               else if (info.ast.isRoot) TypeKind.MutableTrait
               else TypeKind.Mutable
             case info: TypeInfo.Sig =>
-              return if (info.ast.isImmutable) TypeKind.ImmutableTrait else TypeKind.MutableTrait
+              return if (info.ast.isExt) TypeKind.Immutable
+              else if (info.ast.isImmutable) TypeKind.ImmutableTrait
+              else TypeKind.MutableTrait
             case _ => halt("Infeasible")
           }
         }
