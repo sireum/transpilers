@@ -697,28 +697,29 @@ import StaticTranspiler._
         val temp = freshTempName()
         val size = invoke.args.size
         val sizeType = arraySizeType(minIndexMaxElementSize(t.args(0), t.args(1))._2)
-        stmts = stmts :+ st"""static_assert($size <= Max$tpe, "Insufficient maximum for $t elements.");"""
+        stmts = stmts :+ st"""STATIC_ASSERT($size <= Max$tpe, "Insufficient maximum for $t elements.");"""
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"temp.size = ($sizeType) $size;"
+        stmts = stmts :+ st"$temp.size = ($sizeType) $size;"
         val targ = t.args(1)
         val targKind = typeKind(targ)
         if (isScalar(targKind)) {
           var i = 0
           for (arg <- invoke.args) {
             val a = transpileExp(arg)
-            stmts = stmts :+ st"temp.value[$i] = $a;"
+            stmts = stmts :+ st"$temp.value[$i] = $a;"
             i = i + 1
           }
         } else {
           var i = 0
           for (arg <- invoke.args) {
             val a = transpileExp(arg)
-            stmts = stmts :+ st"Type_assign(&temp.value[$i], $a, sizeof(${typePrefix(targKind)}${transpileType(targ)}));"
+            stmts = stmts :+ st"Type_assign(&$temp.value[$i], $a, sizeof(${typePrefix(targKind)}${transpileType(targ)}));"
             i = i + 1
           }
         }
         return st"(&$temp)"
       }
+      // a.x(0)
       def transSSelect(name: QName): ST = {
         val arg = invoke.args(0)
         val indexType = expType(arg)
@@ -759,7 +760,22 @@ import StaticTranspiler._
           res.mode match {
             case AST.MethodMode.Method => halt(s"TODO: $res") // TODO
             case AST.MethodMode.Spec => halt(s"TODO: $res") // TODO
-            case AST.MethodMode.Ext => halt(s"TODO: $res") // TODO
+            case AST.MethodMode.Ext =>
+              val t = expType(invoke)
+              val tpe = transpileType(t)
+              var args = ISZ[ST]()
+              for (arg <- invoke.args) {
+                val a = transpileExp(arg)
+                args = args :+ a
+              }
+              if (isScalar(typeKind(t))) {
+                return st"${tpe}_${res.id}(sf, ${(args, ", ")})"
+              } else {
+                val temp = freshTempName()
+                stmts = stmts :+ st"DeclNew$tpe($temp);"
+                stmts = stmts :+ st"${tpe}_${res.id}(&$temp, sf, ${(args, ", ")});"
+                return st"(&$temp)"
+              }
             case AST.MethodMode.Constructor =>
               res.owner :+ res.id match {
                 case AST.Typed.isName => val r = transSApply(); return r
