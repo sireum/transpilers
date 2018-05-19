@@ -1195,9 +1195,7 @@ object StaticTemplate {
   @pure def mangleName(ids: QName): ST = {
     val r: ST =
       if (ids.size == z"1") st"top_${ids(0)}"
-      else if (ids.size >= 2 && ids(0) == string"org" && ids(1) == string"sireum")
-        st"${(ops.ISZOps(ids).drop(2).map(encodeName), "_")}"
-      else st"${(ids.map(encodeName), "_")}"
+      else st"${(AST.Typed.short(ids).map(encodeName), "_")}"
     return r
   }
 

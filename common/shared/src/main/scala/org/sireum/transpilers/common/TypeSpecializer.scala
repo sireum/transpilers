@@ -71,7 +71,7 @@ object TypeSpecializer {
       extends SMember {
     override def string: String = {
       val sep: String = if (receiverOpt.nonEmpty) "#" else "."
-      return st"${(owner, ".")}$sep$id: $tpe".render
+      return st"${(AST.Typed.short(owner), ".")}$sep$id: $tpe".render
     }
   }
 
@@ -84,7 +84,7 @@ object TypeSpecializer {
   ) extends SMember {
     override def string: String = {
       val sep: String = if (receiverOpt.nonEmpty) "#" else "."
-      return st"[$mode] ${(owner, ".")}$sep$id: $tpe".render
+      return st"[$mode] ${(AST.Typed.short(owner), ".")}$sep$id: $tpe".render
     }
   }
 
