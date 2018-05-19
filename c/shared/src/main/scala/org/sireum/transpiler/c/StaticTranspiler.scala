@@ -192,18 +192,28 @@ import StaticTranspiler._
     }
   }
 
-  @pure def fingerprint(t: AST.Typed): (ST, B) = {
-    def fprint: String = {
-      return Fingerprint.string(t.string, config.fprintWidth)
+  @pure def fprint(t: AST.Typed): ST = {
+    val width = config.fprintWidth
+    val max: Z = if (0 < width && width <= 64) width else 64
+    val bytes = ops.ISZOps(crypto.SHA3.sum512(conversions.String.toU8is(t.string))).take(max)
+    var cs = ISZ[C]()
+    for (b <- bytes) {
+      val c = conversions.U32.toC(conversions.U8.toU32(b))
+      cs = cs :+ ops.COps.hex2c((c >>> '\u0004') & '\u000F')
+      cs = cs :+ ops.COps.hex2c(c & '\u000F')
     }
+    return st"$cs"
+  }
+
+  @pure def fingerprint(t: AST.Typed): (ST, B) = {
     t match {
       case t: AST.Typed.Name =>
         ts.typeHierarchy.typeMap.get(t.ids).get match {
           case _: TypeInfo.Enum => return (mangleName(ops.ISZOps(t.ids).dropRight(1)), F)
-          case _ => return if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_$fprint", T)
+          case _ => return if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_${fprint(t)}", T)
         }
-      case t: AST.Typed.Tuple => return (st"Tuple${t.args.size}_$fprint", T)
-      case t: AST.Typed.Fun => return (st"Fun${t.args.size}_$fprint", T)
+      case t: AST.Typed.Tuple => return (st"Tuple${t.args.size}_${fprint(t)}", T)
+      case t: AST.Typed.Fun => return (st"Fun${t.args.size}_${fprint(t)}", T)
       case _ => halt(s"Infeasible: $t")
     }
   }
@@ -1270,7 +1280,7 @@ import StaticTranspiler._
     val tpe = method.tpeOpt.get
     var ids = method.owner :+ method.id
     if (config.fprintWidth != z"0" && (method.typeParams.nonEmpty || !method.isInObject)) {
-      ids = ids :+ Fingerprint.string(tpe.string, config.fprintWidth)
+      ids = ids :+ fprint(tpe).render
     }
     if (!method.isInObject) {
       ids = "i" +: ids
