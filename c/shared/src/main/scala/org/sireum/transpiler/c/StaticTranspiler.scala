@@ -319,10 +319,13 @@ import StaticTranspiler._
     def genTuple(t: AST.Typed.Tuple): Unit = {
       val name = tupleName(t.args.size)
       val value = getCompiled(name)
-      var paramTypes = ISZ[(TypeKind.Type, ST)]()
+      var paramTypes = ISZ[(TypeKind.Type, ST, ST)]()
       for (arg <- t.args) {
         genType(arg)
-        paramTypes = paramTypes :+ ((typeKind(arg), fingerprint(arg)._1))
+        val tPtr = fingerprint(arg)._1
+        val kind = typeKind(arg)
+        val t: ST = if (arg == AST.Typed.string) st"struct StaticString" else st"${typePrefix(kind)}$tPtr"
+        paramTypes = paramTypes :+ ((kind, t, tPtr))
       }
       val newValue = tuple(value, t.string, includes(name, t.args), fingerprint(t)._1, paramTypes)
       compiledMap = compiledMap + name ~> newValue
@@ -722,21 +725,17 @@ import StaticTranspiler._
       }
 
       def transReceiver(): ST = {
-        invoke.receiverOpt match {
-          case Some(_) =>
-            val r = transpileExp(AST.Exp.Select(invoke.receiverOpt, invoke.ident.id, invoke.targs, invoke.ident.attr))
-            return r
-          case _ => val r = transpileExp(invoke.ident); return r
-        }
+          invoke.receiverOpt match {
+            case Some(receiver) => val r = transpileExp(receiver); return r
+            case _ => val r = transpileExp(invoke.ident); return r
+          }
       }
 
       def transSSelect(name: QName): ST = {
-        val arg = invoke.args(0)
-        val indexType = expType(arg)
-        val elementType = expType(invoke)
-        val t = AST.Typed.Name(name, ISZ(indexType, elementType))
-        val tpe = transpileType(t)
+        val t = invoke.ident.typedOpt.get.asInstanceOf[AST.Typed.Name]
         val receiver = transReceiver()
+        val arg = invoke.args(0)
+        val tpe = transpileType(t)
         val e = transpileExp(arg)
         return st"${tpe}_at($receiver, $e)"
       }
@@ -762,7 +761,7 @@ import StaticTranspiler._
           val elementTpe = transpileType(elementType)
           for (arg <- invoke.args) {
             val e = transpileExp(arg)
-            stmts = stmts :+ st"Type_assign(&$temp->value[${argTpe}_1($e)], ${argTpe}_2($e), sizeof(${typePrefix(argTypeKind)}$elementTpe));"
+            stmts = stmts :+ st"Type_assign(&$temp.value[${argTpe}_1($e)], ${argTpe}_2($e), sizeof(${typePrefix(argTypeKind)}$elementTpe));"
           }
         }
         return st"(&$temp)"

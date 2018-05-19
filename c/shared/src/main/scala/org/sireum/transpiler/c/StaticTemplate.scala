@@ -608,10 +608,10 @@ object StaticTemplate {
         |    $elementType *value = this->value;
         |    String space = string(" ");
         |    String_cprint(space, isOut);
-        |    ${elementTypePtr}_cprint(($elementTypePtr) &(value[0]), isOut);
+        |    ${elementTypePtr}_cprint(&value[0], isOut);
         |    for ($sizeType i = 1; i < size; i++) {
         |      String_cprint(string(", "), isOut);
-        |      ${elementTypePtr}_cprint(($elementTypePtr) &(value[i]), isOut);
+        |      ${elementTypePtr}_cprint(&value[i], isOut);
         |    }
         |    String_cprint(space, isOut);
         |  }
@@ -1039,16 +1039,16 @@ object StaticTemplate {
     tpe: String,
     includes: ISZ[ST],
     name: ST,
-    constructorParamTypes: ISZ[(TypeKind.Type, ST)]
+    constructorParamTypes: ISZ[(TypeKind.Type, ST, ST)]
   ): Compiled = {
     val indices = constructorParamTypes.indices.map((n: Z) => n)
     var members = ISZ[ST]()
     for (p <- ops
         .ISZOps(ops.ISZOps(constructorParamTypes).zip(indices))
         .sortWith((p1, p2) => p1._1._1.ordinal < p2._1._1.ordinal)) {
-      val ((kind, t), i) = p
+      val ((_, t, _), i) = p
       val index = i + 1
-      members = members :+ st"${typePrefix(kind)}$t _$index;"
+      members = members :+ st"$t _$index;"
     }
     val size = constructorParamTypes.size
     val typeHeader =
@@ -1063,29 +1063,29 @@ object StaticTemplate {
       |
       |#define DeclNew$name(x) struct $name x = { .type = T$name }
       |#define ${name}_size(this) Z_C($size)"""
-    val cParamTypes: ISZ[ST] = for (p <- constructorParamTypes) yield p._2
+    val cParamTypes: ISZ[ST] = for (p <- constructorParamTypes) yield p._3
     val cParams: ISZ[ST] = for (p <- ops.ISZOps(cParamTypes).zip(indices)) yield st"${p._1} _${p._2 + 1}"
     val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this, ${(cParams, ", ")})"
-    val typesIndices: ISZ[((TypeKind.Type, ST), Z)] = ops.ISZOps(constructorParamTypes).zip(indices)
+    val typesIndices: ISZ[((TypeKind.Type, ST, ST), Z)] = ops.ISZOps(constructorParamTypes).zip(indices)
     var accessors = ISZ[ST]()
     var constructorStmts = ISZ[ST]()
     for (p <- typesIndices) {
-      val ((kind, t), i) = p
+      val ((kind, _, tPtr), i) = p
       val index = i + 1
       if (isScalar(kind)) {
         accessors = accessors :+
-          st"""static inline $t ${name}_$index($name this) {
+          st"""static inline $tPtr ${name}_$index($name this) {
           |  return this->_$index;
           |}"""
         constructorStmts = constructorStmts :+ st"this->_$index = _$index;"
       } else {
         val us: String = if (isTrait(kind)) "union" else "struct"
         accessors = accessors :+
-          st"""static inline $t ${name}_$index($name this) {
-          |  return &this->_$index;
+          st"""static inline $tPtr ${name}_$index($name this) {
+          |  return ($tPtr) &this->_$index;
           |}"""
         constructorStmts = constructorStmts :+
-          st"Type_assign(&(this->_$index), _$index, sizeof($us $t));"
+          st"Type_assign(&(this->_$index), _$index, sizeof($us $tPtr));"
       }
     }
     val eqHeader = st"B ${name}__eq($name this, $name other)"
@@ -1105,8 +1105,9 @@ object StaticTemplate {
       |}"""
     var eqStmts = ISZ[ST]()
     for (i <- cParamTypes.indices) {
-      val amp: String = if (isScalar(constructorParamTypes(i)._1)) "" else "&"
-      eqStmts = eqStmts :+ st"if (${cParamTypes(i)}__ne(${amp}this->_${i + 1}, ${amp}other->_${i + 1})) return F;"
+      val t = cParamTypes(i)
+      val amp: ST = if (isScalar(constructorParamTypes(i)._1)) st"" else st"($t) &"
+      eqStmts = eqStmts :+ st"if (${t}__ne(${amp}this->_${i + 1}, ${amp}other->_${i + 1})) return F;"
     }
     val impl =
       st"""// $tpe
@@ -1137,10 +1138,10 @@ object StaticTemplate {
       |  DeclNewStackFrame(caller, "Tuple$size.scala", "org.sireum.Tuple$size", "string", 0);
       |  String sep = string(", ");
       |  String_string(result, sf, string("("));
-      |  ${cParamTypes(0)}_string(result, sf, ${if (isScalar(constructorParamTypes(0)._1)) "" else "&"}this->_1);
+      |  ${cParamTypes(0)}_string(result, sf, ${if (isScalar(constructorParamTypes(0)._1)) "" else s"(${cParamTypes(0).render}) &"}this->_1);
       |  ${(
         for (i <- z"1" until size) yield st"""String_string(result, sf, sep);
-        |${cParamTypes(i)}_string(result, sf, ${if (isScalar(constructorParamTypes(i)._1)) "" else "&"}this->_${i + 1});""",
+        |${cParamTypes(i)}_string(result, sf, ${if (isScalar(constructorParamTypes(i)._1)) "" else s"(${cParamTypes(i).render}) &"}this->_${i + 1});""",
         "\n"
       )}
       |  String_string(result, sf, string(")"));
