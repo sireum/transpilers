@@ -50,7 +50,7 @@ object TypeSpecializer {
         case o: AST.Typed.TypeVar =>
           substMap.get(o.id) match {
             case Some(t) => return AST.MTransformer.PreResult(F, MSome(t))
-            case _ => halt(s"Unexpected situation when substituting type var '${o.id}'.")
+            case _ =>
           }
         case _ =>
       }
@@ -91,7 +91,7 @@ object TypeSpecializer {
 
   @pure def substMethod(m: Info.Method, substMap: HashMap[String, AST.Typed]): Info.Method = {
     if (substMap.nonEmpty) {
-      val newAst = TypeSubstitutor(substMap).transformStmt(m.ast)
+      val newAst = TypeSubstitutor(substMap).transformStmt(m.ast).get
       return m(ast = newAst.asInstanceOf[AST.Stmt.Method])
     } else {
       return m
@@ -100,7 +100,7 @@ object TypeSpecializer {
 
   @pure def substAssignExp(ast: AST.AssignExp, substMap: HashMap[String, AST.Typed]): AST.AssignExp = {
     if (substMap.nonEmpty) {
-      val newAst = TypeSubstitutor(substMap).transformAssignExp(ast)
+      val newAst = TypeSubstitutor(substMap).transformAssignExp(ast).get
       return newAst.asInstanceOf[AST.AssignExp]
     } else {
       return ast
@@ -207,10 +207,12 @@ import TypeSpecializer._
             case _ => HashSet.empty
           }
           methods = methods + m.info.owner ~> (set + m)
-
+          val oldCurrReceiverOpt = currReceiverOpt
+          currReceiverOpt = m.receiverOpt
           for (stmt <- m.info.ast.bodyOpt.get.stmts) {
             transformStmt(stmt)
           }
+          currReceiverOpt = oldCurrReceiverOpt
         }
 
         for (tm <- traitMethods.elements) {
@@ -500,6 +502,9 @@ import TypeSpecializer._
   }
 
   def addType(o: AST.Typed): Unit = {
+    if (o.hasTypeVars) {
+      return
+    }
     o match {
       case o: AST.Typed.Name =>
         val set: HashSet[NamedType] = nameTypes.get(o.ids) match {
