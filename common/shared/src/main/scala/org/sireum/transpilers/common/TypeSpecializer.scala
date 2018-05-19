@@ -68,7 +68,12 @@ object TypeSpecializer {
   }
 
   @datatype class SVar(val receiverOpt: Option[AST.Typed.Name], val owner: QName, val id: String, val tpe: AST.Typed)
-      extends SMember
+      extends SMember {
+    override def string: String = {
+      val sep: String = if (receiverOpt.nonEmpty) "#" else "."
+      return st"${(owner, ".")}$sep$id: $tpe".render
+    }
+  }
 
   @datatype class SMethod(
     val receiverOpt: Option[AST.Typed.Name],
@@ -76,7 +81,12 @@ object TypeSpecializer {
     val id: String,
     val tpe: AST.Typed.Fun,
     mode: AST.MethodMode.Type
-  ) extends SMember
+  ) extends SMember {
+    override def string: String = {
+      val sep: String = if (receiverOpt.nonEmpty) "#" else "."
+      return st"[$mode] ${(owner, ".")}$sep$id: $tpe".render
+    }
+  }
 
   val tsKind: String = "Type Specializer"
   val emptyVars: Map[String, AST.Typed] = Map.empty
@@ -207,12 +217,18 @@ import TypeSpecializer._
             case _ => HashSet.empty
           }
           methods = methods + m.info.owner ~> (set + m)
+          val mRes = m.info.methodRes
           val oldCurrReceiverOpt = currReceiverOpt
+          val oldCurrSMethodOpt = currSMethodOpt
           currReceiverOpt = m.receiverOpt
+          currSMethodOpt = Some(
+            SMethod(currReceiverOpt, m.info.owner, m.info.ast.sig.id.value, mRes.tpeOpt.get, mRes.mode)
+          )
           for (stmt <- m.info.ast.bodyOpt.get.stmts) {
             transformStmt(stmt)
           }
           currReceiverOpt = oldCurrReceiverOpt
+          currSMethodOpt = oldCurrSMethodOpt
         }
 
         for (tm <- traitMethods.elements) {
