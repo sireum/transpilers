@@ -444,7 +444,7 @@ import TypeSpecializer._
   def addResolvedMethod(
     posOpt: Option[Position],
     m: AST.ResolvedInfo.Method,
-    receiverOpt: Option[AST.Exp],
+    receiverOpt: Option[AST.Typed.Name],
     expType: AST.Typed
   ): Unit = {
     val rOpt: Option[AST.Typed.Name] = if (m.isInObject) {
@@ -453,12 +453,16 @@ import TypeSpecializer._
       m.mode match {
         case AST.MethodMode.Method =>
           receiverOpt match {
-            case Some(receiver) => Some(receiver.typedOpt.get.asInstanceOf[AST.Typed.Name])
-            case _ => Some(currReceiverOpt.get)
+            case Some(_) => receiverOpt
+            case _ =>
+              if (currReceiverOpt.isEmpty) {
+                println("here")
+              }
+              Some(currReceiverOpt.get)
           }
         case AST.MethodMode.Spec =>
           receiverOpt match {
-            case Some(receiver) => Some(receiver.typedOpt.get.asInstanceOf[AST.Typed.Name])
+            case Some(_) => receiverOpt
             case _ => Some(currReceiverOpt.get)
           }
         case AST.MethodMode.ObjectConstructor => None()
@@ -624,6 +628,14 @@ import TypeSpecializer._
           case Some(sm) => addClassSVar(o.posOpt, sm, currReceiverOpt.get, v)
           case _ =>
         }
+      case m: AST.ResolvedInfo.Method =>
+        if (m.isInObject) {
+          addResolvedMethod(o.posOpt, m, None(), m.tpeOpt.get.ret)
+        } else {
+          if (currReceiverOpt.nonEmpty) {
+            addResolvedMethod(o.posOpt, m, currReceiverOpt, m.tpeOpt.get.ret)
+          }
+        }
       case _ =>
     }
     return AST.MTransformer.PreResultExpIdent
@@ -659,7 +671,7 @@ import TypeSpecializer._
 
   override def preExpSelect(o: AST.Exp.Select): AST.MTransformer.PreResult[AST.Exp] = {
     o.attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt, o.typedOpt.get)
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
       case v: AST.ResolvedInfo.Var if !v.isInObject =>
         currSMethodOpt match {
           case Some(sm) =>
@@ -680,7 +692,7 @@ import TypeSpecializer._
       return AST.MTransformer.PreResultExpInvoke
     }
     o.attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt, o.typedOpt.get)
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
       case _ =>
     }
 
@@ -689,7 +701,7 @@ import TypeSpecializer._
 
   override def preExpInvokeNamed(o: AST.Exp.InvokeNamed): AST.MTransformer.PreResult[AST.Exp] = {
     o.attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, o.receiverOpt, o.typedOpt.get)
+      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
       case _ =>
     }
     return AST.MTransformer.PreResultExpInvokeNamed
@@ -698,6 +710,17 @@ import TypeSpecializer._
   override def preTyped(o: AST.Typed): AST.MTransformer.PreResult[AST.Typed] = {
     addType(o)
     return AST.MTransformer.PreResultTypedName
+  }
+
+  @pure def receiverTypeOpt(eOpt: Option[AST.Exp]): Option[AST.Typed.Name] = {
+    eOpt match {
+      case Some(e) =>
+        e.typedOpt.get match {
+          case _: AST.Typed.Object => return None()
+          case _ => return Some(e.typedOpt.get.asInstanceOf[AST.Typed.Name])
+        }
+      case _ => return None()
+    }
   }
 
 }

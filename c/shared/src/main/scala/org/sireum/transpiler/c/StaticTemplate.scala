@@ -455,7 +455,7 @@ object StaticTemplate {
       case Some(otherName) =>
         val other: String = if (isImmutable) "MS" else "IS"
         Some(st"""
-        |void ${otherName}_to$other($otherName result, StackFrame caller, $name this) {
+        |void ${name}_to$other($otherName result, StackFrame caller, $name this) {
         |  STATIC_ASSERT(Max$otherName >= Max$name, "Cannot convert $tpe to $other[...,...].");
         |  result->type = T$otherName;
         |  result->size = this->size;
@@ -479,8 +479,8 @@ object StaticTemplate {
       |};
       |
       |#define DeclNew$name(x) struct $name x = { .type = T$name }
-      |#define ${name}_size(this) (($indexType) (this)->size)
-      |#define ${name}_zize(this) ((Z) (this)->size)
+      |#define ${name}_size(sf, this) (($indexType) (this)->size)
+      |#define ${name}_zize(sf, this) ((Z) (this)->size)
       |$at"""
     val eqHeader = st"B ${name}__eq($name this, $name other)"
     val createHeader = st"void ${name}_create($name result, StackFrame caller, $indexType size, $elementTypePtr dflt)"
@@ -934,6 +934,10 @@ object StaticTemplate {
     val pr = st"PRI${if (isUnsigned) if (isBitVector) "x" else "u" else "d"}$bitWidth"
     val shift: ST = if (!isBitVector) { st"" } else if (isUnsigned) {
       st"""
+      |static inline $mangledName ${mangledName}__complement($mangledName n) {
+      |  return ~n;
+      |}
+      |
       |static inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
       |  return n1 << n2;
       |}
@@ -965,6 +969,11 @@ object StaticTemplate {
         case z"64" => "uint64_t"
       }
       st"""
+      |static inline $mangledName ${mangledName}__complement($mangledName n) {
+      |  $unsigned un = ($unsigned) n;
+      |  return ($mangledName) ~un;
+      |}
+      |
       |static inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
       |  $unsigned un1 = ($unsigned) n1;
       |  $unsigned un2 = ($unsigned) n2;
@@ -1279,6 +1288,69 @@ object StaticTemplate {
       header = compiled.header :+ header,
       impl = compiled.impl :+ impl
     )
+  }
+
+  def obj(
+    compiled: Compiled,
+    uri: String,
+    objectName: QName,
+    name: ST,
+    vars: ISZ[(TypeKind.Type, String, ST, ST, B)],
+    initStmts: ISZ[ST]
+  ): Compiled = {
+    var accessorHeaders = ISZ[ST]()
+    var accessors = ISZ[ST]()
+    var globals = ISZ[ST]()
+    for (q <- vars) {
+      val (kind, id, t, tPtr, isVar) = q
+      val h = st"$tPtr ${name}_$id(StackFrame caller)"
+      globals = globals :+ st"$t _${name}_$id;"
+      accessorHeaders = accessorHeaders :+ st"$h;"
+      accessors = accessors :+
+        st"""$h {
+        |  ${name}_init(caller);
+        |  return _${name}_$id;
+        |}"""
+      if (isVar) {
+        val h2 = st"void ${name}_${id}_a(StackFrame caller, $tPtr p_$id)"
+        accessorHeaders = accessorHeaders :+ st"$h2;"
+        if (isScalar(kind)) {
+          accessors = accessors :+
+            st"""$h2 {
+            |  ${name}_init(caller);
+            |  _${name}_$id = p_$id;
+            |}"""
+        } else {
+          accessors = accessors :+
+            st"""$h2 {
+            |  ${name}_init(caller);
+            |  Type_assign(&_${name}_$id, p_$id, sizeof($t));
+            |}"""
+        }
+      }
+    }
+    val header =
+      st"""void ${name}_init(StackFrame caller);
+      |
+      |${(accessorHeaders, "\n")}"""
+    val impl =
+      st"""B ${name}_initialized = F;
+      |
+      |${(globals, "\n")}
+      |
+      |void ${name}_init(StackFrame caller) {
+      |  DeclNewStackFrame(caller, "$uri", "${dotName(objectName)}", "<init>", 0);
+      |  if (${name}_initialized) return;
+      |  ${name}_initialized = T;
+      |  ${(initStmts, "\n")}
+      |}
+      |
+      |${(accessors, "\n\n")}"""
+    return compiled(header = header +: compiled.header, impl = impl +: compiled.impl)
+  }
+
+  @pure def commaArgs(args: ISZ[ST]): ST = {
+    return if (args.isEmpty) st"" else st", ${(args, ", ")}"
   }
 
   @pure def dotName(ids: QName): String = {

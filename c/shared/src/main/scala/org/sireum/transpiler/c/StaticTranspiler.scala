@@ -96,9 +96,29 @@ import StaticTranspiler._
       }
     }
 
+    def transpileObjectVars(owner: QName, vars: ISZ[String]): Unit = {
+      for (id <- vars.elements) {
+        val info = ts.typeHierarchy.nameMap.get(owner :+ id).get.asInstanceOf[Info.Var]
+
+        val oldCurrReceiverOpt = currReceiverOpt
+        val oldStmts = stmts
+        val oldNextTempNum = nextTempNum
+
+        // TODO
+
+        currReceiverOpt = oldCurrReceiverOpt
+        stmts = oldStmts
+        nextTempNum = oldNextTempNum
+      }
+    }
+
     def work(): Unit = {
       for (ms <- ts.methods.values; m <- ms.elements) {
         transpileMethod(m)
+      }
+      for (p <- ts.objectVars.entries) {
+        val (owner, vars) = p
+        transpileObjectVars(p._1, p._2.elements)
       }
       for (m <- ts.traitMethods.elements) {
         transpileTraitMethod(m)
@@ -158,8 +178,8 @@ import StaticTranspiler._
         case _ =>
       }
     }
-    transEntryPoints()
     work()
+    transEntryPoints()
     genFiles()
 
     return Result(r)
@@ -176,7 +196,7 @@ import StaticTranspiler._
       types = types :+ ct
       val tpe = fingerprint(ct)._1
       val kind = typeKind(ct)
-      cps = cps :+ ((kind, id, typeDecl(ct), tpe))
+      cps = cps :+ ((kind, fieldName(id).render, typeDecl(ct), tpe))
     }
     val oldNextTempNum = nextTempNum
     val oldStmts = stmts
@@ -446,7 +466,7 @@ import StaticTranspiler._
           types = types :+ ct
           val tpe = genType(ct)
           val kind = typeKind(ct)
-          cps = cps :+ ((kind, id, typeDecl(ct), tpe, !isVal))
+          cps = cps :+ ((kind, fieldName(id).render, typeDecl(ct), tpe, !isVal))
         }
         var vs = ISZ[(TypeKind.Type, String, ST, ST, B)]()
         for (v <- nt.vars.entries) {
@@ -454,7 +474,7 @@ import StaticTranspiler._
           types = types :+ ct
           val tpe = genType(ct)
           val kind = typeKind(ct)
-          vs = vs :+ ((kind, id, typeDecl(ct), tpe, !isVal))
+          vs = vs :+ ((kind, fieldName(id).render, typeDecl(ct), tpe, !isVal))
         }
         val uri =
           filenameOfPosOpt(ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
@@ -695,10 +715,10 @@ import StaticTranspiler._
           } else {
             if (res.isInObject) {
               val name = mangleName(res.owner :+ res.id)
-              return st"$name()"
+              return st"$name(sf)"
             } else {
-              val t = expType(exp)
-              return st"${transpileType(t)}_${res.id}_(this)"
+              val t = currReceiverOpt.get
+              return st"${transpileType(t)}_${fieldName(res.id)}_(this)"
             }
           }
         case res: AST.ResolvedInfo.Method =>
@@ -870,13 +890,13 @@ import StaticTranspiler._
         val a = transpileExp(arg)
         args = args :+ a
       }
-      if (isScalar(typeKind(retType))) {
-        return st"${methodName(None(), res)}(sf, ${(args, ", ")})"
+      if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
+        return st"${methodName(None(), res)}(sf${commaArgs(args)})"
       } else {
         val temp = freshTempName()
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"${methodName(None(), res)}(&$temp, sf, ${(args, ", ")});"
+        stmts = stmts :+ st"${methodName(None(), res)}(&$temp, sf${commaArgs(args)});"
         return st"(&$temp)"
       }
     }
@@ -892,13 +912,13 @@ import StaticTranspiler._
         val a = transpileExp(arg)
         args = args :+ a
       }
-      if (isScalar(typeKind(retType))) {
-        return st"${methodName(Some(receiverType), res)}(sf, $receiver, ${(args, ", ")})"
+      if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
+        return st"${methodName(Some(receiverType), res)}(sf, $receiver${commaArgs(args)})"
       } else {
         val temp = freshTempName()
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"${methodName(Some(receiverType), res)}($temp, sf, $receiver, ${(args, ", ")});"
+        stmts = stmts :+ st"${methodName(Some(receiverType), res)}(&$temp, sf, $receiver${commaArgs(args)});"
         return st"(&$temp)"
       }
     }
@@ -986,12 +1006,12 @@ import StaticTranspiler._
           args = args :+ a
         }
         val name: ST = if (sNameSet.contains(res.owner)) st"${tpe}_${res.id}" else methodName(None(), res)
-        if (isScalar(typeKind(t))) {
-          return st"$name(sf, ${(args, ", ")})"
+        if (isScalar(typeKind(t)) || t == AST.Typed.unit) {
+          return st"$name(sf${commaArgs(args)})"
         } else {
           val temp = freshTempName()
           stmts = stmts :+ st"DeclNew$tpe($temp);"
-          stmts = stmts :+ st"$name(&$temp, sf, ${(args, ", ")});"
+          stmts = stmts :+ st"$name(&$temp, sf${commaArgs(args)});"
           return st"(&$temp)"
         }
       }
@@ -1005,7 +1025,7 @@ import StaticTranspiler._
           args = args :+ a
         }
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"${tpe}_apply(sf, $temp, ${(args, ", ")});"
+        stmts = stmts :+ st"${tpe}_apply(sf, &$temp${commaArgs(args)});"
         return st"(&$temp)"
       }
 
@@ -1201,10 +1221,10 @@ import StaticTranspiler._
               case res: AST.ResolvedInfo.Var =>
                 if (res.isInObject) {
                   val name = mangleName(res.owner :+ res.id)
-                  transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a($rhs);")
+                  transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, $rhs);")
                 } else {
                   val t = currReceiverOpt.get
-                  transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${res.id}_a(this, $rhs);")
+                  transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldName(res.id)}_a(this, $rhs);")
                 }
               case _ => halt("Infeasible")
             }
@@ -1217,10 +1237,7 @@ import StaticTranspiler._
             val et = receiverType.args(1)
             val index = transpileExp(lhs.args(0))
             if (isScalar(typeKind(et))) {
-              transpileAssignExp(
-                stmt.rhs,
-                (rhs, _) => st"*${transpileType(receiverType)}_at($receiver, $index) = $rhs;"
-              )
+              transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(receiverType)}_at($receiver, $index) = $rhs;")
             } else {
               transpileAssignExp(
                 stmt.rhs,
@@ -1421,7 +1438,7 @@ import StaticTranspiler._
             val endTemp = freshTempName()
             stmts = stmts :+ st"$tpe $endTemp = $end;"
             val byTemp = freshTempName()
-            stmts = stmts :+ st"Z $byTemp = $by"
+            stmts = stmts :+ st"Z $byTemp = $by;"
             val b: ISZ[ST] = eg.condOpt match {
               case Some(cond) =>
                 val oldStmts = stmts
@@ -1434,15 +1451,17 @@ import StaticTranspiler._
               case _ => body
             }
             stmts = stmts :+
-              st"""if (($id <= $endTemp && $byTemp > 0) || ($id >= $endTemp && $byTemp < 0) {
-              |  while ($id != $endTemp) {
+              st"""if ($byTemp > 0) {
+              |  while ($id <= $endTemp) {
+              |    ${(b, "\n")}
+              |    $id = ($tpe) ($id + $byTemp);
+              |  }
+              |} else {
+              |  while ($id >= $endTemp) {
               |    ${(b, "\n")}
               |    $id = ($tpe) ($id + $byTemp);
               |  }
               |}"""
-            if (range.isInclusive) {
-              stmts = stmts ++ b
-            }
             return stmts
           case range: AST.EnumGen.Range.Expr => halt(s"TODO: $range") // TODO
         }
@@ -1615,6 +1634,7 @@ import StaticTranspiler._
       if (method.isInObject)
         if (method.typeParams.isEmpty) mangleName(ids :+ method.id)
         else st"${mangleName(ids :+ method.id)}_${fprint(tpe)}"
+      else if (sNameSet.contains(ids)) st"${transpileType(receiverTypeOpt.get)}_${method.id}"
       else if (method.typeParams.isEmpty) st"${transpileType(receiverTypeOpt.get)}_${method.id}_"
       else st"${transpileType(receiverTypeOpt.get)}_${method.id}_${fprint(tpe)}_"
     return r
