@@ -352,6 +352,7 @@ object StaticTemplate {
     tpe: String,
     isImmutable: B,
     name: ST,
+    otherNameOpt: Option[ST],
     indexType: ST,
     minIndex: Z,
     isElementTypeScalar: B,
@@ -362,8 +363,21 @@ object StaticTemplate {
     val offset: ST = if (minIndex == z"0") st"" else st"- ${indexType}_C($minIndex)"
     val sName: String = if (isImmutable) "IS" else "MS"
     val sizeType = arraySizeType(maxElement)
-    val at: ST = if(isElementTypeScalar) st"#define ${name}_at(this, i) ((this)->value[($sizeType) (i)$offset])"
-    else st"#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[($sizeType) (i)$offset]))"
+    val at: ST =
+      if (isElementTypeScalar) st"#define ${name}_at(this, i) ((this)->value[($sizeType) (i)$offset])"
+      else st"#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[($sizeType) (i)$offset]))"
+    val toOtherOpt: Option[ST] = otherNameOpt match {
+      case Some(otherName) =>
+        val other: String = if (isImmutable) "MS" else "IS"
+        Some(st"""
+        |void ${otherName}_to$other($otherName result, StackFrame caller, $name this) {
+        |  STATIC_ASSERT(Max$otherName >= Max$name, "Cannot convert $tpe to $other[...,...].");
+        |  result->type = T$otherName;
+        |  result->size = this->size;
+        |  memcpy(&result->value, &this->value, sizeof(struct $name));
+        |}""")
+      case _ => None()
+    }
     val typeHeader =
       st"""// $tpe
       |${(includes, "\n")}
@@ -382,7 +396,8 @@ object StaticTemplate {
       |#define DeclNew$name(x) struct $name x = { .type = T$name }
       |#define ${name}_size(this) (($indexType) (this)->size)
       |#define ${name}_zize(this) ((Z) (this)->size)
-      |$at"""
+      |$at
+      |$toOtherOpt"""
     val eqHeader = st"B ${name}__eq($name this, $name other)"
     val createHeader = st"void ${name}_create($name result, StackFrame caller, $indexType size, $elementTypePtr dflt)"
     val zreateHeader = st"void ${name}_zreate($name result, StackFrame caller, Z size, $elementTypePtr dflt)"
@@ -1161,10 +1176,14 @@ object StaticTemplate {
       |  DeclNewStackFrame(caller, "Tuple$size.scala", "org.sireum.Tuple$size", "string", 0);
       |  String sep = string(", ");
       |  String_string(result, sf, string("("));
-      |  ${cParamTypes(0)}_string(result, sf, ${if (isScalar(constructorParamTypes(0)._1)) "" else s"(${cParamTypes(0).render}) &"}this->_1);
+      |  ${cParamTypes(0)}_string(result, sf, ${if (isScalar(constructorParamTypes(0)._1)) ""
+      else s"(${cParamTypes(0).render}) &"}this->_1);
       |  ${(
-        for (i <- z"1" until size) yield st"""String_string(result, sf, sep);
-        |${cParamTypes(i)}_string(result, sf, ${if (isScalar(constructorParamTypes(i)._1)) "" else s"(${cParamTypes(i).render}) &"}this->_${i + 1});""",
+        for (i <- z"1" until size)
+          yield
+            st"""String_string(result, sf, sep);
+            |${cParamTypes(i)}_string(result, sf, ${if (isScalar(constructorParamTypes(i)._1)) ""
+            else s"(${cParamTypes(i).render}) &"}this->_${i + 1});""",
         "\n"
       )}
       |  String_string(result, sf, string(")"));

@@ -251,12 +251,21 @@ import StaticTranspiler._
       val elementType: ST = if (et == AST.Typed.string) st"struct StaticString" else st"${typePrefix(etKind)}${genType(et)}"
       val value = getCompiled(key)
       val (minIndex, maxElementSize) = minIndexMaxElementSize(it, et)
+      val otherType: AST.Typed.Name =
+        if (key == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, ISZ(it, et))
+        else AST.Typed.Name(AST.Typed.isName, ISZ(it, et))
+      val otherTpeOpt: Option[ST] = ts.nameTypes.get(otherType.ids) match {
+        case Some(s) if s.contains(TypeSpecializer.NamedType(otherType, Map.empty, Map.empty)) =>
+          Some(fingerprint(otherType)._1)
+        case _ => None()
+      }
       val newValue = array(
         value,
         includes(key, ISZ(it, et)),
         t.string,
         t.ids == AST.Typed.isName,
         fingerprint(t)._1,
+        otherTpeOpt,
         indexType,
         minIndex,
         isScalar(etKind),
