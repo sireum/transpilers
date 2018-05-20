@@ -37,6 +37,7 @@ object TypeSpecializer {
     objectVars: HashSMap[QName, HashSSet[String]],
     traitMethods: HashSSet[SMethod],
     methods: HashSMap[QName, HashSSet[Method]],
+    extMethods: HashSSet[SMethod],
     typeImpl: Poset[AST.Typed.Name],
     callGraph: Graph[SMember, B]
   )
@@ -131,6 +132,7 @@ import TypeSpecializer._
   var methods: HashSMap[QName, HashSSet[Method]] = HashSMap.empty
   var callGraph: Graph[SMember, B] = Graph.empty
   var traitMethods: HashSSet[SMethod] = HashSSet.empty
+  var extMethods: HashSSet[SMethod] = HashSSet.empty
   var workList: ISZ[Method] = ISZ()
   var seen: HashSSet[SMethod] = HashSSet.empty
   var descendantsCache: HashMap[Poset.Index, HashSet[Poset.Index]] = HashMap.empty
@@ -330,7 +332,7 @@ import TypeSpecializer._
       buildLeaves(info)
     }
 
-    return Result(th, eps, nameTypes, otherTypes, objectVars, traitMethods, methods, typeImpl, callGraph)
+    return Result(th, eps, nameTypes, otherTypes, objectVars, traitMethods, methods, extMethods, typeImpl, callGraph)
   }
 
   def classMethodImpl(posOpt: Option[Position], method: SMethod): Info.Method = {
@@ -405,12 +407,14 @@ import TypeSpecializer._
   def addSMethod(posOpt: Option[Position], method: SMethod): Unit = {
     method.mode match {
       case AST.MethodMode.Method =>
+      case AST.MethodMode.Ext =>
       case _ => return
     }
 
     if (seen.contains(method)) {
       return
     }
+    seen = seen + method
 
     method.receiverOpt match {
       case Some(receiver) =>
@@ -426,17 +430,20 @@ import TypeSpecializer._
           case _ => halt("Infeasible")
         }
       case _ =>
-        val m = th.nameMap.get(method.owner :+ method.id).get.asInstanceOf[Info.Method]
-        seen = seen + method
-        if (m.ast.sig.typeParams.isEmpty) {
-          workList = workList :+ Method(method.receiverOpt, m)
-          return
-        }
-        val mType = m.methodType.tpe
-        val substMapOpt = TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Equal, method.tpe, mType, reporter)
-        substMapOpt match {
-          case Some(substMap) => workList = workList :+ Method(method.receiverOpt, substMethod(m, substMap))
-          case _ =>
+        th.nameMap.get(method.owner :+ method.id).get match {
+          case info: Info.Method =>
+            if (info.ast.sig.typeParams.isEmpty) {
+              workList = workList :+ Method(method.receiverOpt, info)
+              return
+            }
+            val mType = info.methodType.tpe
+            val substMapOpt = TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Equal, method.tpe, mType, reporter)
+            substMapOpt match {
+              case Some(substMap) => workList = workList :+ Method(method.receiverOpt, substMethod(info, substMap))
+              case _ =>
+            }
+          case _: Info.ExtMethod => extMethods = extMethods + method
+          case _ => halt("Infeasible")
         }
     }
   }
@@ -454,11 +461,7 @@ import TypeSpecializer._
         case AST.MethodMode.Method =>
           receiverOpt match {
             case Some(_) => receiverOpt
-            case _ =>
-              if (currReceiverOpt.isEmpty) {
-                println("here")
-              }
-              Some(currReceiverOpt.get)
+            case _ => Some(currReceiverOpt.get)
           }
         case AST.MethodMode.Spec =>
           receiverOpt match {

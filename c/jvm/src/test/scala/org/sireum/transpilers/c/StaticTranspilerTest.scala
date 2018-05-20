@@ -9,6 +9,7 @@ import org.sireum.message.Reporter
 import org.sireum.test.TestSuite
 import org.sireum.transpiler.c.StaticTranspiler
 import ammonite.ops._
+import org.sireum.transpiler.c.StaticTranspiler.NumberConversionsExtMethodTranspilerPlugin
 import org.sireum.transpilers.common.TypeSpecializer
 
 class StaticTranspilerTest extends TestSuite {
@@ -131,7 +132,8 @@ class StaticTranspilerTest extends TestSuite {
       defaultBitWidth = 64,
       maxStringSize = 500,
       maxArraySize = 100,
-      customArraySizes = HashMap.empty
+      customArraySizes = HashMap.empty,
+      extMethodTranspilerPlugins = ISZ(NumberConversionsExtMethodTranspilerPlugin())
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)

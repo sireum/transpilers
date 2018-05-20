@@ -455,7 +455,7 @@ object StaticTemplate {
       case Some(otherName) =>
         val other: String = if (isImmutable) "MS" else "IS"
         Some(st"""
-        |void ${name}_to$other($otherName result, StackFrame caller, $name this) {
+        |static inline void ${name}_to$other($otherName result, StackFrame caller, $name this) {
         |  STATIC_ASSERT(Max$otherName >= Max$name, "Cannot convert $tpe to $other[...,...].");
         |  result->type = T$otherName;
         |  result->size = this->size;
@@ -1306,15 +1306,16 @@ object StaticTemplate {
       val h = st"$tPtr ${name}_$id(StackFrame caller)"
       globals = globals :+ st"$t _${name}_$id;"
       accessorHeaders = accessorHeaders :+ st"$h;"
+      val scalar = isScalar(kind)
       accessors = accessors :+
         st"""$h {
         |  ${name}_init(caller);
-        |  return _${name}_$id;
+        |  return ${if (scalar) "" else "&"}_${name}_$id;
         |}"""
       if (isVar) {
         val h2 = st"void ${name}_${id}_a(StackFrame caller, $tPtr p_$id)"
         accessorHeaders = accessorHeaders :+ st"$h2;"
-        if (isScalar(kind)) {
+        if (scalar) {
           accessors = accessors :+
             st"""$h2 {
             |  ${name}_init(caller);

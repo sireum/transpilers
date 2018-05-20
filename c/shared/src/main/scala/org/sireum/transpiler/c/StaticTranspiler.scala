@@ -8,6 +8,8 @@ import org.sireum.lang.symbol._
 import org.sireum.lang.symbol.Resolver.QName
 import org.sireum.transpilers.common.TypeSpecializer
 
+import StaticTemplate._
+
 object StaticTranspiler {
 
   type SubstMap = HashMap[String, AST.Typed]
@@ -19,10 +21,58 @@ object StaticTranspiler {
     defaultBitWidth: Z,
     maxStringSize: Z,
     maxArraySize: Z,
-    customArraySizes: HashMap[AST.Typed, Z]
+    customArraySizes: HashMap[AST.Typed, Z],
+    extMethodTranspilerPlugins: ISZ[ExtMethodTranspilerPlugin]
   )
 
   @datatype class Result(files: HashSMap[QName, ST])
+
+  @sig trait ExtMethodTranspilerPlugin {
+
+    @pure def canCompile(method: TypeSpecializer.SMethod): B
+
+    @pure def transpile(
+      compiled: Compiled,
+      typeSpecializer: TypeSpecializer.Result,
+      method: TypeSpecializer.SMethod
+    ): Compiled
+  }
+
+  @datatype class NumberConversionsExtMethodTranspilerPlugin extends ExtMethodTranspilerPlugin {
+
+    @pure def canCompile(method: TypeSpecializer.SMethod): B = {
+      if (method.owner.size < 4) {
+        return F
+      }
+      if (ops.ISZOps(method.owner).take(conversionsPkg.size) == conversionsPkg && scalarConversionObjects.contains(
+          method.owner(3)
+        )) {
+        return T
+      }
+      return F
+    }
+
+    @pure def transpile(
+      compiled: Compiled,
+      typeSpecializer: TypeSpecializer.Result,
+      method: TypeSpecializer.SMethod
+    ): Compiled = {
+      val from = ops.ISZOps(method.owner).takeRight(1)
+      val id = method.id
+      val sops = ops.StringOps(id)
+      if (id.size > 2 && sops.startsWith("to")) {
+        val to = ops.StringOps(id).substring(2, id.size)
+        return compiled(
+          header = compiled.header :+
+            st"""static inline $to ${mangleName(method.owner)}_to$to(StackFrame sf, $from n) {
+            |  return ($to) n;
+            |}"""
+        )
+      } else {
+        halt("TODO") // TODO
+      }
+    }
+  }
 
   val transKind: String = "Static C Transpiler"
 
@@ -53,9 +103,31 @@ object StaticTranspiler {
     AST.Typed.mszName,
     AST.Typed.zsName
   )
+
+  val conversionsPkg: ISZ[String] = AST.Typed.sireumName :+ "conversions"
+
+  val scalarConversionObjects: HashSet[String] = HashSet ++ ISZ(
+    "Z",
+    "Z8",
+    "Z16",
+    "Z32",
+    "Z64",
+    "N",
+    "N8",
+    "N16",
+    "N32",
+    "N64",
+    "S8",
+    "S16",
+    "S32",
+    "S64",
+    "U8",
+    "U16",
+    "U32",
+    "U64"
+  )
 }
 
-import StaticTemplate._
 import StaticTranspiler._
 
 @record class StaticTranspiler(config: Config, ts: TypeSpecializer.Result, reporter: Reporter) {
@@ -96,33 +168,37 @@ import StaticTranspiler._
       }
     }
 
-    def transpileObjectVars(owner: QName, vars: ISZ[String]): Unit = {
-      for (id <- vars.elements) {
-        val info = ts.typeHierarchy.nameMap.get(owner :+ id).get.asInstanceOf[Info.Var]
-
-        val oldCurrReceiverOpt = currReceiverOpt
-        val oldStmts = stmts
-        val oldNextTempNum = nextTempNum
-
-        // TODO
-
-        currReceiverOpt = oldCurrReceiverOpt
-        stmts = oldStmts
-        nextTempNum = oldNextTempNum
+    def transpileObjectVars(name: QName, vars: HashSSet[String]): Unit = {
+      val oldCurrReceiverOpt = currReceiverOpt
+      val oldStmts = stmts
+      val oldNextTempNum = nextTempNum
+      val value = getCompiled(name)
+      val oInfo = ts.typeHierarchy.nameMap.get(name).get.asInstanceOf[Info.Object]
+      var vs = ISZ[(TypeKind.Type, String, ST, ST, B)]()
+      stmts = ISZ()
+      val mangledName = mangleName(name)
+      for (stmt <- oInfo.ast.stmts) {
+        stmt match {
+          case stmt: AST.Stmt.Var if vars.contains(stmt.id.value) =>
+            val id = stmt.id.value
+            val t = stmt.tipeOpt.get.typedOpt.get
+            val kind = typeKind(t)
+            vs = vs :+ ((kind, id, typeDecl(t), transpileType(t), !stmt.isVal))
+            transpileAssignExp(
+              stmt.initOpt.get,
+              (rhs, rhsT) =>
+                if (isScalar(kind)) st"_${mangledName}_$id = $rhs;"
+                else st"Type_assign(&_${mangledName}_$id, $rhs, sizeof($rhsT));"
+            )
+          case _ =>
+        }
       }
-    }
-
-    def work(): Unit = {
-      for (ms <- ts.methods.values; m <- ms.elements) {
-        transpileMethod(m)
-      }
-      for (p <- ts.objectVars.entries) {
-        val (owner, vars) = p
-        transpileObjectVars(p._1, p._2.elements)
-      }
-      for (m <- ts.traitMethods.elements) {
-        transpileTraitMethod(m)
-      }
+      val uri = filenameOfPosOpt(oInfo.ast.posOpt, "")
+      val newValue = obj(value, uri, name, mangledName, vs, stmts)
+      currReceiverOpt = oldCurrReceiverOpt
+      stmts = oldStmts
+      nextTempNum = oldNextTempNum
+      compiledMap = compiledMap + name ~> newValue
     }
 
     def genFiles(): Unit = {
@@ -171,16 +247,50 @@ import StaticTranspiler._
       )
     }
 
-    genTypeNames()
-    for (nts <- ts.nameTypes.values; nt <- nts.elements) {
-      ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
-        case info: TypeInfo.AbstractDatatype if !info.ast.isRoot => genClassConstructor(nt)
-        case _ =>
+    def work(): Unit = {
+      genTypeNames()
+      for (ms <- ts.methods.values; m <- ms.elements) {
+        transpileMethod(m)
       }
+      for (p <- ts.objectVars.entries) {
+        transpileObjectVars(p._1, p._2)
+      }
+      for (m <- ts.traitMethods.elements) {
+        transpileTraitMethod(m)
+      }
+      for (m <- ts.extMethods.elements if !sNameSet.contains(m.owner)) {
+        var found = F
+        val name = m.owner
+        val value = getCompiled(name)
+        for (p <- config.extMethodTranspilerPlugins) {
+          if (p.canCompile(m)) {
+            found = T
+            val newValue = p.transpile(value, ts, m)
+            compiledMap = compiledMap + name ~> newValue
+          }
+        }
+        if (!found) {
+          reporter.info(None(), transKind, st"Generated @ext method header for '${(m.owner :+ m.id, ".")}'.".render)
+          val info = ts.typeHierarchy.nameMap.get(m.owner :+ m.id).get.asInstanceOf[Info.ExtMethod]
+          if (info.ast.sig.typeParams.nonEmpty) {
+            val mh = methodHeader(
+              m.receiverOpt,
+              T,
+              info.owner,
+              info.ast.sig.id.value,
+              info.ast.sig.typeParams.isEmpty,
+              m.tpe,
+              info.ast.sig.params.map((p: AST.Param) => p.id.value)
+            )
+            compiledMap = compiledMap + name ~> value(header = value.header :+ st"$mh;")
+          }
+        }
+      }
+      transEntryPoints()
+      genFiles()
     }
+
     work()
-    transEntryPoints()
-    genFiles()
 
     return Result(r)
   }
@@ -546,6 +656,12 @@ import StaticTranspiler._
     for (t <- ts.otherTypes.elements) {
       genType(t)
     }
+    for (nts <- ts.nameTypes.values; nt <- nts.elements) {
+      ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
+        case info: TypeInfo.AbstractDatatype if !info.ast.isRoot => genClassConstructor(nt)
+        case _ =>
+      }
+    }
   }
 
   def transpileMain(m: Info.Method, i: Z): (String, ST) = {
@@ -595,22 +711,22 @@ import StaticTranspiler._
     nextTempNum = 0
     stmts = ISZ()
 
-    val info = method.info.methodRes
-    val header = methodHeader(method)
+    val res = method.info.methodRes
+    val header = methodHeaderRes(method.receiverOpt, res)
     for (stmt <- method.info.ast.bodyOpt.get.stmts) {
       transpileStmt(stmt)
     }
     val impl =
       st"""$header {
-      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.info.ast.posOpt, "")}", "${dotName(info.owner)}", "${info.id}", 0);
+      |  DeclNewStackFrame(caller, "${filenameOfPosOpt(method.info.ast.posOpt, "")}", "${dotName(res.owner)}", "${res.id}", 0);
       |  ${(stmts, "\n")}
       |}"""
 
-    val key: QName = info.owner.size match {
-      case z"0" => info.owner
-      case n if n >= 3 && ops.ISZOps(info.owner).take(3) == AST.Typed.sireumName =>
-        sireumDir +: ops.ISZOps(compName(info.owner)).drop(3)
-      case _ => compName(info.owner)
+    val key: QName = res.owner.size match {
+      case z"0" => res.owner
+      case n if n >= 3 && ops.ISZOps(res.owner).take(3) == AST.Typed.sireumName =>
+        sireumDir +: ops.ISZOps(compName(res.owner)).drop(3)
+      case _ => compName(res.owner)
     }
 
     val value = getCompiled(key)
@@ -891,12 +1007,12 @@ import StaticTranspiler._
         args = args :+ a
       }
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
-        return st"${methodName(None(), res)}(sf${commaArgs(args)})"
+        return st"${methodNameRes(None(), res)}(sf${commaArgs(args)})"
       } else {
         val temp = freshTempName()
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"${methodName(None(), res)}(&$temp, sf${commaArgs(args)});"
+        stmts = stmts :+ st"${methodNameRes(None(), res)}(&$temp, sf${commaArgs(args)});"
         return st"(&$temp)"
       }
     }
@@ -913,12 +1029,12 @@ import StaticTranspiler._
         args = args :+ a
       }
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
-        return st"${methodName(Some(receiverType), res)}(sf, $receiver${commaArgs(args)})"
+        return st"${methodNameRes(Some(receiverType), res)}(sf, $receiver${commaArgs(args)})"
       } else {
         val temp = freshTempName()
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"${methodName(Some(receiverType), res)}(&$temp, sf, $receiver${commaArgs(args)});"
+        stmts = stmts :+ st"${methodNameRes(Some(receiverType), res)}(&$temp, sf, $receiver${commaArgs(args)});"
         return st"(&$temp)"
       }
     }
@@ -1005,7 +1121,7 @@ import StaticTranspiler._
           val a = transpileExp(arg)
           args = args :+ a
         }
-        val name: ST = if (sNameSet.contains(res.owner)) st"${tpe}_${res.id}" else methodName(None(), res)
+        val name: ST = if (sNameSet.contains(res.owner)) st"${tpe}_${res.id}" else methodNameRes(None(), res)
         if (isScalar(typeKind(t)) || t == AST.Typed.unit) {
           return st"$name(sf${commaArgs(args)})"
         } else {
@@ -1541,29 +1657,6 @@ import StaticTranspiler._
     }
   }
 
-  @pure def methodHeader(method: TypeSpecializer.Method): ST = {
-    val res = method.info.methodRes
-    val name = methodName(method.receiverOpt, res)
-    val t = res.tpeOpt.get
-    val tpe = transpileType(t.ret)
-    val (retType, retTypeDecl): (ST, ST) =
-      if (isScalar(typeKind(t.ret)) || t.ret == AST.Typed.unit) (st"", tpe)
-      else (st"$tpe result, ", st"void")
-    val preParams: ST = method.receiverOpt match {
-      case Some(receiver) => st"${retType}StackFrame caller, ${transpileType(receiver)} this"
-      case _ => st"${retType}StackFrame caller"
-    }
-    val params: ST =
-      if (res.paramNames.isEmpty) preParams
-      else
-        st"$preParams, ${(
-          for (p <- ops.ISZOps(t.args).zip(res.paramNames))
-            yield st"${transpileType(p._1)} ${localName(p._2)}",
-          ", "
-        )}"
-    return st"$retTypeDecl $name($params)"
-  }
-
   @pure def transpileType(tpe: AST.Typed): ST = {
     return st"${typeNameMap.get(tpe).get}"
   }
@@ -1627,17 +1720,68 @@ import StaticTranspiler._
     }
   }
 
-  @pure def methodName(receiverTypeOpt: Option[AST.Typed.Name], method: AST.ResolvedInfo.Method): ST = {
-    val tpe = method.tpeOpt.get
-    val ids = method.owner
+  @pure def methodNameRes(receiverTypeOpt: Option[AST.Typed.Name], res: AST.ResolvedInfo.Method): ST = {
+    return methodName(receiverTypeOpt, res.isInObject, res.owner, res.id, res.typeParams.isEmpty, res.tpeOpt.get)
+  }
+
+  @pure def methodName(
+    receiverTypeOpt: Option[AST.Typed.Name],
+    isInObject: B,
+    owner: QName,
+    id: String,
+    noTypeParams: B,
+    t: AST.Typed.Fun
+  ): ST = {
+    val ids = owner
     val r: ST =
-      if (method.isInObject)
-        if (method.typeParams.isEmpty) mangleName(ids :+ method.id)
-        else st"${mangleName(ids :+ method.id)}_${fprint(tpe)}"
-      else if (sNameSet.contains(ids)) st"${transpileType(receiverTypeOpt.get)}_${method.id}"
-      else if (method.typeParams.isEmpty) st"${transpileType(receiverTypeOpt.get)}_${method.id}_"
-      else st"${transpileType(receiverTypeOpt.get)}_${method.id}_${fprint(tpe)}_"
+      if (isInObject)
+        if (noTypeParams) mangleName(ids :+ id)
+        else st"${mangleName(ids :+ id)}_${fprint(t)}"
+      else if (sNameSet.contains(ids)) st"${transpileType(receiverTypeOpt.get)}_$id"
+      else if (noTypeParams) st"${transpileType(receiverTypeOpt.get)}_${id}_"
+      else st"${transpileType(receiverTypeOpt.get)}_${id}_${fprint(t)}_"
     return r
+  }
+
+  @pure def methodHeaderRes(receiverOpt: Option[AST.Typed.Name], res: AST.ResolvedInfo.Method): ST = {
+    return methodHeader(
+      receiverOpt,
+      res.isInObject,
+      res.owner,
+      res.id,
+      res.typeParams.isEmpty,
+      res.tpeOpt.get,
+      res.paramNames
+    )
+  }
+
+  @pure def methodHeader(
+    receiverOpt: Option[AST.Typed.Name],
+    isInObject: B,
+    owner: QName,
+    id: String,
+    noTypeParams: B,
+    t: AST.Typed.Fun,
+    paramNames: ISZ[String]
+  ): ST = {
+    val name = methodName(receiverOpt, isInObject, owner, id, noTypeParams, t)
+    val tpe = transpileType(t.ret)
+    val (retType, retTypeDecl): (ST, ST) =
+      if (isScalar(typeKind(t.ret)) || t.ret == AST.Typed.unit) (st"", tpe)
+      else (st"$tpe result, ", st"void")
+    val preParams: ST = receiverOpt match {
+      case Some(receiver) => st"${retType}StackFrame caller, ${transpileType(receiver)} this"
+      case _ => st"${retType}StackFrame caller"
+    }
+    val params: ST =
+      if (paramNames.isEmpty) preParams
+      else
+        st"$preParams, ${(
+          for (p <- ops.ISZOps(t.args).zip(paramNames))
+            yield st"${transpileType(p._1)} ${localName(p._2)}",
+          ", "
+        )}"
+    return st"$retTypeDecl $name($params)"
   }
 
   def declString(): ST = {
