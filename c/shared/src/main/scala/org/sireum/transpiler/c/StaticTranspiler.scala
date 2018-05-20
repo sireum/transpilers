@@ -1541,9 +1541,13 @@ import StaticTranspiler._
             stmts = ISZ()
             val start = transpileExp(range.start)
             val end = transpileExp(range.end)
-            val by: ST = range.byOpt match {
-              case Some(byExp) => transpileExp(byExp)
-              case _ => st"1"
+            val (by, byE): (ST, Either[Z, ST]) = range.byOpt match {
+              case Some(byExp) =>
+                byExp match {
+                  case byExp: AST.Exp.LitZ => val v = byExp.value; (st"$v", Either.Left(v))
+                  case _ => val v = transpileExp(byExp); (v, Either.Right(v))
+                }
+              case _ => (st"1", Either.Left(1))
             }
             val id: ST = eg.idOpt match {
               case Some(x) => st"${x.value}"
@@ -1566,18 +1570,31 @@ import StaticTranspiler._
                 |}""")
               case _ => body
             }
-            stmts = stmts :+
-              st"""if ($byTemp > 0) {
-              |  while ($id ${if (range.isInclusive) "<=" else "<"} $endTemp) {
-              |    ${(b, "\n")}
-              |    $id = ($tpe) ($id + $byTemp);
-              |  }
-              |} else {
-              |  while ($id ${if (range.isInclusive) ">=" else ">"} $endTemp) {
-              |    ${(b, "\n")}
-              |    $id = ($tpe) ($id + $byTemp);
-              |  }
+            val pos =
+              st"""while ($id ${if (range.isInclusive) "<=" else "<"} $endTemp) {
+              |  ${(b, "\n")}
+              |  $id = ($tpe) ($id + $byTemp);
               |}"""
+            val neg =
+              st"""while ($id ${if (range.isInclusive) ">=" else ">"} $endTemp) {
+              |  ${(b, "\n")}
+              |  $id = ($tpe) ($id + $byTemp);
+              |}"""
+            byE match {
+              case Either.Left(n) =>
+                if (n > 0) {
+                  stmts = stmts :+ pos
+                } else {
+                  stmts = stmts :+ neg
+                }
+              case _ =>
+                stmts = stmts :+
+                  st"""if ($byTemp > 0) {
+                  |  $pos
+                  |} else {
+                  |  $neg
+                  |}"""
+            }
             return stmts
           case range: AST.EnumGen.Range.Expr => halt(s"TODO: $range") // TODO
         }
