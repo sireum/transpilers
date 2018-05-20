@@ -19,7 +19,7 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
-/*    * - testWorksheet("""println("Hello World!")""".stripMargin)
+    * - testWorksheet("""println("Hello World!")""".stripMargin)
 
     * - testWorksheet("""val x = 5 * 5 + 1
                         |assert(x == 26)
@@ -126,7 +126,7 @@ class StaticTranspilerTest extends TestSuite {
                         |    u8"0xd1", u8"0x73", u8"0x26", u8"0x49", u8"0xce", u8"0x1d", u8"0xbc", u8"0xdd",
                         |    u8"0x76", u8"0x19", u8"0x7a", u8"0x31", u8"0xfd", u8"0x55", u8"0xee", u8"0x98",
                         |    u8"0x9f", u8"0x2d", u8"0x70", u8"0x50", u8"0xdd", u8"0x47", u8"0x3e", u8"0x8f"
-                        |))""".stripMargin) */
+                        |))""".stripMargin)
 
     * - testWorksheet("""import org.sireum.U8._
                         |val hash = crypto.SHA3.sum512(IS.create(200, u8"0xa3"))
