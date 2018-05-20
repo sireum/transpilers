@@ -1568,12 +1568,12 @@ import StaticTranspiler._
             }
             stmts = stmts :+
               st"""if ($byTemp > 0) {
-              |  while ($id <= $endTemp) {
+              |  while ($id ${if (range.isInclusive) "<=" else "<"} $endTemp) {
               |    ${(b, "\n")}
               |    $id = ($tpe) ($id + $byTemp);
               |  }
               |} else {
-              |  while ($id >= $endTemp) {
+              |  while ($id ${if (range.isInclusive) ">=" else ">"} $endTemp) {
               |    ${(b, "\n")}
               |    $id = ($tpe) ($id + $byTemp);
               |  }
@@ -1633,7 +1633,7 @@ import StaticTranspiler._
                 case _ => halt("Infeasible")
               }
             } else {
-              transpileExp(exp)
+              stmts = stmts :+ st"${transpileExp(exp)};"
             }
           case exp => halt(s"Infeasible: $exp")
         }

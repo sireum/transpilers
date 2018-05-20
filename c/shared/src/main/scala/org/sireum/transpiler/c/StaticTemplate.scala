@@ -459,7 +459,7 @@ object StaticTemplate {
         |  STATIC_ASSERT(Max$otherName >= Max$name, "Cannot convert $tpe to $other[...,...].");
         |  result->type = T$otherName;
         |  result->size = this->size;
-        |  memcpy(&result->value, &this->value, sizeof(struct $name));
+        |  memcpy(&result->value, &this->value, this->size * sizeof($elementType));
         |}""")
       case _ => None()
     }

@@ -594,7 +594,7 @@ import TypeSpecializer._
   override def preResolvedAttr(o: AST.ResolvedAttr): AST.MTransformer.PreResult[AST.ResolvedAttr] = {
     o.resOpt.get match {
       case res: AST.ResolvedInfo.Var =>
-        if (res.isInObject && !res.isSpec && res.owner.size != z"0") {
+        if (res.isInObject && !res.isSpec && res.owner.size != z"0" && res.owner != AST.Typed.sireumName) {
           val info = th.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
           val set: HashSSet[String] = objectVars.get(res.owner) match {
             case Some(s) => s
