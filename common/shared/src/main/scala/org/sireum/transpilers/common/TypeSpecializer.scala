@@ -32,11 +32,11 @@ object TypeSpecializer {
   @datatype class Result(
     typeHierarchy: TypeHierarchy,
     entryPoints: ISZ[EntryPoint],
-    nameTypes: HashMap[QName, HashSet[NamedType]],
-    otherTypes: HashSet[AST.Typed],
-    objectVars: HashMap[QName, HashSet[String]],
-    traitMethods: HashSet[SMethod],
-    methods: HashMap[QName, HashSet[Method]],
+    nameTypes: HashSMap[QName, HashSSet[NamedType]],
+    otherTypes: HashSSet[AST.Typed],
+    objectVars: HashSMap[QName, HashSSet[String]],
+    traitMethods: HashSSet[SMethod],
+    methods: HashSMap[QName, HashSSet[Method]],
     typeImpl: Poset[AST.Typed.Name],
     callGraph: Graph[SMember, B]
   )
@@ -125,14 +125,14 @@ import TypeSpecializer._
 @record class TypeSpecializer(th: TypeHierarchy, eps: ISZ[EntryPoint]) extends AST.MTransformer {
   val reporter: Reporter = Reporter.create
   val methodRefinement: Poset[CallGraph.Node] = CallGraph.methodRefinements(th)
-  var nameTypes: HashMap[QName, HashSet[NamedType]] = HashMap.empty
-  var otherTypes: HashSet[AST.Typed] = HashSet.empty
-  var objectVars: HashMap[QName, HashSet[String]] = HashMap.empty
-  var methods: HashMap[QName, HashSet[Method]] = HashMap.empty
+  var nameTypes: HashSMap[QName, HashSSet[NamedType]] = HashSMap.empty
+  var otherTypes: HashSSet[AST.Typed] = HashSSet.empty
+  var objectVars: HashSMap[QName, HashSSet[String]] = HashSMap.empty
+  var methods: HashSMap[QName, HashSSet[Method]] = HashSMap.empty
   var callGraph: Graph[SMember, B] = Graph.empty
-  var traitMethods: HashSet[SMethod] = HashSet.empty
+  var traitMethods: HashSSet[SMethod] = HashSSet.empty
   var workList: ISZ[Method] = ISZ()
-  var seen: HashSet[SMethod] = HashSet.empty
+  var seen: HashSSet[SMethod] = HashSSet.empty
   var descendantsCache: HashMap[Poset.Index, HashSet[Poset.Index]] = HashMap.empty
   var currReceiverOpt: Option[AST.Typed.Name] = None()
   var currSMethodOpt: Option[SMethod] = None()
@@ -213,9 +213,9 @@ import TypeSpecializer._
 
         for (m <- wl) {
 
-          val set: HashSet[Method] = methods.get(m.info.owner) match {
+          val set: HashSSet[Method] = methods.get(m.info.owner) match {
             case Some(s) => s
-            case _ => HashSet.empty
+            case _ => HashSSet.empty
           }
           methods = methods + m.info.owner ~> (set + m)
           val mRes = m.info.methodRes
@@ -416,7 +416,10 @@ import TypeSpecializer._
       case Some(receiver) =>
         th.typeMap.get(receiver.ids).get match {
           case info: TypeInfo.AbstractDatatype if info.ast.isRoot => traitMethods = traitMethods + method
-          case _: TypeInfo.Sig => traitMethods = traitMethods + method
+          case info: TypeInfo.Sig =>
+            if (!info.ast.isExt) {
+              traitMethods = traitMethods + method
+            }
           case _: TypeInfo.AbstractDatatype =>
             val mInfo = classMethodImpl(posOpt, method)
             workList = workList :+ Method(method.receiverOpt, mInfo)
@@ -525,12 +528,12 @@ import TypeSpecializer._
     }
     o match {
       case o: AST.Typed.Name =>
-        val set: HashSet[NamedType] = nameTypes.get(o.ids) match {
+        val set: HashSSet[NamedType] = nameTypes.get(o.ids) match {
           case Some(s) => s
-          case _ => HashSet.empty
+          case _ => HashSSet.empty
         }
         val key = NamedType(o, emptyCVars, emptyVars)
-        val newSet: HashSet[NamedType] = th.typeMap.get(o.ids).get match {
+        val newSet: HashSSet[NamedType] = th.typeMap.get(o.ids).get match {
           case info: TypeInfo.AbstractDatatype if !info.ast.isRoot =>
             if (set.contains(NamedType(o, emptyCVars, emptyVars))) {
               set
@@ -586,9 +589,9 @@ import TypeSpecializer._
       case res: AST.ResolvedInfo.Var =>
         if (res.isInObject && !res.isSpec && res.owner.size != z"0") {
           val info = th.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
-          val set: HashSet[String] = objectVars.get(res.owner) match {
+          val set: HashSSet[String] = objectVars.get(res.owner) match {
             case Some(s) => s
-            case _ => HashSet.empty
+            case _ => HashSSet.empty
           }
           val newSet = set + res.id
           if (newSet.size != set.size) {

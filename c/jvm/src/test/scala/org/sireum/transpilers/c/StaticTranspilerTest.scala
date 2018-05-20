@@ -18,7 +18,7 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
-    * - testWorksheet("""println("Hello World!")""".stripMargin)
+/*    * - testWorksheet("""println("Hello World!")""".stripMargin)
 
     * - testWorksheet("""val x = 5 * 5 + 1
                         |assert(x == 26)
@@ -93,7 +93,7 @@ class StaticTranspilerTest extends TestSuite {
                         |println(s2(0)(1 ~> "d"))
                         |val s3 = ZS.create(5, 1)
                         |println(s3)
-                        |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin)
+                        |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin) */
 
     * - testWorksheet("""import org.sireum.U8._
                         |val hash = crypto.SHA3.sum512(ISZ())
