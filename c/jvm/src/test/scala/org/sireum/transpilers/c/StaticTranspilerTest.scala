@@ -2,7 +2,7 @@ package org.sireum.transpilers.c
 
 import org.sireum._
 import org.sireum.lang.FrontEnd
-import org.sireum.lang.ast.TopUnit
+import org.sireum.lang.{ast => AST}
 import org.sireum.lang.parser.Parser
 import org.sireum.lang.tipe.{PostTipeAttrChecker, TypeChecker, TypeHierarchy}
 import org.sireum.message.Reporter
@@ -19,7 +19,7 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
-    * - testWorksheet("""println("Hello World!")""".stripMargin)
+/*    * - testWorksheet("""println("Hello World!")""".stripMargin)
 
     * - testWorksheet("""val x = 5 * 5 + 1
                         |assert(x == 26)
@@ -105,13 +105,68 @@ class StaticTranspilerTest extends TestSuite {
                         |    u8"0xf5", u8"0x80", u8"0xff", u8"0x4d", u8"0xe4", u8"0x3b", u8"0x49", u8"0xfa",
                         |    u8"0x82", u8"0xd8", u8"0x0a", u8"0x4b", u8"0x80", u8"0xf8", u8"0x43", u8"0x4a"
                         |))""".stripMargin)
+
+    * - testWorksheet("""import org.sireum.U8._
+                        |val hash = crypto.SHA3.sum256(IS.create(200, u8"0xa3"))
+                        |println(hash)
+                        |assert(hash == ISZ(
+                        |    u8"0x79", u8"0xf3", u8"0x8a", u8"0xde", u8"0xc5", u8"0xc2", u8"0x03", u8"0x07",
+                        |    u8"0xa9", u8"0x8e", u8"0xf7", u8"0x6e", u8"0x83", u8"0x24", u8"0xaf", u8"0xbf",
+                        |    u8"0xd4", u8"0x6c", u8"0xfd", u8"0x81", u8"0xb2", u8"0x2e", u8"0x39", u8"0x73",
+                        |    u8"0xc6", u8"0x5f", u8"0xa1", u8"0xbd", u8"0x9d", u8"0xe3", u8"0x17", u8"0x87"
+                        |))""".stripMargin)
+
+    * - testWorksheet("""import org.sireum.U8._
+                        |val hash = crypto.SHA3.sum384(IS.create(200, u8"0xa3"))
+                        |println(hash)
+                        |assert(hash == ISZ(
+                        |    u8"0x18", u8"0x81", u8"0xde", u8"0x2c", u8"0xa7", u8"0xe4", u8"0x1e", u8"0xf9",
+                        |    u8"0x5d", u8"0xc4", u8"0x73", u8"0x2b", u8"0x8f", u8"0x5f", u8"0x00", u8"0x2b",
+                        |    u8"0x18", u8"0x9c", u8"0xc1", u8"0xe4", u8"0x2b", u8"0x74", u8"0x16", u8"0x8e",
+                        |    u8"0xd1", u8"0x73", u8"0x26", u8"0x49", u8"0xce", u8"0x1d", u8"0xbc", u8"0xdd",
+                        |    u8"0x76", u8"0x19", u8"0x7a", u8"0x31", u8"0xfd", u8"0x55", u8"0xee", u8"0x98",
+                        |    u8"0x9f", u8"0x2d", u8"0x70", u8"0x50", u8"0xdd", u8"0x47", u8"0x3e", u8"0x8f"
+                        |))""".stripMargin) */
+
+    * - testWorksheet("""import org.sireum.U8._
+                        |val hash = crypto.SHA3.sum512(IS.create(200, u8"0xa3"))
+                        |println(hash)
+                        |assert(hash == ISZ(
+                        |    u8"0xe7", u8"0x6d", u8"0xfa", u8"0xd2", u8"0x20", u8"0x84", u8"0xa8", u8"0xb1",
+                        |    u8"0x46", u8"0x7f", u8"0xcf", u8"0x2f", u8"0xfa", u8"0x58", u8"0x36", u8"0x1b",
+                        |    u8"0xec", u8"0x76", u8"0x28", u8"0xed", u8"0xf5", u8"0xf3", u8"0xfd", u8"0xc0",
+                        |    u8"0xe4", u8"0x80", u8"0x5d", u8"0xc4", u8"0x8c", u8"0xae", u8"0xec", u8"0xa8",
+                        |    u8"0x1b", u8"0x7c", u8"0x13", u8"0xc3", u8"0x0a", u8"0xdf", u8"0x52", u8"0xa3",
+                        |    u8"0x65", u8"0x95", u8"0x84", u8"0x73", u8"0x9a", u8"0x2d", u8"0xf4", u8"0x6b",
+                        |    u8"0xe5", u8"0x89", u8"0xc5", u8"0x1c", u8"0xa1", u8"0xa4", u8"0xa8", u8"0x41",
+                        |    u8"0x6d", u8"0xf6", u8"0x54", u8"0x5a", u8"0x1c", u8"0xe8", u8"0xba", u8"0x00"
+                        |))""".stripMargin)
+
+    * - testWorksheet("""import org.sireum.U8._
+                        |val a3 = ISZ(u8"0xa3")
+                        |val sha3 = crypto.SHA3.init512
+                        |for (_ <- 0 until 200) {
+                        |  sha3.update(a3)
+                        |}
+                        |val hash = sha3.finalise()
+                        |println(hash)
+                        |assert(hash == ISZ(
+                        |    u8"0xe7", u8"0x6d", u8"0xfa", u8"0xd2", u8"0x20", u8"0x84", u8"0xa8", u8"0xb1",
+                        |    u8"0x46", u8"0x7f", u8"0xcf", u8"0x2f", u8"0xfa", u8"0x58", u8"0x36", u8"0x1b",
+                        |    u8"0xec", u8"0x76", u8"0x28", u8"0xed", u8"0xf5", u8"0xf3", u8"0xfd", u8"0xc0",
+                        |    u8"0xe4", u8"0x80", u8"0x5d", u8"0xc4", u8"0x8c", u8"0xae", u8"0xec", u8"0xa8",
+                        |    u8"0x1b", u8"0x7c", u8"0x13", u8"0xc3", u8"0x0a", u8"0xdf", u8"0x52", u8"0xa3",
+                        |    u8"0x65", u8"0x95", u8"0x84", u8"0x73", u8"0x9a", u8"0x2d", u8"0xf4", u8"0x6b",
+                        |    u8"0xe5", u8"0x89", u8"0xc5", u8"0x1c", u8"0xa1", u8"0xa4", u8"0xa8", u8"0x41",
+                        |    u8"0x6d", u8"0xf6", u8"0x54", u8"0x5a", u8"0x1c", u8"0xe8", u8"0xba", u8"0x00"
+                        |))""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
     val reporter = Reporter.create
-    val (th, p): (TypeHierarchy, TopUnit.Program) =
+    val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
       Parser(s"import org.sireum._\n$input")
-        .parseTopUnit[TopUnit.Program](allowSireum = F, isWorksheet = T, isDiet = F, None(), reporter) match {
+        .parseTopUnit[AST.TopUnit.Program](allowSireum = F, isWorksheet = T, isDiet = F, None(), reporter) match {
         case Some(program) if !reporter.hasIssue =>
           val p = FrontEnd.checkWorksheet(Some(typeChecker.typeHierarchy), program, reporter)
           if (reporter.hasIssue) {
@@ -130,9 +185,9 @@ class StaticTranspilerTest extends TestSuite {
       lineNumber = T,
       fprintWidth = 3,
       defaultBitWidth = 64,
-      maxStringSize = 500,
-      maxArraySize = 100,
-      customArraySizes = HashMap.empty,
+      maxStringSize = 256,
+      maxArraySize = 256,
+      customArraySizes = HashMap ++ ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 100),
       extMethodTranspilerPlugins = ISZ(NumberConversionsExtMethodTranspilerPlugin())
     )
 
