@@ -63,6 +63,7 @@ import StaticTranspiler._
   var typeNameMap: HashMap[AST.Typed, ST] = HashMap.empty
   var mangledTypeNameMap: HashMap[String, AST.Typed] = HashMap.empty
 
+  var receiverOpt: Option[AST.Typed] = None()
   var stmts: ISZ[ST] = ISZ()
   var nextTempNum: Z = 0
 
@@ -151,11 +152,90 @@ import StaticTranspiler._
     }
 
     genTypeNames()
+    for (nts <- ts.nameTypes.values; nt <- nts.elements) {
+      ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
+        case info: TypeInfo.AbstractDatatype if !info.ast.isRoot => genClassConstructor(nt)
+        case _ =>
+      }
+    }
     transEntryPoints()
     work()
     genFiles()
 
     return Result(r)
+  }
+
+  def genClassConstructor(nt: TypeSpecializer.NamedType): Unit = {
+    val t = nt.tpe
+    val name = t.ids
+    val value = getCompiled(name)
+    var types = ISZ[AST.Typed]()
+    var cps = ISZ[(TypeKind.Type, String, ST, ST)]()
+    for (cv <- nt.constructorVars.entries) {
+      val (id, (_, ct)) = cv
+      types = types :+ ct
+      val tpe = fingerprint(ct)._1
+      val kind = typeKind(ct)
+      cps = cps :+ ((kind, id, typeDecl(ct), tpe))
+    }
+    val oldNextTempNum = nextTempNum
+    val oldStmts = stmts
+    val oldReceiverOpts = receiverOpt
+    nextTempNum = 0
+    stmts = ISZ()
+
+    // TODO: other stmts
+    for (v <- nt.vars.entries) {
+      val (id, (_, ct, init)) = v
+      val kind = typeKind(ct)
+      if (isScalar(kind)) {
+        transpileAssignExp(init, (rhs, _) => st"this->$id = $rhs;")
+      } else {
+        transpileAssignExp(init, (rhs, rhsT) => st"Type_assign(&this->$id, $rhs, sizeof($rhsT));")
+      }
+    }
+
+    val newValue = claszConstructor(value, fingerprint(t)._1, cps, stmts)
+    compiledMap = compiledMap + name ~> newValue
+
+    nextTempNum = oldNextTempNum
+    stmts = oldStmts
+    receiverOpt = oldReceiverOpts
+  }
+
+  def transpileAssignExp(exp: AST.AssignExp, f: (ST, ST) => ST @pure): Unit = {
+    exp match {
+      case exp: AST.Stmt.Expr =>
+        val rhs = transpileExp(exp.exp)
+        stmts = stmts :+ f(rhs, typeDecl(exp.typedOpt.get))
+      case exp: AST.Stmt.Block => halt("TODO") // TODO
+      case exp: AST.Stmt.If => halt("TODO") // TODO
+      case exp: AST.Stmt.Match => halt("TODO") // TODO
+      case _: AST.Stmt.Return => halt("Infesible")
+    }
+  }
+
+  def classVars(
+    nt: TypeSpecializer.NamedType
+  ): (ISZ[AST.Typed], ISZ[(TypeKind.Type, String, ST, ST, B)], ISZ[(TypeKind.Type, String, ST, ST, B)]) = {
+    var types = ISZ[AST.Typed]()
+    var cps = ISZ[(TypeKind.Type, String, ST, ST, B)]()
+    for (cv <- nt.constructorVars.entries) {
+      val (id, (isVal, ct)) = cv
+      types = types :+ ct
+      val tpe = fingerprint(ct)._1
+      val kind = typeKind(ct)
+      cps = cps :+ ((kind, id, st"${typePrefix(kind)} $tpe", tpe, !isVal))
+    }
+    var vs = ISZ[(TypeKind.Type, String, ST, ST, B)]()
+    for (v <- nt.vars.entries) {
+      val (id, (isVal, ct, _)) = v
+      types = types :+ ct
+      val tpe = fingerprint(ct)._1
+      val kind = typeKind(ct)
+      vs = vs :+ ((kind, id, st"${typePrefix(kind)} $tpe", tpe, !isVal))
+    }
+    return (types, cps, vs)
   }
 
   @pure def minIndexMaxElementSize(indexType: AST.Typed, elementType: AST.Typed): (Z, Z) = {
@@ -248,7 +328,8 @@ import StaticTranspiler._
       val et = t.args(1)
       val etKind = typeKind(et)
       val indexType = genType(it)
-      val elementType: ST = if (et == AST.Typed.string) st"struct StaticString" else st"${typePrefix(etKind)}${genType(et)}"
+      val elementType = typeDecl(et)
+      genType(et)
       val value = getCompiled(key)
       val (minIndex, maxElementSize) = minIndexMaxElementSize(it, et)
       val otherType: AST.Typed.Name =
@@ -343,14 +424,35 @@ import StaticTranspiler._
         genType(arg)
         val tPtr = fingerprint(arg)._1
         val kind = typeKind(arg)
-        val t: ST = if (arg == AST.Typed.string) st"struct StaticString" else st"${typePrefix(kind)}$tPtr"
-        paramTypes = paramTypes :+ ((kind, t, tPtr))
+        paramTypes = paramTypes :+ ((kind, typeDecl(arg), tPtr))
       }
       val newValue = tuple(value, t.string, includes(name, t.args), fingerprint(t)._1, paramTypes)
       compiledMap = compiledMap + name ~> newValue
     }
     def genClass(t: AST.Typed.Name): Unit = {
-      halt(s"TODO: $t") // TODO
+      val name = t.ids
+      val value = getCompiled(name)
+      for (nt <- ts.nameTypes.get(name).get.elements if nt.tpe == t) {
+        var types = ISZ[AST.Typed]()
+        var cps = ISZ[(TypeKind.Type, String, ST, ST, B)]()
+        for (cv <- nt.constructorVars.entries) {
+          val (id, (isVal, ct)) = cv
+          types = types :+ ct
+          val tpe = genType(ct)
+          val kind = typeKind(ct)
+          cps = cps :+ ((kind, id, typeDecl(ct), tpe, !isVal))
+        }
+        var vs = ISZ[(TypeKind.Type, String, ST, ST, B)]()
+        for (v <- nt.vars.entries) {
+          val (id, (isVal, ct, _)) = v
+          types = types :+ ct
+          val tpe = genType(ct)
+          val kind = typeKind(ct)
+          vs = vs :+ ((kind, id, typeDecl(ct), tpe, !isVal))
+        }
+        val newValue = clasz(value, includes(name, types), t.string, fingerprint(t)._1, cps, vs)
+        compiledMap = compiledMap + name ~> newValue
+      }
     }
     def genTrait(t: AST.Typed.Name): Unit = {
       halt(s"TODO: $t") // TODO
@@ -744,10 +846,10 @@ import StaticTranspiler._
       }
 
       def transReceiver(): ST = {
-          invoke.receiverOpt match {
-            case Some(receiver) => val r = transpileExp(receiver); return r
-            case _ => val r = transpileExp(invoke.ident); return r
-          }
+        invoke.receiverOpt match {
+          case Some(receiver) => val r = transpileExp(receiver); return r
+          case _ => val r = transpileExp(invoke.ident); return r
+        }
       }
 
       def transSSelect(name: QName): ST = {
@@ -934,24 +1036,33 @@ import StaticTranspiler._
       }
     }
 
-    def transVar(stmt: AST.Stmt.Var, init: AST.Stmt.Expr): Unit = {
+    def transVar(stmt: AST.Stmt.Var): Unit = {
       transpileLoc(stmt)
+      val init = stmt.initOpt.get
       val t: AST.Typed = stmt.tipeOpt match {
         case Some(tipe) => tipe.typedOpt.get
-        case _ => init.typedOpt.get
+        case _ => init.asInstanceOf[AST.Stmt.Expr].typedOpt.get
       }
-      val rhs = transpileExp(init.exp)
       val local = localName(stmt.id.value)
       val tpe = transpileType(t)
-      stmts = stmts :+ st"$tpe $local = $rhs;"
-      if (!isScalar(typeKind(t)) && !stmt.isVal) {
-        stmts = stmts :+ st"DeclNew$tpe(_$local);"
+      init match {
+        case _: AST.Stmt.Expr =>
+          if (isScalar(typeKind(t)) || stmt.isVal) {
+            transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
+          } else {
+            stmts = stmts :+ st"DeclNew$tpe(_$local);"
+            transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
+          }
+        case _ =>
+          if (isScalar(typeKind(t)) && !stmt.isVal) {
+            stmts = stmts :+ st"$tpe $local;"
+            transpileAssignExp(init, (rhs, _) => st"$local = $rhs;")
+          } else {
+            stmts = stmts :+ st"DeclNew$tpe(_$local);"
+            stmts = stmts :+ st"$tpe $local = ($tpe) &_$local;"
+            transpileAssignExp(init, (rhs, rhsT) => st"Type_assign(&$local, $rhs, sizeof($rhsT));")
+          }
       }
-    }
-
-    def transVarComplex(stmt: AST.Stmt.Var): Unit = {
-      transpileLoc(stmt)
-      halt("TODO") // TODO
     }
 
     def transAssign(stmt: AST.Stmt.Assign, rhs: AST.Stmt.Expr): Unit = {
@@ -1041,6 +1152,7 @@ import StaticTranspiler._
       transpileLoc(stmt)
       val t = transpileExp(exp.args(0))
       val t2 = freshTempName()
+      stmts = stmts :+ st"B $t2 = $t;"
       for (i <- z"1" until exp.args.size) {
         transPrintH(t2, exp.args(i))
       }
@@ -1149,11 +1261,7 @@ import StaticTranspiler._
     }
 
     stmt match {
-      case stmt: AST.Stmt.Var =>
-        stmt.initOpt.get match {
-          case init: AST.Stmt.Expr => transVar(stmt, init)
-          case _ => transVarComplex(stmt)
-        }
+      case stmt: AST.Stmt.Var => transVar(stmt)
       case stmt: AST.Stmt.Assign =>
         stmt.rhs match {
           case rhs: AST.Stmt.Expr => transAssign(stmt, rhs)
@@ -1218,20 +1326,12 @@ import StaticTranspiler._
     return st"${typeNameMap.get(tpe).get}"
   }
 
+  @pure def typeDecl(t: AST.Typed): ST = {
+    val kind = typeKind(t)
+    return if (t == AST.Typed.string) st"struct StaticString" else st"${typePrefix(kind)}${fingerprint(t)._1}"
+  }
+
   @memoize def typeKind(t: AST.Typed): TypeKind.Type = {
-    @pure def bitWidthKindNumber(size: Z): TypeKind.Type = {
-      if (size < u8Max) {
-        return TypeKind.Scalar8
-      } else if (size < u16Max) {
-        return TypeKind.Scalar16
-      } else if (size < u32Max) {
-        return TypeKind.Scalar32
-      } else if (size < u64Max) {
-        return TypeKind.Scalar64
-      } else {
-        halt("Infeasible")
-      }
-    }
     @pure def bitWidthKind(n: Z): TypeKind.Type = {
       n match {
         case z"8" => return TypeKind.Scalar8

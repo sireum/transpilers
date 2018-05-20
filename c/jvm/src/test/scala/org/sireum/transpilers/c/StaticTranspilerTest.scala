@@ -18,7 +18,7 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
-/*    * - testWorksheet("""println("Hello World!")""".stripMargin)
+    * - testWorksheet("""println("Hello World!")""".stripMargin)
 
     * - testWorksheet("""val x = 5 * 5 + 1
                         |assert(x == 26)
@@ -93,18 +93,17 @@ class StaticTranspilerTest extends TestSuite {
                         |println(s2(0)(1 ~> "d"))
                         |val s3 = ZS.create(5, 1)
                         |println(s3)
-                        |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin) */
+                        |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin)
 
-    * - testWorksheet(
-      """import org.sireum.U8._
-        |val hash = crypto.SHA3.sum512(ISZ())
-        |println(hash)
-        |assert(hash == ISZ(
-        |    u8"0xa7", u8"0xff", u8"0xc6", u8"0xf8", u8"0xbf", u8"0x1e", u8"0xd7", u8"0x66",
-        |    u8"0x51", u8"0xc1", u8"0x47", u8"0x56", u8"0xa0", u8"0x61", u8"0xd6", u8"0x62",
-        |    u8"0xf5", u8"0x80", u8"0xff", u8"0x4d", u8"0xe4", u8"0x3b", u8"0x49", u8"0xfa",
-        |    u8"0x82", u8"0xd8", u8"0x0a", u8"0x4b", u8"0x80", u8"0xf8", u8"0x43", u8"0x4a"
-        |))""".stripMargin)
+    * - testWorksheet("""import org.sireum.U8._
+                        |val hash = crypto.SHA3.sum512(ISZ())
+                        |println(hash)
+                        |assert(hash == ISZ(
+                        |    u8"0xa7", u8"0xff", u8"0xc6", u8"0xf8", u8"0xbf", u8"0x1e", u8"0xd7", u8"0x66",
+                        |    u8"0x51", u8"0xc1", u8"0x47", u8"0x56", u8"0xa0", u8"0x61", u8"0xd6", u8"0x62",
+                        |    u8"0xf5", u8"0x80", u8"0xff", u8"0x4d", u8"0xe4", u8"0x3b", u8"0x49", u8"0xfa",
+                        |    u8"0x82", u8"0xd8", u8"0x0a", u8"0x4b", u8"0x80", u8"0xf8", u8"0x43", u8"0x4a"
+                        |))""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {

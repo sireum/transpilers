@@ -25,8 +25,8 @@ object TypeSpecializer {
 
   @datatype class NamedType(
     tpe: AST.Typed.Name,
-    @hidden constructorVars: Map[String, AST.Typed],
-    @hidden vars: Map[String, AST.Typed]
+    @hidden constructorVars: Map[String, (B, AST.Typed)],
+    @hidden vars: Map[String, (B, AST.Typed, AST.AssignExp)]
   )
 
   @datatype class Result(
@@ -89,7 +89,8 @@ object TypeSpecializer {
   }
 
   val tsKind: String = "Type Specializer"
-  val emptyVars: Map[String, AST.Typed] = Map.empty
+  val emptyCVars: Map[String, (B, AST.Typed)] = Map.empty
+  val emptyVars: Map[String, (B, AST.Typed, AST.AssignExp)] = Map.empty
   val objectConstructorType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(), AST.Typed.unit)
 
   def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
@@ -497,18 +498,19 @@ import TypeSpecializer._
         constructorInfo.mode
       )
     )
-    var cvs = emptyVars
+    var cvs = emptyCVars
     var vs = emptyVars
     for (p <- info.ast.params) {
-      cvs = cvs + p.id.value ~> p.tipe.typedOpt.get.subst(sm)
+      cvs = cvs + p.id.value ~> ((p.isVal, p.tipe.typedOpt.get.subst(sm)))
     }
     for (stmt <- info.ast.stmts) {
       stmt match {
         case stmt: AST.Stmt.Var =>
           val vt = stmt.tipeOpt.get.typedOpt.get.subst(sm)
-          vs = vs + stmt.id.value ~> vt
           addType(vt)
-          transformAssignExp(substAssignExp(stmt.initOpt.get, sm))
+          val ae = substAssignExp(stmt.initOpt.get, sm)
+          vs = vs + stmt.id.value ~> ((stmt.isVal, vt, ae))
+          transformAssignExp(ae)
         case _ =>
       }
     }
@@ -527,10 +529,10 @@ import TypeSpecializer._
           case Some(s) => s
           case _ => HashSet.empty
         }
-        val key = NamedType(o, emptyVars, emptyVars)
+        val key = NamedType(o, emptyCVars, emptyVars)
         val newSet: HashSet[NamedType] = th.typeMap.get(o.ids).get match {
           case info: TypeInfo.AbstractDatatype if !info.ast.isRoot =>
-            if (set.contains(NamedType(o, emptyVars, emptyVars))) {
+            if (set.contains(NamedType(o, emptyCVars, emptyVars))) {
               set
             } else {
               val nt = specializeClass(o, info)

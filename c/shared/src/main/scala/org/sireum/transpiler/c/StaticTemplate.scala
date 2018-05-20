@@ -338,6 +338,87 @@ object StaticTemplate {
     return r
   }
 
+  @pure def claszConstructor(
+    compiled: Compiled,
+    name: ST,
+    constructorParamTypes: ISZ[(TypeKind.Type, String, ST, ST)],
+    constructorStmts: ISZ[ST]
+  ): Compiled = {
+    val constructorParams: ISZ[ST] = for (q <- constructorParamTypes) yield st"${q._4} ${q._2}"
+    val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this, ${(constructorParams, ", ")})"
+    val constructorInits: ISZ[ST] = for (q <- constructorParamTypes)
+      yield
+        if (isScalar(q._1)) st"this->${q._2} = ${q._2};"
+        else st"Type_assign(this->${q._2}, ${q._2}, sizeof(${q._3}));"
+    return compiled(
+      header = compiled.header :+ st"$constructorHeader;",
+      impl = compiled.impl :+
+        st"""$constructorHeader {
+        |  ${(constructorInits, "\n")}
+        |  ${(constructorStmts, "\n")}
+        |}"""
+    )
+  }
+
+  @pure def clasz(
+    compiled: Compiled,
+    includes: ISZ[ST],
+    tpe: String,
+    name: ST,
+    constructorParamTypes: ISZ[(TypeKind.Type, String, ST, ST, B)],
+    varTypes: ISZ[(TypeKind.Type, String, ST, ST, B)]
+  ): Compiled = {
+    val vars = constructorParamTypes ++ varTypes
+    var members = ISZ[ST]()
+    for (q <- ops.ISZOps(vars).sortWith((q1, q2) => q1._1.ordinal < q2._1.ordinal)) {
+      val (_, id, t, _, _) = q
+      members = members :+ st"$t $id;"
+    }
+    val typeHeader =
+      st"""// $tpe
+      |${(includes, "\n")}
+      |
+      |typedef struct $name *$name;
+      |struct $name {
+      |  TYPE type;
+      |  ${(members, "\n")}
+      |};
+      |
+      |#define DeclNew$name(x) struct $name x = { .type = T$name }
+      |"""
+
+    var accessors = ISZ[ST]()
+    for (q <- vars) {
+      val (kind, id, t, tPtr, isVar) = q
+      if (isScalar(kind)) {
+        accessors = accessors :+ st"#define ${name}_${id}_(this) ((this)->$id)"
+        if (isVar) {
+          accessors = accessors :+ st"#define ${name}_${id}_a(this, value) (this)->$id = (value)"
+        }
+      } else {
+        accessors = accessors :+ st"#define ${name}_${id}_(this) (($tPtr) &(this)->$id)"
+        if (isVar) {
+          accessors = accessors :+ st"#define ${name}_${id}_a(this, value) Type_assign((this)->$id, value, sizeof($t))"
+        }
+      }
+    }
+    // TODO: eq, string, cprint
+    val header =
+      st"""// $tpe
+      |
+      |${(accessors, "\n")}"""
+
+    val impl =
+      st"""// $tpe
+      |
+      |}"""
+    return compiled(
+      typeHeader = compiled.typeHeader :+ typeHeader,
+      header = compiled.header :+ header,
+      impl = compiled.impl :+ impl
+    )
+  }
+
   @pure def arraySizeType(maxElement: Z): String = {
     return if (maxElement < i8Max) "int8_t"
     else if (maxElement < i16Max) "int16_t"
@@ -924,6 +1005,7 @@ object StaticTemplate {
       case Some(m) => st"${mangledName}_C($m)"
       case _ => st"${mangledName}_C(${cTypeUp}_MAX)"
     }
+    val hex: ST = if (isBitVector && isUnsigned) st"0${bitWidth / 4}x" else st""
     val typeHeader =
       st"""typedef $cType $mangledName;
       |
@@ -932,7 +1014,7 @@ object StaticTemplate {
       |#define ${mangledName}_Min ${cTypeUp}_MIN
       |#define ${mangledName}_Max ${cTypeUp}_MAX
       |
-      |#define ${mangledName}_F "%" $pr ""
+      |#define ${mangledName}_F "%$hex" $pr ""
       |
       |#define ${mangledName}__plus(n) n
       |
