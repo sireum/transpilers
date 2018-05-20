@@ -144,6 +144,14 @@ object StaticTemplate {
       |#include <misc.h>
       |${(for (name <- ops.ISZOps(names).sortWith(qnameLt)) yield st"#include <type-${(name, "_")}.h>", "\n")}
       |
+      |#if defined(static_assert)
+      |#define STATIC_ASSERT static_assert
+      |#define GLOBAL_STATIC_ASSERT(a, b, c) static_assert(b, c)
+      |#else
+      |#define STATIC_ASSERT(pred, explanation); {char assert[1/(pred)];(void)assert;}
+      |#define GLOBAL_STATIC_ASSERT(unique, pred, explanation); namespace ASSERTION {char unique[1/(pred)];}
+      |#endif
+      |
       |static inline size_t sizeOf(Type t) {
       |  switch (t->type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return sizeof(struct ${tn._2}); // ${tn._1}", "\n")}
@@ -179,14 +187,6 @@ object StaticTemplate {
       |
       |#include <types.h>
       |${(for (name <- ops.ISZOps(names).sortWith(qnameLt)) yield st"#include <${(name, "_")}.h>", "\n")}
-      |
-      |#if defined(static_assert)
-      |#define STATIC_ASSERT static_assert
-      |#define GLOBAL_STATIC_ASSERT(a, b, c) static_assert(b, c)
-      |#else
-      |#define STATIC_ASSERT(pred, explanation); {char assert[1/(pred)];(void)assert;}
-      |#define GLOBAL_STATIC_ASSERT(unique, pred, explanation); namespace ASSERTION {char unique[1/(pred)];}
-      |#endif
       |
       |#endif"""
     return r
@@ -340,6 +340,8 @@ object StaticTemplate {
 
   @pure def claszConstructor(
     compiled: Compiled,
+    uri: String,
+    className: QName,
     name: ST,
     constructorParamTypes: ISZ[(TypeKind.Type, String, ST, ST)],
     constructorStmts: ISZ[ST]
@@ -354,6 +356,7 @@ object StaticTemplate {
       header = compiled.header :+ st"$constructorHeader;",
       impl = compiled.impl :+
         st"""$constructorHeader {
+        |  DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "apply", 0);
         |  ${(constructorInits, "\n")}
         |  ${(constructorStmts, "\n")}
         |}"""
@@ -362,6 +365,8 @@ object StaticTemplate {
 
   @pure def clasz(
     compiled: Compiled,
+    uri: String,
+    className: QName,
     includes: ISZ[ST],
     tpe: String,
     name: ST,
@@ -410,8 +415,7 @@ object StaticTemplate {
 
     val impl =
       st"""// $tpe
-      |
-      |}"""
+      |"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
       header = compiled.header :+ header,
@@ -477,8 +481,7 @@ object StaticTemplate {
       |#define DeclNew$name(x) struct $name x = { .type = T$name }
       |#define ${name}_size(this) (($indexType) (this)->size)
       |#define ${name}_zize(this) ((Z) (this)->size)
-      |$at
-      |$toOtherOpt"""
+      |$at"""
     val eqHeader = st"B ${name}__eq($name this, $name other)"
     val createHeader = st"void ${name}_create($name result, StackFrame caller, $indexType size, $elementTypePtr dflt)"
     val zreateHeader = st"void ${name}_zreate($name result, StackFrame caller, Z size, $elementTypePtr dflt)"
@@ -504,7 +507,8 @@ object StaticTemplate {
       |
       |static inline B ${name}__ne($name this, $name other) {
       |  return !${name}__eq(this, other);
-      |}"""
+      |}
+      |$toOtherOpt"""
     val impl: ST =
       if (isElementTypeScalar)
         st"""// $tpe
@@ -927,7 +931,7 @@ object StaticTemplate {
     val mangledName = mangleName(name)
     val cType = st"${if (isUnsigned) "u" else ""}int${bitWidth}_t"
     val cTypeUp = st"${if (isUnsigned) "U" else ""}INT$bitWidth"
-    val pr = st"PRI${if (isUnsigned) "u" else "d"}$bitWidth"
+    val pr = st"PRI${if (isUnsigned) if (isBitVector) "x" else "u" else "d"}$bitWidth"
     val shift: ST = if (!isBitVector) { st"" } else if (isUnsigned) {
       st"""
       |static inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
@@ -1005,7 +1009,7 @@ object StaticTemplate {
       case Some(m) => st"${mangledName}_C($m)"
       case _ => st"${mangledName}_C(${cTypeUp}_MAX)"
     }
-    val hex: ST = if (isBitVector && isUnsigned) st"0${bitWidth / 4}x" else st""
+    val hex: ST = if (isBitVector && isUnsigned) st"0${bitWidth / 4}" else st""
     val typeHeader =
       st"""typedef $cType $mangledName;
       |

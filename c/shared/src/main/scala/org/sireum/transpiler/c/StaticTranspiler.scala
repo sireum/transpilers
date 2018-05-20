@@ -195,7 +195,9 @@ import StaticTranspiler._
       }
     }
 
-    val newValue = claszConstructor(value, fingerprint(t)._1, cps, stmts)
+    val uri =
+      filenameOfPosOpt(ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
+    val newValue = claszConstructor(value, uri, name, fingerprint(t)._1, cps, stmts)
     compiledMap = compiledMap + name ~> newValue
 
     nextTempNum = oldNextTempNum
@@ -301,7 +303,11 @@ import StaticTranspiler._
   def genTypeNames(): Unit = {
     @pure def typeFilename(name: QName, t: AST.Typed): Option[QName] = {
       val tname: QName = t match {
-        case t: AST.Typed.Name => t.ids
+        case t: AST.Typed.Name =>
+          ts.typeHierarchy.typeMap.get(t.ids).get match {
+            case _: TypeInfo.Enum => ops.ISZOps(t.ids).dropRight(1)
+            case _ => t.ids
+          }
         case t: AST.Typed.Tuple => AST.Typed.sireumName :+ s"Tuple${t.args.size}"
         case t: AST.Typed.Fun => AST.Typed.sireumName :+ s"Fun${t.args.size}"
         case _ => halt("Infeasible")
@@ -312,7 +318,7 @@ import StaticTranspiler._
     @pure def includes(name: QName, ts: ISZ[AST.Typed]): ISZ[ST] = {
       var r = ISZ[ST]()
       for (t <- ts) {
-        if (!builtInTypes.contains(t) && !isScalar(typeKind(t))) {
+        if (!builtInTypes.contains(t)) {
           typeFilename(name, t) match {
             case Some(n) => r = r :+ st"#include <${typeHeaderFilename(filenameOf(n))}>"
             case _ =>
@@ -450,7 +456,9 @@ import StaticTranspiler._
           val kind = typeKind(ct)
           vs = vs :+ ((kind, id, typeDecl(ct), tpe, !isVal))
         }
-        val newValue = clasz(value, includes(name, types), t.string, fingerprint(t)._1, cps, vs)
+        val uri =
+          filenameOfPosOpt(ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
+        val newValue = clasz(value, uri, name, includes(name, types), t.string, fingerprint(t)._1, cps, vs)
         compiledMap = compiledMap + name ~> newValue
       }
     }
@@ -586,7 +594,7 @@ import StaticTranspiler._
     }
 
     val value = getCompiled(key)
-    compiledMap = compiledMap + key ~> value(header = value.header :+ header, impl = value.impl :+ impl)
+    compiledMap = compiledMap + key ~> value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
 
     currReceiverOpt = oldCurrReceiverOpt
     nextTempNum = oldNextTempNum
@@ -709,7 +717,6 @@ import StaticTranspiler._
     def transBinary(exp: AST.Exp.Binary): ST = {
       exp.attr.resOpt.get match {
         case res: AST.ResolvedInfo.BuiltIn =>
-          val tname = typeName(expType(exp.left))
           res.kind match {
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryImply =>
               val left = transpileExp(exp.left)
@@ -759,7 +766,8 @@ import StaticTranspiler._
               }
               val left = transpileExp(exp.left)
               val right = transpileExp(exp.right)
-              return st"${mangleName(tname)}$op($left, $right)"
+              val t = expType(exp.left) // TODO: trait eq
+              return st"${transpileType(t)}$op($left, $right)"
           }
         case _ => halt("TODO") // TODO
       }
@@ -868,7 +876,7 @@ import StaticTranspiler._
         val temp = freshTempName()
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"${methodName(None(), res)}($temp, sf, ${(args, ", ")});"
+        stmts = stmts :+ st"${methodName(None(), res)}(&$temp, sf, ${(args, ", ")});"
         return st"(&$temp)"
       }
     }
@@ -1519,9 +1527,11 @@ import StaticTranspiler._
     val name = methodName(method.receiverOpt, res)
     val t = res.tpeOpt.get
     val tpe = transpileType(t.ret)
-    val (retType, retTypeDecl): (ST, ST) = if (isScalar(typeKind(t.ret))) (st"", tpe) else (st"$tpe result, ", st"void")
+    val (retType, retTypeDecl): (ST, ST) =
+      if (isScalar(typeKind(t.ret)) || t.ret == AST.Typed.unit) (st"", tpe)
+      else (st"$tpe result, ", st"void")
     val preParams: ST = method.receiverOpt match {
-      case Some(receiver) => st"${retType}Stackframe caller, ${transpileType(receiver)} this"
+      case Some(receiver) => st"${retType}StackFrame caller, ${transpileType(receiver)} this"
       case _ => st"${retType}StackFrame caller"
     }
     val params: ST =
