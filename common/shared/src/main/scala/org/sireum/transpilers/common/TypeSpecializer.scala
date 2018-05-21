@@ -17,7 +17,7 @@ object TypeSpecializer {
 
   object EntryPoint {
 
-    @datatype class Method(name: QName) extends EntryPoint
+    @datatype class App(name: QName) extends EntryPoint
 
     @datatype class Worksheet(program: AST.TopUnit.Program) extends EntryPoint
 
@@ -94,6 +94,9 @@ object TypeSpecializer {
   val emptyVars: Map[String, (B, AST.Typed, AST.AssignExp)] = Map.empty
   val objectConstructorType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(), AST.Typed.unit)
 
+  val mainTpe: AST.Typed.Fun =
+    AST.Typed.Fun(F, F, ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))), AST.Typed.z)
+
   def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
     val ts = TypeSpecializer(th, entryPoints)
     val r = ts.specialize()
@@ -141,22 +144,23 @@ import TypeSpecializer._
 
   def specialize(): TypeSpecializer.Result = {
 
-    def entryMethod(ep: EntryPoint.Method): Unit = {
-      val info: Info.Method = th.nameMap.get(ep.name) match {
-        case Some(inf: Info.Method) => inf
-        case Some(_) =>
-          reporter.error(None(), tsKind, st"'${(ep.name, ".")}' is not a method.".render)
-          return
-        case _ =>
-          reporter.error(None(), tsKind, st"Could not find method entry point '${(ep.name, ".")}'.".render)
-          return
+    def entryApp(ep: EntryPoint.App): Unit = {
+      th.nameMap.get(ep.name) match {
+        case Some(inf: Info.Object) if inf.ast.isApp =>
+          val name = inf.name :+ "main"
+          th.nameMap.get(name) match {
+            case Some(m: Info.Method) =>
+              m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe match {
+                case `mainTpe` => workList = workList :+ Method(None(), m)
+                case _ =>
+                  reporter
+                    .error(None(), tsKind, st"'${(ep.name, ".")}' app's main method is not of type $mainTpe.".render)
+              }
+            case _ => reporter.error(None(), tsKind, st"'${(ep.name, ".")}' app does not have a main method.".render)
+          }
+        case Some(_) => reporter.error(None(), tsKind, st"'${(ep.name, ".")}' is not an app.".render)
+        case _ => reporter.error(None(), tsKind, st"Could not find app '${(ep.name, ".")}'.".render)
       }
-      if (info.ast.sig.typeParams.nonEmpty) {
-        reporter.error(None(), tsKind, st"Method entry point '${(ep.name, ".")}' cannot be generic.".render)
-        return
-      }
-
-      workList = workList :+ Method(None(), info)
     }
 
     def entryWorksheet(ep: EntryPoint.Worksheet): Unit = {
@@ -195,7 +199,7 @@ import TypeSpecializer._
     def addEntryPoints(): Unit = {
       for (ep <- eps) {
         ep match {
-          case ep: EntryPoint.Method => entryMethod(ep)
+          case ep: EntryPoint.App => entryApp(ep)
           case ep: EntryPoint.Worksheet => entryWorksheet(ep)
         }
       }

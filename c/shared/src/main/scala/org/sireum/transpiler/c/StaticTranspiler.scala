@@ -23,6 +23,7 @@ object StaticTranspiler {
     maxArraySize: Z,
     customArraySizes: HashMap[AST.Typed, Z],
     extMethodTranspilerPlugins: ISZ[ExtMethodTranspilerPlugin],
+    exts: ISZ[String],
     forLoopOpt: B,
   )
 
@@ -96,7 +97,6 @@ object StaticTranspiler {
   )
 
   val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
-  val mainType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(iszStringType), AST.Typed.unit)
   val optionName: QName = AST.Typed.optionName
   val someName: QName = AST.Typed.sireumName :+ "Some"
   val noneName: QName = AST.Typed.sireumName :+ "None"
@@ -162,16 +162,13 @@ import StaticTranspiler._
             r = r + ISZ[String](cFilename) ~> main
             cFilenames = cFilenames :+ exeName
             i = i + 1
-          case ep: TypeSpecializer.EntryPoint.Method =>
-            val m = ts.typeHierarchy.nameMap.get(ep.name).get.asInstanceOf[Info.Method]
-            val res = m.methodRes
-            if (res.id == string"main" && res.tpeOpt.get == mainType) {
-              val (exeName, main) = transpileMain(m, i)
-              val cFilename = s"$exeName.c"
-              r = r + ISZ[String](cFilename) ~> main
-              cFilenames = cFilenames :+ exeName
-              i = i + 1
-            }
+          case ep: TypeSpecializer.EntryPoint.App =>
+            val m = ts.typeHierarchy.nameMap.get(ep.name :+ "main").get.asInstanceOf[Info.Method]
+            val (exeName, main) = transpileMain(m, i)
+            val cFilename = s"$exeName.c"
+            r = r + ISZ[String](cFilename) ~> main
+            cFilenames = cFilenames :+ exeName
+            i = i + 1
         }
       }
     }
@@ -280,18 +277,16 @@ import StaticTranspiler._
         if (!found) {
           reporter.info(None(), transKind, st"Generated @ext method header for '${(m.owner :+ m.id, ".")}'.".render)
           val info = ts.typeHierarchy.nameMap.get(m.owner :+ m.id).get.asInstanceOf[Info.ExtMethod]
-          if (info.ast.sig.typeParams.nonEmpty) {
-            val mh = methodHeader(
-              m.receiverOpt,
-              T,
-              info.owner,
-              info.ast.sig.id.value,
-              info.ast.sig.typeParams.isEmpty,
-              m.tpe,
-              info.ast.sig.params.map((p: AST.Param) => p.id.value)
-            )
-            compiledMap = compiledMap + name ~> value(header = value.header :+ st"$mh;")
-          }
+          val mh = methodHeader(
+            m.receiverOpt,
+            T,
+            info.owner,
+            info.ast.sig.id.value,
+            info.ast.sig.typeParams.isEmpty,
+            m.tpe,
+            info.ast.sig.params.map((p: AST.Param) => p.id.value)
+          )
+          compiledMap = compiledMap + name ~> value(header = value.header :+ st"$mh;")
         }
       }
       transEntryPoints()
@@ -681,7 +676,13 @@ import StaticTranspiler._
     val exeName = removeExt(fname)
     return (
       if (i == z"0") exeName else if (exeName == string"main") s"main$i" else exeName,
-      main(fname, m.owner, m.ast.sig.id.value)
+      main(
+        fname,
+        m.owner,
+        m.ast.sig.id.value,
+        transpileType(iszStringType),
+        arraySizeType(minIndexMaxElementSize(iszStringType.args(0), iszStringType.args(1))._2)
+      )
     )
   }
 
@@ -1332,49 +1333,52 @@ import StaticTranspiler._
 
     def transAssign(stmt: AST.Stmt.Assign): Unit = {
       stmts = stmts ++ transpileLoc(stmt.posOpt)
-      val t = expType(stmt.lhs)
-      if (isScalar(typeKind(t))) {
-        stmt.lhs match {
-          case lhs: AST.Exp.Ident =>
-            lhs.attr.resOpt.get match {
-              case res: AST.ResolvedInfo.LocalVar =>
-                res.scope match {
-                  case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
-                  case _ =>
+      stmt.lhs match {
+        case lhs: AST.Exp.Ident =>
+          lhs.attr.resOpt.get match {
+            case res: AST.ResolvedInfo.LocalVar =>
+              res.scope match {
+                case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
+                case scope =>
+                  val t = expType(stmt.lhs)
+                  if (isScalar(typeKind(t)) || scope == AST.ResolvedInfo.LocalVar.Scope.Current) {
                     transpileAssignExp(stmt.rhs, (rhs, _) => st"${localName(lhs.id.value)} = $rhs;")
-                }
-              case res: AST.ResolvedInfo.Var =>
-                if (res.isInObject) {
-                  val name = mangleName(res.owner :+ res.id)
-                  transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, $rhs);")
-                } else {
-                  val t = currReceiverOpt.get
-                  transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldName(res.id)}_a(this, $rhs);")
-                }
-              case _ => halt("Infeasible")
-            }
-          case lhs: AST.Exp.Select => halt(s"TODO: $lhs") // TODO
-          case lhs: AST.Exp.Invoke =>
-            val (receiverType, receiver): (AST.Typed.Name, ST) = lhs.receiverOpt match {
-              case Some(rcv) => val r = transpileExp(rcv); (expType(rcv).asInstanceOf[AST.Typed.Name], r)
-              case _ => val r = transpileExp(lhs.ident); (expType(lhs.ident).asInstanceOf[AST.Typed.Name], r)
-            }
-            val et = receiverType.args(1)
-            val index = transpileExp(lhs.args(0))
-            if (isScalar(typeKind(et))) {
-              transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(receiverType)}_at($receiver, $index) = $rhs;")
-            } else {
-              transpileAssignExp(
-                stmt.rhs,
-                (rhs, _) =>
-                  st"Type_assign(${transpileType(receiverType)}_at($receiver, $index), $rhs, sizeof(${typeDecl(et)}));"
-              )
-            }
-          case _ => halt("Infeasible")
-        }
-      } else {
-        halt(s"TODO: $stmt") // TODO
+                  } else {
+                    val id = localName(lhs.id.value)
+                    stmts = stmts :+ st"${localName(lhs.id.value)} = &_$id;"
+                    transpileAssignExp(stmt.rhs, (rhs, _) => st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));")
+                  }
+              }
+            case res: AST.ResolvedInfo.Var =>
+              if (res.isInObject) {
+                val name = mangleName(res.owner :+ res.id)
+                transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, $rhs);")
+              } else {
+                val t = currReceiverOpt.get
+                transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldName(res.id)}_a(this, $rhs);")
+              }
+            case _ => halt("Infeasible")
+          }
+        case lhs: AST.Exp.Select => halt(s"TODO: $lhs") // TODO
+        case lhs: AST.Exp.Invoke =>
+          val (receiverType, receiver): (AST.Typed.Name, ST) = lhs.receiverOpt match {
+            case Some(rcv) => val r = transpileExp(rcv); (expType(rcv).asInstanceOf[AST.Typed.Name], r)
+            case _ => val r = transpileExp(lhs.ident); (expType(lhs.ident).asInstanceOf[AST.Typed.Name], r)
+          }
+          val et = receiverType.args(1)
+          val index = transpileExp(lhs.args(0))
+          if (isScalar(typeKind(et))) {
+            transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(receiverType)}_at($receiver, $index) = $rhs;")
+          } else {
+            transpileAssignExp(
+              stmt.rhs,
+              (rhs, _) =>
+                st"Type_assign(${transpileType(receiverType)}_at($receiver, $index), $rhs, sizeof(${typeDecl(et)}));"
+            )
+          }
+        case _ => halt("Infeasible")
       }
+
     }
 
     def transAssert(exp: AST.Exp.Invoke): Unit = {
@@ -1893,6 +1897,8 @@ import StaticTranspiler._
   }
 
   def escapeChar(posOpt: Option[Position], c: C): String = {
+    return c.string
+    /*
     if (c <= '\u00FF') {
       c.native match {
         case ' ' => return " "
@@ -1923,6 +1929,7 @@ import StaticTranspiler._
       )
       return "\\?"
     }
+   */
   }
 
 }

@@ -306,18 +306,17 @@ object StaticTemplate {
     return r
   }
 
-  @pure def main(filename: String, owner: QName, id: String): ST = {
+  @pure def main(filename: String, owner: QName, id: String, iszStringType: ST, iszSizeType: String): ST = {
     val r =
       st"""#include <all.h>
       |
       |int main(int argc, char *argv[]) {
-      |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<main>", 0);
+      |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<App>", 0);
       |
-      |  DeclNewAString(t_args);
-      |  AString args = (AString) &t_args;
+      |  DeclNew$iszStringType(t_args);
       |
       |  int size = argc - 1;
-      |  if (size > MaxAString) {
+      |  if (size > Max$iszStringType) {
       |    sfAbort("Insufficient maximum for String elements.");
       |  }
       |
@@ -327,13 +326,13 @@ object StaticTemplate {
       |    if (argSize > MaxString) {
       |      sfAbort("Insufficient maximum for String characters.");
       |    }
-      |    AString_at(args, i)->size = (Z) argSize;
-      |    memcpy(AString_at(args, i)->value, arg, argSize + 1);
+      |    ${iszStringType}_at(&t_args, i)->size = (Z) argSize;
+      |    memcpy(${iszStringType}_at(&t_args, i)->value, arg, argSize + 1);
       |  }
       |
-      |  AString_size(args) = size;
+      |  t_args.size = ($iszSizeType) size;
       |
-      |  ${mangleName(owner :+ id)}(args);
+      |  return (int) ${mangleName(owner :+ id)}(sf, &t_args);
       |}"""
     return r
   }

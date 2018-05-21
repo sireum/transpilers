@@ -162,21 +162,7 @@ class StaticTranspilerTest extends TestSuite {
                         |))""".stripMargin)
   }
 
-  * - testWorksheet("""import org.sireum.U8._
-                      |val hash = crypto.SHA3.sum512(IS.create(200, u8"0xa3"))
-                      |println(hash)
-                      |assert(hash == ISZ(
-                      |  u8"0xe7", u8"0x6d", u8"0xfa", u8"0xd2", u8"0x20", u8"0x84", u8"0xa8", u8"0xb1",
-                      |  u8"0x46", u8"0x7f", u8"0xcf", u8"0x2f", u8"0xfa", u8"0x58", u8"0x36", u8"0x1b",
-                      |  u8"0xec", u8"0x76", u8"0x28", u8"0xed", u8"0xf5", u8"0xf3", u8"0xfd", u8"0xc0",
-                      |  u8"0xe4", u8"0x80", u8"0x5d", u8"0xc4", u8"0x8c", u8"0xae", u8"0xec", u8"0xa8",
-                      |  u8"0x1b", u8"0x7c", u8"0x13", u8"0xc3", u8"0x0a", u8"0xdf", u8"0x52", u8"0xa3",
-                      |  u8"0x65", u8"0x95", u8"0x84", u8"0x73", u8"0x9a", u8"0x2d", u8"0xf4", u8"0x6b",
-                      |  u8"0xe5", u8"0x89", u8"0xc5", u8"0x1c", u8"0xa1", u8"0xa4", u8"0xa8", u8"0x41",
-                      |  u8"0x6d", u8"0xf6", u8"0x54", u8"0x5a", u8"0x1c", u8"0xe8", u8"0xba", u8"0x00"
-                      |))""".stripMargin, F, T)
-
-  def testWorksheet(input: Predef.String, lineNumber: B = T, forLoopOpt: B = F)(
+  def testWorksheet(input: Predef.String)(
     implicit line: sourcecode.Line
   ): Unit = {
     val reporter = Reporter.create
@@ -205,7 +191,8 @@ class StaticTranspilerTest extends TestSuite {
       maxArraySize = 256,
       customArraySizes = HashMap ++ ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 100),
       extMethodTranspilerPlugins = ISZ(NumberConversionsExtMethodTranspilerPlugin()),
-      forLoopOpt = forLoopOpt
+      exts = ISZ(),
+      forLoopOpt = F
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)
