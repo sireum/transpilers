@@ -1274,26 +1274,27 @@ import StaticTranspiler._
 
   def transpileStmt(stmt: AST.Stmt): Unit = {
 
-    def transpileLoc(stmt: AST.Stmt): Unit = {
-      stmts = stmts :+ empty
-      stmt.posOpt match {
+    @pure def transpileLoc(posOpt: Option[Position]): ISZ[ST] = {
+      var r = ISZ(empty)
+      posOpt match {
         case Some(pos) =>
           if (config.lineNumber) {
-            stmts = stmts :+ st"sfUpdateLoc(${pos.beginLine});"
+            r = r :+ st"sfUpdateLoc(${pos.beginLine});"
           } else {
-            stmts = stmts :+ st"// L${pos.beginLine}"
+            r = r :+ st"// L${pos.beginLine}"
           }
         case _ =>
           if (config.lineNumber) {
-            stmts = stmts :+ st"sfUpdateLoc(0);"
+            r = r :+ st"sfUpdateLoc(0);"
           } else {
-            stmts = stmts :+ st"// L?"
+            r = r :+ st"// L?"
           }
       }
+      return r
     }
 
     def transVar(stmt: AST.Stmt.Var): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val init = stmt.initOpt.get
       val t: AST.Typed = stmt.tipeOpt match {
         case Some(tipe) => tipe.typedOpt.get
@@ -1322,7 +1323,7 @@ import StaticTranspiler._
     }
 
     def transAssign(stmt: AST.Stmt.Assign): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val t = expType(stmt.lhs)
       if (isScalar(typeKind(t))) {
         stmt.lhs match {
@@ -1369,7 +1370,7 @@ import StaticTranspiler._
     }
 
     def transAssert(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
         case AST.ResolvedInfo.BuiltIn(k) => k
         case _ => halt("Infeasible")
@@ -1392,7 +1393,7 @@ import StaticTranspiler._
     }
 
     def transAssume(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
         case AST.ResolvedInfo.BuiltIn(k) => k
         case _ => halt("Infeasible")
@@ -1415,7 +1416,7 @@ import StaticTranspiler._
     }
 
     def transCprint(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val t = transpileExp(exp.args(0))
       for (i <- z"1" until exp.args.size) {
         transPrintH(t, exp.args(i))
@@ -1423,7 +1424,7 @@ import StaticTranspiler._
     }
 
     def transCprintln(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val t = transpileExp(exp.args(0))
       val t2 = freshTempName()
       stmts = stmts :+ st"B $t2 = $t;"
@@ -1435,14 +1436,14 @@ import StaticTranspiler._
     }
 
     def transEprint(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(falseLit, exp.args(i))
       }
     }
 
     def transEprintln(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(falseLit, exp.args(i))
       }
@@ -1451,14 +1452,14 @@ import StaticTranspiler._
     }
 
     def transPrint(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(trueLit, exp.args(i))
       }
     }
 
     def transPrintln(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(trueLit, exp.args(i))
       }
@@ -1467,7 +1468,7 @@ import StaticTranspiler._
     }
 
     def transHalt(exp: AST.Exp.Invoke): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val tmp = declString()
       transToString(tmp, exp.args(0))
       stmts = stmts :+ st"sfAbort($tmp->value);"
@@ -1494,7 +1495,7 @@ import StaticTranspiler._
     }
 
     def transpileWhile(stmt: AST.Stmt.While): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val cond = transpileExp(stmt.cond)
       val tmp: String = stmt.posOpt match {
         case Some(pos) => s"t_${pos.beginLine}_${pos.beginColumn}"
@@ -1511,7 +1512,7 @@ import StaticTranspiler._
       for (stmt <- stmt.body.stmts) {
         transpileStmt(stmt)
       }
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val cond2 = transpileExp(stmt.cond)
       stmts = stmts :+ st"$tmp = $cond2;"
       stmts = oldStmts :+
@@ -1521,7 +1522,7 @@ import StaticTranspiler._
     }
 
     def transpileDoWhile(stmt: AST.Stmt.DoWhile): Unit = {
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val oldStmts = stmts
       stmts = ISZ()
       for (stmt <- stmt.body.stmts) {
@@ -1572,12 +1573,12 @@ import StaticTranspiler._
             }
             val pos =
               st"""while ($id ${if (range.isInclusive) "<=" else "<"} $endTemp) {
-              |  ${(b, "\n")}
+              |  ${(b ++ transpileLoc(range.attr.posOpt), "\n")}
               |  $id = ($tpe) ($id + $byTemp);
               |}"""
             val neg =
               st"""while ($id ${if (range.isInclusive) ">=" else ">"} $endTemp) {
-              |  ${(b, "\n")}
+              |  ${(b ++ transpileLoc(range.attr.posOpt), "\n")}
               |  $id = ($tpe) ($id + $byTemp);
               |}"""
             byE match {
@@ -1599,7 +1600,7 @@ import StaticTranspiler._
           case range: AST.EnumGen.Range.Expr => halt(s"TODO: $range") // TODO
         }
       }
-      transpileLoc(stmt)
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
       val oldStmts = stmts
       stmts = ISZ()
       for (stmt <- stmt.body.stmts) {
