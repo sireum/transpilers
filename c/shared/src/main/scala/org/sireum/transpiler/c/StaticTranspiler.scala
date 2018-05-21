@@ -14,6 +14,8 @@ object StaticTranspiler {
 
   type SubstMap = HashMap[String, AST.Typed]
 
+  @datatype class ExtFile(uri: String, content: String)
+
   @datatype class Config(
     projectName: String,
     lineNumber: B,
@@ -23,7 +25,7 @@ object StaticTranspiler {
     maxArraySize: Z,
     customArraySizes: HashMap[AST.Typed, Z],
     extMethodTranspilerPlugins: ISZ[ExtMethodTranspilerPlugin],
-    exts: ISZ[String],
+    exts: ISZ[ExtFile],
     forLoopOpt: B,
   )
 
@@ -246,6 +248,9 @@ import StaticTranspiler._
       r = r + ISZ[String]("types.c") ~> typesC()
       r = r + ISZ[String]("all.h") ~> allH(typeQNames)
       r = r ++ compiled(compiledMap)
+      for (ext <- config.exts) {
+        r = r + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> st"${ext.content}"
+      }
       r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
       r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
@@ -1251,6 +1256,7 @@ import StaticTranspiler._
   }
 
   def transpileIf(stmt: AST.Stmt.If): Unit = {
+    transpileLoc(stmt.posOpt)
     val cond = transpileExp(stmt.cond)
     val oldStmts = stmts
     stmts = ISZ()
@@ -1265,7 +1271,7 @@ import StaticTranspiler._
     } else {
       val tstmts = stmts
       stmts = ISZ()
-      for (stmt <- stmt.thenBody.stmts) {
+      for (stmt <- stmt.elseBody.stmts) {
         transpileStmt(stmt)
       }
       stmts = oldStmts :+
@@ -1281,26 +1287,26 @@ import StaticTranspiler._
     halt("TODO") // TODO
   }
 
-  def transpileStmt(stmt: AST.Stmt): Unit = {
-
-    @pure def transpileLoc(posOpt: Option[Position]): ISZ[ST] = {
-      var r = ISZ(empty)
-      posOpt match {
-        case Some(pos) =>
-          if (config.lineNumber) {
-            r = r :+ st"sfUpdateLoc(${pos.beginLine});"
-          } else {
-            r = r :+ st"// L${pos.beginLine}"
-          }
-        case _ =>
-          if (config.lineNumber) {
-            r = r :+ st"sfUpdateLoc(0);"
-          } else {
-            r = r :+ st"// L?"
-          }
-      }
-      return r
+  @pure def transpileLoc(posOpt: Option[Position]): ISZ[ST] = {
+    var r = ISZ(empty)
+    posOpt match {
+      case Some(pos) =>
+        if (config.lineNumber) {
+          r = r :+ st"sfUpdateLoc(${pos.beginLine});"
+        } else {
+          r = r :+ st"// L${pos.beginLine}"
+        }
+      case _ =>
+        if (config.lineNumber) {
+          r = r :+ st"sfUpdateLoc(0);"
+        } else {
+          r = r :+ st"// L?"
+        }
     }
+    return r
+  }
+
+  def transpileStmt(stmt: AST.Stmt): Unit = {
 
     def transVar(stmt: AST.Stmt.Var): Unit = {
       stmts = stmts ++ transpileLoc(stmt.posOpt)
@@ -1731,7 +1737,8 @@ import StaticTranspiler._
                 case _ => halt("Infeasible")
               }
             } else {
-              stmts = stmts :+ st"${transpileExp(exp)};"
+              val e = transpileExp(exp)
+              stmts = stmts :+ st"$e;"
             }
           case exp => halt(s"Infeasible: $exp")
         }

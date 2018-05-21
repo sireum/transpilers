@@ -466,10 +466,9 @@ object StaticTemplate {
       st"""// $tpe
       |${(includes, "\n")}
       |
-      |#ifndef Max$name
       |#define Max$name $maxElement
-      |#endif
-      |
+      |#define ${name}SizeT $sizeType
+
       |typedef struct $name *$name;
       |struct $name {
       |  TYPE type;

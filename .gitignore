@@ -8,5 +8,7 @@ target
 /.idea_modules
 /versions.properties
 /mill-standalone
-/c/result
-/c/app
+/c/result/L*
+/c/app/L*
+/c/app/sha3
+/c/app/sha3-unrolled

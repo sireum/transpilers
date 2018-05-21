@@ -16,28 +16,27 @@ class StaticTranspilerRcTest extends TestSuite {
 
   lazy val typeChecker: TypeChecker = FrontEnd.checkedLibraryReporter._1
   val dir: Path = Path(implicitly[sourcecode.File].value) / up / up / up / up / up / up / up / up / up / 'app
+
   def map: scala.collection.Map[scala.Seq[Predef.String], Predef.String] =
-    RC.text( Seq("../../../..")) { (p, f) =>
+    RC.text(Seq("../../../..")) { (p, f) =>
       val filename = p.last
       if (filename.endsWith(".scala")) {
         val r = _root_.java.nio.file.Files.newBufferedReader(f.toPath, _root_.java.nio.charset.StandardCharsets.UTF_8)
         val line: Predef.String = r.readLine
         r.close()
         line != null && line.replaceAllLiterally(" ", "").contains("#Sireum")
-      } else false
+      } else filename.endsWith(".c") || filename.endsWith(".h")
     }
 
   val tests = Tests {
 
-    * - testApp("SHA3.scala", T, F)
+    * - testApp("sha3", "sha3.scala", T, F)
 
-    //* - testApp("SHA3.scala", F, T)
+    * - testApp("sha3-unrolled", "sha3.scala", F, T)
 
   }
 
-  def testApp(uri: Predef.String, lineNumber: B, forLoopOpt: B)(
-    implicit line: sourcecode.Line
-  ): Unit = {
+  def testApp(name: String, uri: Predef.String, lineNumber: B, forLoopOpt: B)(implicit line: sourcecode.Line): Unit = {
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
       Parser(map(Seq(uri)))
@@ -55,6 +54,9 @@ class StaticTranspilerRcTest extends TestSuite {
           halt(())
       }
 
+    val extKey = Seq("ext", "ext.c")
+    val extFile = StaticTranspiler.ExtFile(extKey.mkString("/"), map(extKey))
+
     val config = StaticTranspiler.Config(
       projectName = "sha3",
       lineNumber = lineNumber,
@@ -64,7 +66,7 @@ class StaticTranspilerRcTest extends TestSuite {
       maxArraySize = 256,
       customArraySizes = HashMap ++ ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 24),
       extMethodTranspilerPlugins = ISZ(NumberConversionsExtMethodTranspilerPlugin()),
-      exts = ISZ(),
+      exts = ISZ(extFile),
       forLoopOpt = forLoopOpt
     )
 
@@ -74,7 +76,7 @@ class StaticTranspilerRcTest extends TestSuite {
       assert(F)
     }
 
-    val ts = TypeSpecializer.specialize(th, ISZ(TypeSpecializer.EntryPoint.App(ISZ("SHA3"))), reporter)
+    val ts = TypeSpecializer.specialize(th, ISZ(TypeSpecializer.EntryPoint.App(ISZ("sha3"))), reporter)
 
     val trans = StaticTranspiler(config, ts, reporter)
 
@@ -107,5 +109,7 @@ class StaticTranspilerRcTest extends TestSuite {
     println()
     println("Running make ...")
     %('make)(resultDir)
+
+    mv(dir / s"L${line.value}" / 'sha3, dir / name.value)
   }
 }

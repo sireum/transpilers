@@ -1,11 +1,11 @@
 // #Sireum
 import org.sireum._
 
-object SHA3 extends App {
+object sha3 extends App {
   def main(args: ISZ[String]): Z = {
-    if (args.size > 1) {
+    if (args.size != 1) {
       printUsage()
-    } else if (args.size == 0 || args(0) == "512") {
+    } else if (args(0) == "512") {
       processInput(crypto.SHA3.init512)
     } else if (args(0) == "384") {
       processInput(crypto.SHA3.init384)
@@ -32,7 +32,6 @@ object SHA3 extends App {
 
   def printUsage(): Unit = {
     println("Usage: sha3 [ 256 | 384 | 512 ]")
-    println("            (default: 512)")
   }
 }
 
