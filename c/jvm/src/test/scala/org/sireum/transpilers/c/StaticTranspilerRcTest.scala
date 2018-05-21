@@ -37,6 +37,8 @@ class StaticTranspilerRcTest extends TestSuite {
   }
 
   def testApp(name: String, uri: Predef.String, lineNumber: B, forLoopOpt: B)(implicit line: sourcecode.Line): Unit = {
+    rm! dir / name.value
+
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
       Parser(map(Seq(uri)))
