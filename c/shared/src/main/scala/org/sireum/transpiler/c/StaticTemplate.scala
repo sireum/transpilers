@@ -1335,14 +1335,14 @@ object StaticTemplate {
       |
       |${(accessorHeaders, "\n")}"""
     val impl =
-      st"""B ${name}_initialized = F;
+      st"""B ${name}_initialized_ = F;
       |
       |${(globals, "\n")}
       |
       |void ${name}_init(StackFrame caller) {
+      |  if (${name}_initialized_) return;
+      |  ${name}_initialized_ = T;
       |  DeclNewStackFrame(caller, "$uri", "${dotName(objectName)}", "<init>", 0);
-      |  if (${name}_initialized) return;
-      |  ${name}_initialized = T;
       |  ${(initStmts, "\n")}
       |}
       |
