@@ -7,8 +7,8 @@ import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
 import org.sireum.lang.symbol.Resolver.QName
 import org.sireum.transpilers.common.TypeSpecializer
-
 import StaticTemplate._
+import org.sireum.lang.ast.Exp
 
 object StaticTranspiler {
 
@@ -22,7 +22,8 @@ object StaticTranspiler {
     maxStringSize: Z,
     maxArraySize: Z,
     customArraySizes: HashMap[AST.Typed, Z],
-    extMethodTranspilerPlugins: ISZ[ExtMethodTranspilerPlugin]
+    extMethodTranspilerPlugins: ISZ[ExtMethodTranspilerPlugin],
+    forLoopOpt: B,
   )
 
   @datatype class Result(files: HashSMap[QName, ST])
@@ -71,6 +72,13 @@ object StaticTranspiler {
       } else {
         halt("TODO") // TODO
       }
+    }
+  }
+
+  @record class IdConstSub(id: String, const: Z) extends AST.MTransformer {
+    override def postExpIdent(o: AST.Exp.Ident): MOption[Exp] = {
+      return if (o.id.value == id) MSome(AST.Exp.LitZ(const, AST.Attr(o.posOpt)))
+      else AST.MTransformer.PostResultExpIdent
     }
   }
 
@@ -1535,7 +1543,62 @@ import StaticTranspiler._
         |} while($cond);"""
     }
 
+    @pure def getIntConst(e: AST.Exp): Option[Z] = {
+      @pure def fromRes(res: AST.ResolvedInfo): Option[Z] = {
+        res match {
+          case res: AST.ResolvedInfo.Var if res.isInObject =>
+            val info = ts.typeHierarchy.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
+            info.ast.initOpt.get match {
+              case init: AST.Stmt.Expr => return getIntConst(init.exp)
+              case _ => return None()
+            }
+          case _ => return None()
+        }
+      }
+      e match {
+        case e: AST.Exp.LitZ => return Some(e.value)
+        case e: AST.Exp.StringInterpolate => return None()
+        /*e.typedOpt.get match {
+            case t: AST.Typed.Name =>
+              ts.typeHierarchy.typeMap.get(t.ids).get match {
+                case _: TypeInfo.SubZ => return Z(e.lits(0).value)
+                case _ => return None()
+              }
+            case _ => return None()
+          }*/
+        case e: AST.Exp.Ident => return fromRes(e.attr.resOpt.get)
+        case e: AST.Exp.Select => return fromRes(e.attr.resOpt.get)
+        case _ => return None()
+      }
+    }
+
     def transpileFor(stmt: AST.Stmt.For): Unit = {
+      def transEnumGenOpt(
+        posOpt: Option[Position],
+        idOpt: Option[AST.Id],
+        start: Z,
+        end: Z,
+        byN: Z,
+        isInclusive: B,
+        body: AST.Body
+      ): Unit = {
+        for (i <- start to (if (isInclusive) end else if (start <= end) end.decrease else end.increase) by byN) {
+          stmts = stmts ++ transpileLoc(posOpt)
+          val oldStmts = stmts
+          stmts = ISZ()
+          val bodyStmts: ISZ[AST.Stmt] = idOpt match {
+            case Some(id) => val bOpt = IdConstSub(id.value, i).transformBody(body); bOpt.get.stmts
+            case _ => body.stmts
+          }
+          for (s <- bodyStmts) {
+            transpileStmt(s)
+          }
+          stmts = oldStmts :+
+            st"""{
+            |  ${(stmts, "\n")}
+            |}"""
+        }
+      }
       def transEnumGen(eg: AST.EnumGen.For, body: ISZ[ST]): ISZ[ST] = {
         eg.range match {
           case range: AST.EnumGen.Range.Step =>
@@ -1598,6 +1661,19 @@ import StaticTranspiler._
             }
             return stmts
           case range: AST.EnumGen.Range.Expr => halt(s"TODO: $range") // TODO
+        }
+      }
+      if (config.forLoopOpt && stmt.enumGens.size == z"1") { // TODO: generalize for subz and multiple egs
+        val eg = stmt.enumGens(0)
+        eg.range match {
+          case range: AST.EnumGen.Range.Step =>
+            (getIntConst(range.start), getIntConst(range.end), range.byOpt.map(getIntConst).getOrElse(Some(1))) match {
+              case (Some(startNum), Some(endNum), Some(byNum)) if eg.condOpt.isEmpty =>
+                transEnumGenOpt(range.attr.posOpt, eg.idOpt, startNum, endNum, byNum, range.isInclusive, stmt.body)
+                return
+              case _ =>
+            }
+          case _ =>
         }
       }
       stmts = stmts ++ transpileLoc(stmt.posOpt)
