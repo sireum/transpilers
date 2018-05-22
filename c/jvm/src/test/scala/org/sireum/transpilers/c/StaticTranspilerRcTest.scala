@@ -112,6 +112,10 @@ class StaticTranspilerRcTest extends TestSuite {
     println("Running make ...")
     %('make)(resultDir)
 
-    mv(dir / s"L${line.value}" / 'main, dir / name.value)
+    val ldir = dir / s"L${line.value}"
+    mv(ldir / 'main, dir / name.value)
+    rm ! ldir / 'CMakeFiles
+    rm ! ldir / "cmake_install.cmake"
+    rm ! ldir / "CMakeCache.txt"
   }
 }

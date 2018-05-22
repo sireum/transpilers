@@ -238,5 +238,10 @@ class StaticTranspilerTest extends TestSuite {
     println()
     println(s"Running ${config.projectName} ...")
     %(s"./${config.projectName}")(resultDir)
+
+    val ldir = dir / s"L${line.value}"
+    rm ! ldir / 'CMakeFiles
+    rm ! ldir / "cmake_install.cmake"
+    rm ! ldir / "CMakeCache.txt"
   }
 }
