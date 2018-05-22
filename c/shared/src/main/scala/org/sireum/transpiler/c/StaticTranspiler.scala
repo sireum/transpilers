@@ -36,6 +36,7 @@ object StaticTranspiler {
     @pure def canCompile(method: TypeSpecializer.SMethod): B
 
     @pure def transpile(
+      transpiler: StaticTranspiler,
       compiled: Compiled,
       typeSpecializer: TypeSpecializer.Result,
       method: TypeSpecializer.SMethod
@@ -57,6 +58,7 @@ object StaticTranspiler {
     }
 
     @pure def transpile(
+      transpiler: StaticTranspiler,
       compiled: Compiled,
       typeSpecializer: TypeSpecializer.Result,
       method: TypeSpecializer.SMethod
@@ -75,6 +77,42 @@ object StaticTranspiler {
       } else {
         halt("TODO") // TODO
       }
+    }
+  }
+
+  @datatype class StringConversionsExtMethodTranspilerPlugin extends ExtMethodTranspilerPlugin {
+
+    @pure def canCompile(method: TypeSpecializer.SMethod): B = {
+      if (method.owner.size < 4) {
+        return F
+      }
+      if (ops.ISZOps(method.owner).take(conversionsPkg.size) == conversionsPkg && method.owner(3) == string"String") {
+        return T
+      }
+      return F
+    }
+
+    @pure def transpile(
+      transpiler: StaticTranspiler,
+      compiled: Compiled,
+      typeSpecializer: TypeSpecializer.Result,
+      method: TypeSpecializer.SMethod
+    ): Compiled = {
+      val (header, impl): (ST, ST) = method.id.native match {
+        case "toU8is" =>
+          val t = transpiler.transpileType(iszU8Type)
+          val h = st"void conversions_String_toU8is($t result, StackFrame caller, String s)"
+          val i = st"""$h {
+          |  DeclNewStackFrame(caller, "String.scala", "org.sireum.conversions.String", "toU8is", 0);
+          |  size_t size = s->size * sizeof(C);
+          |  sfAssert(size <= Max$t, "");
+          |  result->size = (${t}SizeT) size;
+          |  memcpy(result->value, s->value, size);
+          |}"""
+          (st"$h;", i)
+        case _ => halt("TODO") // TODO
+      }
+      return compiled(header = compiled.header :+ header, impl = compiled.impl :+ impl)
     }
   }
 
@@ -99,6 +137,7 @@ object StaticTranspiler {
   )
 
   val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
+  val iszU8Type: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.u8))
   val optionName: QName = AST.Typed.optionName
   val someName: QName = AST.Typed.sireumName :+ "Some"
   val noneName: QName = AST.Typed.sireumName :+ "None"
@@ -275,7 +314,7 @@ import StaticTranspiler._
         for (p <- config.extMethodTranspilerPlugins) {
           if (p.canCompile(m)) {
             found = T
-            val newValue = p.transpile(value, ts, m)
+            val newValue = p.transpile(this, value, ts, m)
             compiledMap = compiledMap + name ~> newValue
           }
         }
