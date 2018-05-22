@@ -112,6 +112,6 @@ class StaticTranspilerRcTest extends TestSuite {
     println("Running make ...")
     %('make)(resultDir)
 
-    mv(dir / s"L${line.value}" / 'sha3, dir / name.value)
+    mv(dir / s"L${line.value}" / 'main, dir / name.value)
   }
 }

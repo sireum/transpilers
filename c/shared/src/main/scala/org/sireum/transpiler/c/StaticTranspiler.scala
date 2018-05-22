@@ -678,9 +678,8 @@ import StaticTranspiler._
       case _ => None()
     }
     val fname = filename(fileUriOpt, "main")
-    val exeName = removeExt(fname)
     return (
-      if (i == z"0") exeName else if (exeName == string"main") s"main$i" else exeName,
+      if (i == z"0") "main" else s"main$i",
       main(
         fname,
         m.owner,
@@ -1256,7 +1255,7 @@ import StaticTranspiler._
   }
 
   def transpileIf(stmt: AST.Stmt.If): Unit = {
-    transpileLoc(stmt.posOpt)
+    stmts = stmts ++ transpileLoc(stmt.posOpt)
     val cond = transpileExp(stmt.cond)
     val oldStmts = stmts
     stmts = ISZ()
