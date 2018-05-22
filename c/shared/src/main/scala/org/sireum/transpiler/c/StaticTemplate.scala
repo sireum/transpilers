@@ -317,14 +317,14 @@ object StaticTemplate {
       |
       |  int size = argc - 1;
       |  if (size > Max$iszStringType) {
-      |    sfAbort("Insufficient maximum for String elements.");
+      |    sfAbort("Argument list too long.");
       |  }
       |
       |  for (int i = 0; i < size; i++) {
       |    char *arg = argv[i + 1];
       |    size_t argSize = strlen(arg);
       |    if (argSize > MaxString) {
-      |      sfAbort("Insufficient maximum for String characters.");
+      |      sfAbort("Argument too long.");
       |    }
       |    ${iszStringType}_at(&t_args, i)->size = (Z) argSize;
       |    memcpy(${iszStringType}_at(&t_args, i)->value, arg, argSize + 1);
