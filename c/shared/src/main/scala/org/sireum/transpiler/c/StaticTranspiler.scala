@@ -1558,7 +1558,7 @@ import StaticTranspiler._
           case res: AST.ResolvedInfo.Var if res.isInObject =>
             val info = ts.typeHierarchy.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
             info.ast.initOpt.get match {
-              case init: AST.Stmt.Expr => return getIntConst(init.exp)
+              case init: AST.Stmt.Expr if info.ast.isVal => return getIntConst(init.exp)
               case _ => return None()
             }
           case _ => return None()
