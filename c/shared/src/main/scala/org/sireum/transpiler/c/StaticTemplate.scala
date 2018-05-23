@@ -193,6 +193,8 @@ object StaticTemplate {
       |${(for (name <- ops.ISZOps(names).sortWith(qnameLt)) yield st"#include <${(name, "_")}.h>", "\n")}
       |
       |B Type__eq(void *t1, void *t2);
+      |void Type_cprint(void *this, B isOut);
+      |void Type_string(String result, StackFrame caller, void* this);
       |
       |#endif"""
     return r
@@ -207,6 +209,22 @@ object StaticTemplate {
       |  if (type != ((Type) t2)->type) return F;
       |  switch (type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return ${tn._2}__eq((${tn._2}) t1, (${tn._2}) t2);", "\n")}
+      |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
+      |  }
+      |}
+      |
+      |void Type_cprint(void *this, B isOut) {
+      |  TYPE type = ((Type) this)->type;
+      |  switch (type) {
+      |    ${(for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_cprint((${tn._2}) this, isOut); return;", "\n")}
+      |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
+      |  }
+      |}
+      |
+      |void Type_string(String result, StackFrame caller, void *this) {
+      |  TYPE type = ((Type) this)->type;
+      |  switch (type) {
+      |    ${(for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string(result, caller, (${tn._2}) this); return;", "\n")}
       |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
       |}"""
@@ -436,8 +454,8 @@ object StaticTemplate {
       |${(accessors, "\n")}
       |
       |$eqHeader;
-      |$stringHeader;
-      |$cprintHeader;"""
+      |$cprintHeader;
+      |$stringHeader;"""
 
     var eqStmts = ISZ[ST]()
     var stringStmts = ISZ[ST](st"""DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "string", 0);
@@ -485,6 +503,24 @@ object StaticTemplate {
       header = compiled.header :+ header,
       impl = compiled.impl :+ impl
     )
+  }
+
+  @pure def traitz(compiled: Compiled, name: ST, leafTypes: ISZ[ST]): Compiled = {
+    val typeHeader =
+      st"""typedef union $name *$name;
+      |union $name {
+      |  TYPE type;
+      |  ${(for (t <- leafTypes) yield st"$t $t", "\n")}
+      |}"""
+    val header =
+      st"""
+      |
+      |"""
+    val impl =
+      st"""
+      |
+      |"""
+    return compiled(typeHeader = compiled.typeHeader :+ typeHeader)
   }
 
   @pure def arraySizeType(maxElement: Z): String = {
