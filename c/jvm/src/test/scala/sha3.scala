@@ -50,7 +50,7 @@ object sha3 extends App {
   }
 
   def printUsage(): Unit = {
-    println("Usage: sha3 <( 256 | 384 | 512 )> [ <input> ] ")
+    println("Usage: sha3 <( 256 | 384 | 512 )> [ <input> ]")
   }
 }
 
