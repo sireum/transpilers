@@ -136,6 +136,7 @@ object StaticTranspiler {
     AST.Typed.string
   )
 
+  val escapeSep: String = """" """"
   val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
   val iszU8Type: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.u8))
   val optionName: QName = AST.Typed.optionName
@@ -1224,8 +1225,8 @@ import StaticTranspiler._
                 case _ => val r = transConstructor(res); return r
               }
             case AST.MethodMode.Copy => halt(s"TODO: $res") // TODO
-            case AST.MethodMode.Extractor => halt(s"TODO: $res") // TODO
-            case AST.MethodMode.ObjectConstructor => halt(s"TODO: $res") // TODO
+            case AST.MethodMode.Extractor => halt(s"Infeasible: $res")
+            case AST.MethodMode.ObjectConstructor => halt(s"Infeasible: $res")
             case AST.MethodMode.Select => val r = transSSelect(res.owner :+ res.id); return r
             case AST.MethodMode.Store => val r = transSStore(res.owner :+ res.id); return r
           }
@@ -1241,11 +1242,14 @@ import StaticTranspiler._
       case exp: AST.Exp.LitF64 => val r = transLitF64(exp); return r
       case exp: AST.Exp.LitR => val r = transLitR(exp); return r
       case exp: AST.Exp.StringInterpolate =>
-        if (isSubZLit(exp)) {
-          val r = transSubZLit(exp)
-          return r
-        } else {
-          halt(s"// TODO: $exp") // TODO
+        exp.prefix.native match {
+          case "s" => halt(s"TODO: $exp") // TODO
+          case "st" =>
+            reporter.error(exp.posOpt, transKind, "String template is not supported.")
+            return abort
+          case _ =>
+            val r = transSubZLit(exp)
+            return r
         }
       case exp: AST.Exp.LitString => val r = transLitString(exp); return r
       case exp: AST.Exp.Ident => val r = transIdent(exp); return r
@@ -1941,17 +1945,14 @@ import StaticTranspiler._
     return r
   }
 
+  @pure def isControl(c: C): B = {
+    return ('\u0000' <= c && c <= '\u001F') || ('\u007F' <= c && c <= '\u009F')
+  }
+
   def escapeChar(posOpt: Option[Position], c: C): String = {
-    return c.string
-    /*
     if (c <= '\u00FF') {
       c.native match {
-        case ' ' => return " "
-        case '\u0000' => return "\\0"
-        case '\'' => return "\\'"
-        case '\u0022' => return "\\\\u0022"
-        case '?' => return "\\?"
-        case '\\' => return "\\\\"
+        case '\u0000' => return "\\\u0000"
         case '\u0007' => return "\\a"
         case '\b' => return "\\b"
         case '\f' => return "\\f"
@@ -1959,12 +1960,13 @@ import StaticTranspiler._
         case '\r' => return "\\r"
         case '\t' => return "\\t"
         case '\u000B' => return "\\v"
+        case '\\' => return "\\\\"
+        case '\u003F' => return "\\?"
+        case '\'' => return "\\'"
+        case '\"' => return "\\\""
         case _ =>
-          if ('\u0032' <= c && c < '\u007F') {
-            return c.string
-          } else {
-            return s"\\x${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}"
-          }
+          return if (isControl(c)) s"$escapeSep\\x${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}$escapeSep"
+          else c.string
       }
     } else {
       reporter.error(
@@ -1974,7 +1976,6 @@ import StaticTranspiler._
       )
       return "\\?"
     }
-   */
   }
 
 }
