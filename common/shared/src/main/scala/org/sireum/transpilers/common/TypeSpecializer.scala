@@ -25,7 +25,7 @@ object TypeSpecializer {
 
   @datatype class NamedType(
     tpe: AST.Typed.Name,
-    @hidden constructorVars: Map[String, (B, AST.Typed)],
+    @hidden constructorVars: Map[String, (B, B, AST.Typed)],
     @hidden vars: Map[String, (B, AST.Typed, AST.AssignExp)]
   )
 
@@ -90,7 +90,7 @@ object TypeSpecializer {
   }
 
   val tsKind: String = "Type Specializer"
-  val emptyCVars: Map[String, (B, AST.Typed)] = Map.empty
+  val emptyCVars: Map[String, (B, B, AST.Typed)] = Map.empty
   val emptyVars: Map[String, (B, AST.Typed, AST.AssignExp)] = Map.empty
   val objectConstructorType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(), AST.Typed.unit)
 
@@ -515,7 +515,7 @@ import TypeSpecializer._
     var cvs = emptyCVars
     var vs = emptyVars
     for (p <- info.ast.params) {
-      cvs = cvs + p.id.value ~> ((p.isVal, p.tipe.typedOpt.get.subst(sm)))
+      cvs = cvs + p.id.value ~> ((p.isVal, p.isHidden, p.tipe.typedOpt.get.subst(sm)))
     }
     for (stmt <- info.ast.stmts) {
       stmt match {

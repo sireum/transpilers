@@ -26,6 +26,8 @@ object StaticTemplate {
 
   @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
 
+  @datatype class Vard(kind: TypeKind.Type, id: String, tpe: ST, tpePtr: ST, isVar: B, isHidden: B)
+
   val sireumDir: String = "sireum"
   val libraryDir: String = "library"
   val empty: ST = st""
@@ -153,8 +155,10 @@ object StaticTemplate {
       |#endif
       |
       |static inline size_t sizeOf(Type t) {
-      |  switch (t->type) {
+      |  TYPE type = t->type;
+      |  switch (type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return sizeof(struct ${tn._2}); // ${tn._1}", "\n")}
+      |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
       |}
       |
@@ -188,7 +192,24 @@ object StaticTemplate {
       |#include <types.h>
       |${(for (name <- ops.ISZOps(names).sortWith(qnameLt)) yield st"#include <${(name, "_")}.h>", "\n")}
       |
+      |B Type__eq(void *t1, void *t2);
+      |
       |#endif"""
+    return r
+  }
+
+  @pure def allC(typeNames: ISZ[(String, ST)]): ST = {
+    val r =
+      st"""#include <all.h>
+      |
+      |B Type__eq(void *t1, void *t2) {
+      |  TYPE type = ((Type) t1)->type;
+      |  if (type != ((Type) t2)->type) return F;
+      |  switch (type) {
+      |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return ${tn._2}__eq((${tn._2}) t1, (${tn._2}) t2);", "\n")}
+      |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
+      |  }
+      |}"""
     return r
   }
 
@@ -369,14 +390,13 @@ object StaticTemplate {
     includes: ISZ[ST],
     tpe: String,
     name: ST,
-    constructorParamTypes: ISZ[(TypeKind.Type, String, ST, ST, B)],
-    varTypes: ISZ[(TypeKind.Type, String, ST, ST, B)]
+    constructorParamTypes: ISZ[Vard],
+    varTypes: ISZ[Vard]
   ): Compiled = {
     val vars = constructorParamTypes ++ varTypes
     var members = ISZ[ST]()
-    for (q <- ops.ISZOps(vars).sortWith((q1, q2) => q1._1.ordinal < q2._1.ordinal)) {
-      val (_, id, t, _, _) = q
-      members = members :+ st"$t $id;"
+    for (vd <- ops.ISZOps(vars).sortWith((vd1, vd2) => vd1.kind.ordinal < vd2.kind.ordinal)) {
+      members = members :+ st"${vd.tpe} ${vd.id};"
     }
     val typeHeader =
       st"""// $tpe
@@ -392,29 +412,74 @@ object StaticTemplate {
       |"""
 
     var accessors = ISZ[ST]()
-    for (q <- vars) {
-      val (kind, id, t, tPtr, isVar) = q
-      if (isScalar(kind)) {
-        accessors = accessors :+ st"#define ${name}_${id}_(this) ((this)->$id)"
-        if (isVar) {
-          accessors = accessors :+ st"#define ${name}_${id}_a(this, value) (this)->$id = (value)"
+    for (vd <- vars) {
+      if (isScalar(vd.kind)) {
+        accessors = accessors :+ st"#define ${name}_${vd.id}_(this) ((this)->${vd.id})"
+        if (vd.isVar) {
+          accessors = accessors :+ st"#define ${name}_${vd.id}_a(this, value) (this)->${vd.id} = (value)"
         }
       } else {
-        accessors = accessors :+ st"#define ${name}_${id}_(this) (($tPtr) &(this)->$id)"
-        if (isVar) {
-          accessors = accessors :+ st"#define ${name}_${id}_a(this, value) Type_assign((this)->$id, value, sizeof($t))"
+        accessors = accessors :+ st"#define ${name}_${vd.id}_(this) ((${vd.tpePtr}) &(this)->${vd.id})"
+        if (vd.isVar) {
+          accessors = accessors :+ st"#define ${name}_${vd.id}_a(this, value) Type_assign((this)->${vd.id}, value, sizeof(${vd.tpe}))"
         }
       }
     }
-    // TODO: eq, string, cprint
+
+    val eqHeader = st"B ${name}__eq($name this, $name other)"
+    val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
+    val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
+
     val header =
       st"""// $tpe
       |
-      |${(accessors, "\n")}"""
+      |${(accessors, "\n")}
+      |
+      |$eqHeader;
+      |$stringHeader;
+      |$cprintHeader;"""
+
+    var eqStmts = ISZ[ST]()
+    var stringStmts = ISZ[ST](st"""DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "string", 0);
+    |String_string(result, sf, string("${className(className.size - 1)}("));""")
+    var cprintStmts = ISZ[ST](st"""String_cprint(string("${className(className.size - 1)}("), isOut);""")
+
+    if (constructorParamTypes.size > 1) {
+      stringStmts = stringStmts :+ st"""String sep = string(", ");"""
+      cprintStmts = cprintStmts :+ st"""String sep = string(", ");"""
+    }
+
+    for (i <- constructorParamTypes.indices) {
+      val vd = constructorParamTypes(i)
+      if (!vd.isHidden) {
+        eqStmts = eqStmts :+ st"if (${vd.tpePtr}__ne(this->${vd.id}, other->${vd.id})) return F;"
+      }
+      if (i > 0) {
+        stringStmts = stringStmts :+ st"String_string(result, sf, sep);"
+        cprintStmts = cprintStmts :+ st"String_cprint(sep, isOut);"
+      }
+      stringStmts = stringStmts :+ st"${vd.tpePtr}_string(result, sf, this->${vd.id});"
+      cprintStmts = cprintStmts :+ st"${vd.tpePtr}_cprint(this->${vd.id}, isOut);"
+    }
+    stringStmts = stringStmts :+ st"""String_string(result, sf, string(")"));"""
+    cprintStmts = cprintStmts :+ st"""String_cprint(string(")"), isOut);"""
 
     val impl =
       st"""// $tpe
-      |"""
+      |
+      |$eqHeader {
+      |  ${(eqStmts, "\n")}
+      |  return T;
+      |}
+      |
+      |$stringHeader {
+      |  ${(stringStmts, "\n")}
+      |}
+      |
+      |$cprintHeader {
+      |  ${(cprintStmts, "\n")}
+      |}"""
+
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
       header = compiled.header :+ header,

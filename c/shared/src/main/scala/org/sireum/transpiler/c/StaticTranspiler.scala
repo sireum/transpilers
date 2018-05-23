@@ -287,6 +287,7 @@ import StaticTranspiler._
       r = r + ISZ[String]("types.h") ~> typesH(typeQNames, typeNames)
       r = r + ISZ[String]("types.c") ~> typesC()
       r = r + ISZ[String]("all.h") ~> allH(typeQNames)
+      r = r + ISZ[String]("all.c") ~> allC(typeNames)
       r = r ++ compiled(compiledMap)
       for (ext <- config.exts) {
         r = r + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> st"${ext.content}"
@@ -350,7 +351,7 @@ import StaticTranspiler._
     var types = ISZ[AST.Typed]()
     var cps = ISZ[(TypeKind.Type, String, ST, ST)]()
     for (cv <- nt.constructorVars.entries) {
-      val (id, (_, ct)) = cv
+      val (id, (_, _, ct)) = cv
       types = types :+ ct
       val tpe = fingerprint(ct)._1
       val kind = typeKind(ct)
@@ -401,7 +402,7 @@ import StaticTranspiler._
     var types = ISZ[AST.Typed]()
     var cps = ISZ[(TypeKind.Type, String, ST, ST, B)]()
     for (cv <- nt.constructorVars.entries) {
-      val (id, (isVal, ct)) = cv
+      val (id, (isVal, _, ct)) = cv
       types = types :+ ct
       val tpe = fingerprint(ct)._1
       val kind = typeKind(ct)
@@ -618,21 +619,21 @@ import StaticTranspiler._
       val value = getCompiled(name)
       for (nt <- ts.nameTypes.get(name).get.elements if nt.tpe == t) {
         var types = ISZ[AST.Typed]()
-        var cps = ISZ[(TypeKind.Type, String, ST, ST, B)]()
+        var cps = ISZ[Vard]()
         for (cv <- nt.constructorVars.entries) {
-          val (id, (isVal, ct)) = cv
+          val (id, (isVal, isHidden, ct)) = cv
           types = types :+ ct
           val tpe = genType(ct)
           val kind = typeKind(ct)
-          cps = cps :+ ((kind, fieldName(id).render, typeDecl(ct), tpe, !isVal))
+          cps = cps :+ Vard(kind, fieldName(id).render, typeDecl(ct), tpe, !isVal, isHidden)
         }
-        var vs = ISZ[(TypeKind.Type, String, ST, ST, B)]()
+        var vs = ISZ[Vard]()
         for (v <- nt.vars.entries) {
           val (id, (isVal, ct, _)) = v
           types = types :+ ct
           val tpe = genType(ct)
           val kind = typeKind(ct)
-          vs = vs :+ ((kind, fieldName(id).render, typeDecl(ct), tpe, !isVal))
+          vs = vs :+ Vard(kind, fieldName(id).render, typeDecl(ct), tpe, !isVal, F)
         }
         val uri =
           filenameOfPosOpt(ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
@@ -980,17 +981,6 @@ import StaticTranspiler._
             return st"${mangleName(tname)}$op($e)"
           }
         case _ => halt(s"TODO: $exp") // TODO
-      }
-    }
-
-    def isSubZLit(exp: AST.Exp.StringInterpolate): B = {
-      expType(exp) match {
-        case t: AST.Typed.Name if t.args.isEmpty =>
-          ts.typeHierarchy.typeMap.get(t.ids) match {
-            case Some(_: TypeInfo.SubZ) => return T
-            case _ => return F
-          }
-        case _ => return F
       }
     }
 
@@ -1609,7 +1599,7 @@ import StaticTranspiler._
       }
       e match {
         case e: AST.Exp.LitZ => return Some(e.value)
-        case e: AST.Exp.StringInterpolate => return None()
+        case e: AST.Exp.StringInterpolate => return None() // TODO
         /*e.typedOpt.get match {
             case t: AST.Typed.Name =>
               ts.typeHierarchy.typeMap.get(t.ids).get match {
