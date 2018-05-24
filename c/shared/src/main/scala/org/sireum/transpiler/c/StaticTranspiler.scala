@@ -9,6 +9,7 @@ import org.sireum.lang.symbol.Resolver.QName
 import org.sireum.transpilers.common.TypeSpecializer
 import StaticTemplate._
 import org.sireum.lang.ast.Exp
+import org.sireum.lang.tipe.TypeChecker
 
 object StaticTranspiler {
 
@@ -140,8 +141,8 @@ object StaticTranspiler {
   val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
   val iszU8Type: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.u8))
   val optionName: QName = AST.Typed.optionName
-  val someName: QName = AST.Typed.sireumName :+ "Some"
-  val noneName: QName = AST.Typed.sireumName :+ "None"
+  val someName: QName = AST.Typed.someName
+  val noneName: QName = AST.Typed.noneName
   val eitherName: QName = AST.Typed.sireumName :+ "Either"
   val moptionName: QName = AST.Typed.sireumName :+ "MOption"
   val meitherName: QName = AST.Typed.sireumName :+ "MEither"
@@ -268,11 +269,14 @@ import StaticTranspiler._
       }
       r = r + ISZ(runtimeDir, ztypeFilename) ~> ztype
 
-      val typeNames: ISZ[(String, ST)] = {
-        var tn: ISZ[(String, ST)] = ISZ((dotName(AST.Typed.stringName), st"${mangleName(AST.Typed.stringName)}"))
+      val typeNames: ISZ[(String, ST, ST)] = {
+        var tn: ISZ[(String, ST, ST)] = ISZ(
+          (dotName(AST.Typed.stringName), st"${mangleName(AST.Typed.stringName)}", st"String")
+        )
         for (e <- typeNameMap.entries) {
-          if (!builtInTypes.contains(e._1) && !isScalar(typeKind(e._1))) {
-            tn = tn :+ ((e._1.string, e._2))
+          if (!builtInTypes.contains(e._1) && isClass(typeKind(e._1))) {
+            val s = e._1.string
+            tn = tn :+ ((s, e._2, escapeString(None(), s)))
           }
         }
         ops.ISZOps(tn).sortWith((p1, p2) => p1._1 <= p2._1)
@@ -285,7 +289,7 @@ import StaticTranspiler._
         typeNames
       )
       r = r + ISZ[String]("types.h") ~> typesH(typeQNames, typeNames)
-      r = r + ISZ[String]("types.c") ~> typesC()
+      r = r + ISZ[String]("types.c") ~> typesC(typeNames)
       r = r + ISZ[String]("all.h") ~> allH(typeQNames)
       r = r + ISZ[String]("all.c") ~> allC(typeNames)
       r = r ++ compiled(compiledMap)
@@ -642,7 +646,16 @@ import StaticTranspiler._
       }
     }
     def genTrait(t: AST.Typed.Name): Unit = {
-      halt(s"TODO: $t") // TODO
+      var leafTypes = ISZ[ST]()
+      val tImpls = ts.typeImpl.childrenOf(t).elements
+      for (tImpl <- tImpls) {
+        val t = genType(tImpl)
+        leafTypes = leafTypes :+ t
+      }
+      val name = t.ids
+      val value = getCompiled(name)
+      val newValue = traitz(value, fingerprint(t)._1, t.string, includes(name, tImpls.map(t => t)), leafTypes)
+      compiledMap = compiledMap + name ~> newValue
     }
     def genFun(t: AST.Typed.Fun): Unit = {
       halt(s"TODO: $t") // TODO
@@ -744,7 +757,71 @@ import StaticTranspiler._
   }
 
   def transpileTraitMethod(method: TypeSpecializer.SMethod): Unit = {
-    halt(s"TODO: $method") // TODO
+    val id = method.id
+    def findMethod(receiver: AST.Typed.Name): Info.Method = {
+      val adtInfo = ts.typeHierarchy.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+      val adtSm =
+        TypeChecker.buildTypeSubstMap(receiver.ids, None(), adtInfo.ast.typeParams, receiver.args, reporter).get
+      val mt = adtInfo.methods.get(id).get.methodType.tpe.subst(adtSm)
+      val rep = Reporter.create
+      val th = ts.typeHierarchy
+      for (m <- ts.methods.get(receiver.ids).get.elements if m.info.ast.sig.id.value == id) {
+        val smOpt = TypeChecker.unify(th, None(), TypeChecker.TypeRelation.Equal, m.info.methodType.tpe, mt, rep)
+        if (smOpt.nonEmpty) {
+          return m.info
+        }
+      }
+      halt("Infeasible")
+    }
+    val receiver = method.receiverOpt.get
+    val info: Info.Method = ts.typeHierarchy.typeMap.get(receiver.ids).get match {
+      case inf: TypeInfo.Sig => inf.methods.get(method.id).get
+      case inf: TypeInfo.AbstractDatatype => inf.methods.get(method.id).get
+      case _ => halt("Infeasible")
+    }
+    val key = receiver.ids
+    val value = getCompiled(key)
+    val res = info.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
+    val header = methodHeaderRes(method.receiverOpt, res(tpeOpt = Some(method.tpe)))
+    var cases = ISZ[ST]()
+    val rt = method.tpe.ret
+    val rTpe = typeDecl(rt)
+    val scalar = isScalar(typeKind(rt))
+    for (t <- ts.typeImpl.childrenOf(receiver).elements) {
+      val adt = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+      val tpe = transpileType(t)
+      adt.vars.get(id) match {
+        case Some(_) =>
+          if (scalar) {
+            cases = cases :+ st"case T$tpe: return ${tpe}_${id}_(($tpe) this);"
+          } else {
+            cases = cases :+ st"case T$tpe: Type_assign(result, ${tpe}_${id}_(($tpe) this), sizeof($rTpe)); return;"
+          }
+        case _ =>
+          val info = findMethod(t)
+          val res = info.methodRes
+          val mName = methodNameRes(Some(t), res)
+          val args: ST =
+            if (res.paramNames.isEmpty) st""
+            else
+              st", ${(for (p <- ops.ISZOps(res.paramNames).zip(info.methodType.tpe.args)) yield
+                st"(${transpileType(p._2)}) ${localName(p._1)}", ", ")}"
+          if (scalar) {
+            cases = cases :+ st"case T$tpe: return $mName(caller, ($tpe) this$args);"
+          } else {
+            cases = cases :+ st"case T$tpe: Type_assign(result, $mName(caller, ($tpe) this$args), sizeof($rTpe)); return;"
+          }
+      }
+    }
+    val impl =
+      st"""$header {
+      |  switch (this->type) {
+      |    ${(cases, "\n")}
+      |    default: fprintf(stderr, "Infeasible TYPE: %s.\n", TYPE_string(this)); exit(1);
+      |  }
+      |}"""
+    val newValue = value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
+    compiledMap = compiledMap + key ~> newValue
   }
 
   def transpileMethod(method: TypeSpecializer.Method): Unit = {
@@ -854,14 +931,9 @@ import StaticTranspiler._
       return st"${exp.string}L"
     }
 
-    @pure def transLitString(exp: AST.Exp.LitString): ST = {
-      val u8is = conversions.String.toU8is(exp.value)
-      val value = MSZ.create[String](u8is.size, "")
-      val posOpt = exp.posOpt
-      for (i <- u8is.indices) {
-        value(i) = escapeChar(posOpt, conversions.U32.toC(conversions.U8.toU32(u8is(i))))
-      }
-      return st"""string("${(value, "")}")"""
+    def transLitString(exp: AST.Exp.LitString): ST = {
+      val value = escapeString(exp.posOpt, exp.value)
+      return st"""string("$value")"""
     }
 
     @pure def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
@@ -894,7 +966,7 @@ import StaticTranspiler._
         case res: AST.ResolvedInfo.Method =>
           val t = res.tpeOpt.get.ret
           if (res.isInObject) {
-            val r = transObjectMethodInvoke(t, res, ISZ())
+            val r = transObjectMethodInvoke(t, methodNameRes(None(), res), ISZ())
             return r
           } else {
             val r = transInstanceMethodInvoke(currReceiverOpt.get, t, res, st"this", ISZ())
@@ -1028,7 +1100,7 @@ import StaticTranspiler._
             case AST.MethodMode.Method =>
               val t = expType(select)
               if (res.isInObject) {
-                val r = transObjectMethodInvoke(t, res, ISZ())
+                val r = transObjectMethodInvoke(t, methodNameRes(None(), res), ISZ())
                 return r
               } else {
                 val receiver = select.receiverOpt.get
@@ -1043,19 +1115,19 @@ import StaticTranspiler._
       }
     }
 
-    def transObjectMethodInvoke(retType: AST.Typed, res: AST.ResolvedInfo.Method, invokeArgs: ISZ[AST.Exp]): ST = {
+    def transObjectMethodInvoke(retType: AST.Typed, name: ST, invokeArgs: ISZ[AST.Exp]): ST = {
       var args = ISZ[ST]()
       for (arg <- invokeArgs) {
         val a = transpileExp(arg)
         args = args :+ a
       }
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
-        return st"${methodNameRes(None(), res)}(sf${commaArgs(args)})"
+        return st"$name(sf${commaArgs(args)})"
       } else {
         val temp = freshTempName()
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"${methodNameRes(None(), res)}(&$temp, sf${commaArgs(args)});"
+        stmts = stmts :+ st"$name(&$temp, sf${commaArgs(args)});"
         return st"(&$temp)"
       }
     }
@@ -1193,7 +1265,7 @@ import StaticTranspiler._
           res.mode match {
             case AST.MethodMode.Method =>
               if (res.isInObject) {
-                val r = transObjectMethodInvoke(expType(invoke), res, invoke.args)
+                val r = transObjectMethodInvoke(expType(invoke), methodNameRes(None(), res), invoke.args)
                 return r
               } else {
                 val receiver = transReceiver()
@@ -1219,6 +1291,20 @@ import StaticTranspiler._
             case AST.MethodMode.ObjectConstructor => halt(s"Infeasible: $res")
             case AST.MethodMode.Select => val r = transSSelect(res.owner :+ res.id); return r
             case AST.MethodMode.Store => val r = transSStore(res.owner :+ res.id); return r
+          }
+        case res: AST.ResolvedInfo.BuiltIn =>
+          def enumInvoke(): ST = {
+            val r = transObjectMethodInvoke(
+              expType(invoke),
+              methodNameTyped(None(), invoke.ident.attr.typedOpt.get.asInstanceOf[AST.Typed.Method]),
+              invoke.args
+            )
+            return r
+          }
+          res.kind match {
+            case AST.ResolvedInfo.BuiltIn.Kind.EnumByName => val r = enumInvoke(); return r
+            case AST.ResolvedInfo.BuiltIn.Kind.EnumByOrdinal => val r = enumInvoke(); return r
+            case _ => halt(s"Infeasible: $res")
           }
         case res => halt(s"TODO: $res") // TODO
       }
@@ -1861,6 +1947,10 @@ import StaticTranspiler._
     return methodName(receiverTypeOpt, res.isInObject, res.owner, res.id, res.typeParams.isEmpty, res.tpeOpt.get)
   }
 
+  @pure def methodNameTyped(receiverTypeOpt: Option[AST.Typed.Name], res: AST.Typed.Method): ST = {
+    return methodName(receiverTypeOpt, res.isInObject, res.owner, res.name, res.typeParams.isEmpty, res.tpe)
+  }
+
   @pure def methodName(
     receiverTypeOpt: Option[AST.Typed.Name],
     isInObject: B,
@@ -1872,8 +1962,8 @@ import StaticTranspiler._
     val ids = owner
     val r: ST =
       if (isInObject)
-        if (noTypeParams) mangleName(ids :+ id)
-        else st"${mangleName(ids :+ id)}_${fprint(t)}"
+        if (noTypeParams) st"${mangleName(ids)}_$id"
+        else st"${mangleName(ids)}_${id}_${fprint(t)}"
       else if (sNameSet.contains(ids)) st"${transpileType(receiverTypeOpt.get)}_$id"
       else if (noTypeParams) st"${transpileType(receiverTypeOpt.get)}_${id}_"
       else st"${transpileType(receiverTypeOpt.get)}_${id}_${fprint(t)}_"
@@ -1939,6 +2029,15 @@ import StaticTranspiler._
     return ('\u0000' <= c && c <= '\u001F') || ('\u007F' <= c && c <= '\u009F')
   }
 
+  def escapeString(posOpt: Option[Position], s: String): ST = {
+    val u8is = conversions.String.toU8is(s)
+    val value = MSZ.create[String](u8is.size, "")
+    for (i <- u8is.indices) {
+      value(i) = escapeChar(posOpt, conversions.U32.toC(conversions.U8.toU32(u8is(i))))
+    }
+    return st"${(value, "")}"
+  }
+
   def escapeChar(posOpt: Option[Position], c: C): String = {
     if (c <= '\u00FF') {
       c.native match {
@@ -1955,7 +2054,8 @@ import StaticTranspiler._
         case '\'' => return "\\'"
         case '\"' => return "\\\""
         case _ =>
-          return if (isControl(c)) s"$escapeSep\\x${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}$escapeSep"
+          return if (isControl(c))
+            s"$escapeSep\\x${ops.COps.hex2c(c >>> '\u0004')}${ops.COps.hex2c(c & '\u000F')}$escapeSep"
           else c.string
       }
     } else {

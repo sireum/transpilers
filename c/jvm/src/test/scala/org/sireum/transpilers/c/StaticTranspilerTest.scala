@@ -55,12 +55,16 @@ class StaticTranspilerTest extends TestSuite {
                         |
                         |println(Direction.Left)
                         |println(Direction.Right)
-                        |//println(Direction.byName("Left"))
-                        |//println(Direction.byName("Right"))
-                        |//println(Direction.byName(""))
-                        |//println(Direction.byOrdinal(0))
-                        |//println(Direction.byOrdinal(1))
-                        |//println(Direction.byOrdinal(2))
+                        |println(Direction.byName("Left"))
+                        |println(Direction.byName("Right"))
+                        |println(Direction.byName("Left").get)
+                        |println(Direction.byName("Right").get)
+                        |println(Direction.byName(""))
+                        |println(Direction.byOrdinal(0))
+                        |println(Direction.byOrdinal(1))
+                        |println(Direction.byOrdinal(2))
+                        |println(Direction.byOrdinal(0).get)
+                        |println(Direction.byOrdinal(1).get)
                         |println(Direction.elements)
                         |println(Direction.numOfElements)""".stripMargin)
 
@@ -162,9 +166,7 @@ class StaticTranspilerTest extends TestSuite {
                         |))""".stripMargin)
   }
 
-  def testWorksheet(input: Predef.String)(
-    implicit line: sourcecode.Line
-  ): Unit = {
+  def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
       Parser(s"import org.sireum._\n$input")

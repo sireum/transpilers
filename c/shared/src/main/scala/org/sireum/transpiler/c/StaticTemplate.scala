@@ -83,7 +83,7 @@ object StaticTemplate {
     "while"
   )
 
-  @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[(String, ST)]): ST = {
+  @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[(String, ST, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
       |#define SIREUM_GEN_TYPE_H
@@ -100,6 +100,8 @@ object StaticTemplate {
         "\n"
       )}
       |} TYPE;
+      |
+      |char *TYPE_string(void *type);
       |
       |typedef struct Type *Type;
       |struct Type {
@@ -138,7 +140,7 @@ object StaticTemplate {
     return r
   }
 
-  @pure def typesH(names: ISZ[QName], typeNames: ISZ[(String, ST)]): ST = {
+  @pure def typesH(names: ISZ[QName], typeNames: ISZ[(String, ST, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_H
       |#define SIREUM_GEN_H
@@ -158,16 +160,18 @@ object StaticTemplate {
       |  TYPE type = t->type;
       |  switch (type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return sizeof(struct ${tn._2}); // ${tn._1}", "\n")}
-      |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
+      |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
       |}
       |
       |void Type_assign(void *dest, void *src, size_t destSize);
+      |
       |#endif"""
     return r
   }
 
-  @pure def typesC(): ST = {
+  @pure def typesC(typeNames: ISZ[(String, ST, ST)]): ST = {
+    val strings: ISZ[ST] = for (tn <- typeNames) yield st""""${tn._3}""""
     val r =
       st"""#include <types.h>
       |
@@ -180,6 +184,13 @@ object StaticTemplate {
       |  size_t srcSize = sizeOf(srcType);
       |  memcpy(dest, src, srcSize);
       |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
+      |}
+      |
+      |char *TYPE_string(void *type) {
+      |  static char *strings[] = {
+      |    ${(strings, ",\n")}
+      |  };
+      |  return strings[((Type) type)->type];
       |}"""
     return r
   }
@@ -200,7 +211,7 @@ object StaticTemplate {
     return r
   }
 
-  @pure def allC(typeNames: ISZ[(String, ST)]): ST = {
+  @pure def allC(typeNames: ISZ[(String, ST, ST)]): ST = {
     val r =
       st"""#include <all.h>
       |
@@ -209,7 +220,7 @@ object StaticTemplate {
       |  if (type != ((Type) t2)->type) return F;
       |  switch (type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return ${tn._2}__eq((${tn._2}) t1, (${tn._2}) t2);", "\n")}
-      |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
+      |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
       |}
       |
@@ -217,7 +228,7 @@ object StaticTemplate {
       |  TYPE type = ((Type) this)->type;
       |  switch (type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_cprint((${tn._2}) this, isOut); return;", "\n")}
-      |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
+      |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
       |}
       |
@@ -225,7 +236,7 @@ object StaticTemplate {
       |  TYPE type = ((Type) this)->type;
       |  switch (type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string(result, caller, (${tn._2}) this); return;", "\n")}
-      |    default: fprintf(stdout, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
+      |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
       |}"""
     return r
@@ -384,8 +395,8 @@ object StaticTemplate {
     constructorParamTypes: ISZ[(TypeKind.Type, String, ST, ST)],
     constructorStmts: ISZ[ST]
   ): Compiled = {
-    val constructorParams: ISZ[ST] = for (q <- constructorParamTypes) yield st"${q._4} ${q._2}"
-    val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this, ${(constructorParams, ", ")})"
+    val constructorParams: ST = commaArgs(for (q <- constructorParamTypes) yield st"${q._4} ${q._2}")
+    val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this$constructorParams)"
     val constructorInits: ISZ[ST] = for (q <- constructorParamTypes)
       yield
         if (isScalar(q._1)) st"this->${q._2} = ${q._2};"
@@ -455,7 +466,16 @@ object StaticTemplate {
       |
       |$eqHeader;
       |$cprintHeader;
-      |$stringHeader;"""
+      |$stringHeader;
+      |
+      |#define ${name}_is(this) ((($name) this)->type == T$name)
+      |
+      |static inline $name ${name}_as(StackFrame caller, void *this) {
+      |  if (${name}_is(this)) return ($name) this;
+      |  fprintf(stderr, "Invalid case from %s to $tpe.", TYPE_string(this));
+      |  sfAbortImpl(caller, "");
+      |  $abort
+      |}"""
 
     var eqStmts = ISZ[ST]()
     var stringStmts = ISZ[ST](st"""DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "string", 0);
@@ -505,22 +525,52 @@ object StaticTemplate {
     )
   }
 
-  @pure def traitz(compiled: Compiled, name: ST, leafTypes: ISZ[ST]): Compiled = {
+  @pure def traitz(compiled: Compiled, name: ST, tpe: String, includes: ISZ[ST], leafTypes: ISZ[ST]): Compiled = {
     val typeHeader =
-      st"""typedef union $name *$name;
+      st"""// $tpe
+      |
+      |${(includes, "\n")}
+      |
+      |typedef union $name *$name;
       |union $name {
       |  TYPE type;
-      |  ${(for (t <- leafTypes) yield st"$t $t", "\n")}
-      |}"""
+      |  ${(for (t <- leafTypes) yield st"struct $t $t;", "\n")}
+      |};
+      |
+      |#define DeclNew$name(x) union $name x = { 0 }"""
     val header =
-      st"""
+      st"""// $tpe
       |
-      |"""
+      |#define ${name}__eq(this, other) Type__eq(this, other)
+      |#define ${name}_cprint(this, isOut) Type_cprint(this, isOut)
+      |#define ${name}_string(result, caller, this) Type_string(result, caller, this)
+      |
+      |B ${name}__is(void *this);
+      |$name ${name}__as(StackFrame caller, void *this);"""
     val impl =
-      st"""
+      st"""// $tpe
       |
-      |"""
-    return compiled(typeHeader = compiled.typeHeader :+ typeHeader)
+      |B ${name}__is(void *this) {
+      |  switch(((Type) this)->type) {
+      |    ${(for (t <- leafTypes) yield st"case T$t: return T;", "\n")}
+      |    default: return F;
+      |  }
+      |}
+      |
+      |$name ${name}__as(StackFrame caller, void *this) {
+      |  switch(((Type) this)->type) {
+      |    ${(for (t <- leafTypes) yield st"case T$t: break;", "\n")}
+      |    default:
+      |      fprintf(stderr, "Invalid cast from %s to $tpe.", TYPE_string(this));
+      |      sfAbortImpl(caller, "");
+      |  }
+      |  return ($name) this;
+      |}"""
+    return compiled(
+      typeHeader = compiled.typeHeader :+ typeHeader,
+      header = compiled.header :+ header,
+      impl = compiled.impl :+ impl
+    )
   }
 
   @pure def arraySizeType(maxElement: Z): String = {
@@ -556,7 +606,7 @@ object StaticTemplate {
         val other: String = if (isImmutable) "MS" else "IS"
         Some(st"""
         |static inline void ${name}_to$other($otherName result, StackFrame caller, $name this) {
-        |  STATIC_ASSERT(Max$otherName >= Max$name, "Cannot convert $tpe to $other[...,...].");
+        |  STATIC_ASSERT(Max$otherName >= Max$name, "Invalid cast from $tpe to $other[...,...].");
         |  result->type = T$otherName;
         |  result->size = this->size;
         |  memcpy(&result->value, &this->value, this->size * sizeof($elementType));
@@ -924,7 +974,7 @@ object StaticTemplate {
 
     optElementTypeOpt match {
       case Some((optElementType, someElementType, noneElementType)) =>
-        val byNameHeader = st"void ${mangledName}_byName($optElementType result, String s)"
+        val byNameHeader = st"void ${mangledName}_byName($optElementType result, StackFrame caller, String s)"
         header = header :+ byNameHeader
         impl = impl :+
           st"""$byNameHeader {
@@ -934,12 +984,12 @@ object StaticTemplate {
                 st"""if (String__eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
                   e
                 )} }), sizeof(union $optElementType));""",
-            "\nelse"
+            "\nelse "
           )}
           |  else Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType));
           |}"""
 
-        val byOrdinalHeader = st"void ${mangledName}_byName($optElementType result, Z n)"
+        val byOrdinalHeader = st"void ${mangledName}_byOrdinal($optElementType result, StackFrame caller, Z n)"
         header = header :+ byOrdinalHeader
         impl = impl :+
           st"""$byOrdinalHeader {
@@ -1222,7 +1272,7 @@ object StaticTemplate {
     max: ST
   ): (ST, ST) = {
     val mangledName = mangleName(name)
-    val header = st"void ${mangledName}_apply($optName result, String s)"
+    val header = st"void ${mangledName}_apply($optName result, StackFrame sf, String s)"
     val base: ST = if (hasBase) st", 0" else st""
     val rangeCheck: ST = if (hasRange) st"" else st" && $min <= n && n <= $max"
     val impl =
@@ -1532,6 +1582,17 @@ object StaticTemplate {
       case TypeKind.Scalar64 =>
       case TypeKind.R =>
       case TypeKind.Enum =>
+      case _ => return F
+    }
+    return T
+  }
+
+  @pure def isClass(kind: TypeKind.Type): B = {
+    kind match {
+      case TypeKind.Immutable =>
+      case TypeKind.Mutable =>
+      case TypeKind.IS =>
+      case TypeKind.MS =>
       case _ => return F
     }
     return T

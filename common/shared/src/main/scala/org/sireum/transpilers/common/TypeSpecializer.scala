@@ -554,7 +554,9 @@ import TypeSpecializer._
             }
           case _ => set + key
         }
-        nameTypes = nameTypes + o.ids ~> newSet
+        if (set.size != newSet.size) {
+          nameTypes = nameTypes + o.ids ~> newSet
+        }
       case _: AST.Typed.Enum => // skip
       case _: AST.Typed.Tuple => otherTypes = otherTypes + o
       case _: AST.Typed.Fun => // skip
@@ -596,6 +598,10 @@ import TypeSpecializer._
   }
 
   override def preResolvedAttr(o: AST.ResolvedAttr): AST.MTransformer.PreResult[AST.ResolvedAttr] = {
+    def addSomeNone(t: AST.Typed): Unit = {
+      addType(AST.Typed.Name(AST.Typed.someName, ISZ(t)))
+      addType(AST.Typed.Name(AST.Typed.noneName, ISZ(t)))
+    }
     o.resOpt.get match {
       case res: AST.ResolvedInfo.Var =>
         if (res.isInObject && !res.isSpec && res.owner.size != z"0" && res.owner != AST.Typed.sireumName) {
@@ -616,8 +622,25 @@ import TypeSpecializer._
           }
         }
       case _: AST.ResolvedInfo.LocalVar => // skip
-      case _: AST.ResolvedInfo.Method => // skip
-      case _: AST.ResolvedInfo.BuiltIn => // skip
+      case res: AST.ResolvedInfo.Method =>
+        if (res.mode == AST.MethodMode.Constructor && th.typeMap
+            .get(res.owner :+ res.id)
+            .get
+            .isInstanceOf[TypeInfo.SubZ]) {
+          addSomeNone(res.tpeOpt.get.ret.asInstanceOf[AST.Typed.Name].args(0))
+        }
+      case res: AST.ResolvedInfo.BuiltIn =>
+        def addEnumOpt(): Unit = {
+          o.typedOpt.get match {
+            case AST.Typed.Name(AST.Typed.optionName, args) => addSomeNone(args(0))
+            case _ =>
+          }
+        }
+        res.kind match {
+          case AST.ResolvedInfo.BuiltIn.Kind.EnumByName => addEnumOpt()
+          case AST.ResolvedInfo.BuiltIn.Kind.EnumByOrdinal => addEnumOpt()
+          case _ => // skip
+        }
       case _: AST.ResolvedInfo.Tuple => // skip
       case _: AST.ResolvedInfo.Enum => // skip
       case _: AST.ResolvedInfo.EnumElement => // skip
