@@ -1154,6 +1154,38 @@ import StaticTranspiler._
       }
     }
 
+
+    def transExt(res: AST.ResolvedInfo.Method, retType: AST.Typed, invokeArgs: ISZ[AST.Exp]): ST = {
+      val tpe = transpileType(retType)
+      var args = ISZ[ST]()
+      for (arg <- invokeArgs) {
+        val a = transpileExp(arg)
+        args = args :+ a
+      }
+      val name: ST = if (sNameSet.contains(res.owner)) st"${tpe}_${res.id}" else methodNameRes(None(), res)
+      if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
+        return st"$name(sf${commaArgs(args)})"
+      } else {
+        val temp = freshTempName()
+        stmts = stmts :+ st"DeclNew$tpe($temp);"
+        stmts = stmts :+ st"$name(&$temp, sf${commaArgs(args)});"
+        return st"(&$temp)"
+      }
+    }
+
+    def transConstructor(method: AST.ResolvedInfo.Method, retType: AST.Typed, invokeArgs: ISZ[AST.Exp]): ST = {
+      val tpe = transpileType(retType)
+      val temp = freshTempName()
+      var args = ISZ[ST]()
+      for (arg <- invokeArgs) {
+        val a = transpileExp(arg)
+        args = args :+ a
+      }
+      stmts = stmts :+ st"DeclNew$tpe($temp);"
+      stmts = stmts :+ st"${tpe}_apply(sf, &$temp${commaArgs(args)});"
+      return st"(&$temp)"
+    }
+
     def transInvoke(invoke: AST.Exp.Invoke): ST = {
 
       def transSApply(): ST = {
@@ -1228,38 +1260,6 @@ import StaticTranspiler._
         return st"(&$temp)"
       }
 
-      def transExt(res: AST.ResolvedInfo.Method): ST = {
-        val t = expType(invoke)
-        val tpe = transpileType(t)
-        var args = ISZ[ST]()
-        for (arg <- invoke.args) {
-          val a = transpileExp(arg)
-          args = args :+ a
-        }
-        val name: ST = if (sNameSet.contains(res.owner)) st"${tpe}_${res.id}" else methodNameRes(None(), res)
-        if (isScalar(typeKind(t)) || t == AST.Typed.unit) {
-          return st"$name(sf${commaArgs(args)})"
-        } else {
-          val temp = freshTempName()
-          stmts = stmts :+ st"DeclNew$tpe($temp);"
-          stmts = stmts :+ st"$name(&$temp, sf${commaArgs(args)});"
-          return st"(&$temp)"
-        }
-      }
-      def transConstructor(method: AST.ResolvedInfo.Method): ST = {
-        val t = expType(invoke)
-        val tpe = transpileType(t)
-        val temp = freshTempName()
-        var args = ISZ[ST]()
-        for (arg <- invoke.args) {
-          val a = transpileExp(arg)
-          args = args :+ a
-        }
-        stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"${tpe}_apply(sf, &$temp${commaArgs(args)});"
-        return st"(&$temp)"
-      }
-
       invoke.attr.resOpt.get match {
         case res: AST.ResolvedInfo.Method =>
           res.mode match {
@@ -1279,14 +1279,14 @@ import StaticTranspiler._
                 return r
               }
             case AST.MethodMode.Spec => halt(s"TODO: $res") // TODO
-            case AST.MethodMode.Ext => val r = transExt(res); return r
+            case AST.MethodMode.Ext => val r = transExt(res, expType(invoke), invoke.args); return r
             case AST.MethodMode.Constructor =>
               res.owner :+ res.id match {
                 case AST.Typed.isName => val r = transSApply(); return r
                 case AST.Typed.msName => val r = transSApply(); return r
-                case _ => val r = transConstructor(res); return r
+                case _ => val r = transConstructor(res, expType(invoke), invoke.args); return r
               }
-            case AST.MethodMode.Copy => halt(s"TODO: $res") // TODO
+            case AST.MethodMode.Copy => val r = transConstructor(res, expType(invoke), invoke.args); return r
             case AST.MethodMode.Extractor => halt(s"Infeasible: $res")
             case AST.MethodMode.ObjectConstructor => halt(s"Infeasible: $res")
             case AST.MethodMode.Select => val r = transSSelect(res.owner :+ res.id); return r

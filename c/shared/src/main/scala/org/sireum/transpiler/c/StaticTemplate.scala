@@ -382,7 +382,7 @@ object StaticTemplate {
       |
       |  t_args.size = ($iszSizeType) size;
       |
-      |  return (int) ${mangleName(owner :+ id)}(sf, &t_args);
+      |  return (int) ${mangleName(owner)}_$id(sf, &t_args);
       |}"""
     return r
   }
