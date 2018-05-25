@@ -5,31 +5,38 @@ object sha3 extends App {
   def main(args: ISZ[String]): Z = {
     if (args.size == 0 || args.size > 2) {
       printUsage()
-    } else if (args(0) == "512") {
-      if (args.size == 1) {
-        processStdIn(crypto.SHA3.init512)
+      return 0
+    }
+    val arg0 = args(0)
+    val size1 = args.size == 1
+    var stdIn = F
+    val sha3: crypto.SHA3 =
+      if (arg0 == string"256") {
+        stdIn = size1
+        crypto.SHA3.init256
+      } else if (arg0 == string"384") {
+        stdIn = size1
+        crypto.SHA3.init384
+      } else if (arg0 == string"512") {
+        stdIn = size1
+        crypto.SHA3.init512
       } else {
-        val hash = crypto.SHA3.sum512(conversions.String.toU8is(args(1)))
-        printHash(hash)
+        crypto.SHA3.init512
       }
-    } else if (args(0) == "384") {
-      if (args.size == 1) {
-        processStdIn(crypto.SHA3.init384)
-      } else {
-        val hash = crypto.SHA3.sum384(conversions.String.toU8is(args(1)))
-        printHash(hash)
-      }
-    } else if (args(0) == "256") {
-      if (args.size == 1) {
-        processStdIn(crypto.SHA3.init256)
-      } else {
-        val hash = crypto.SHA3.sum256(conversions.String.toU8is(args(1)))
-        printHash(hash)
-      }
+    if (stdIn) {
+      processStdIn(sha3)
+    } else if (size1) {
+      processString(sha3, arg0)
     } else {
-      printUsage()
+      processString(sha3, args(1))
     }
     return 0
+  }
+
+  def processString(sha3: crypto.SHA3, input: String): Unit = {
+    sha3.update(conversions.String.toU8is(input))
+    val hash = sha3.finalise()
+    printHash(hash)
   }
 
   def processStdIn(sha3: crypto.SHA3): Unit = {
@@ -50,7 +57,8 @@ object sha3 extends App {
   }
 
   def printUsage(): Unit = {
-    println("Usage: sha3 <( 256 | 384 | 512 )> [ <input> ]")
+    println("Usage: sha3 [ 256 | 384 | 512 ] [ <input> ]")
+    println("            (default: 512)")
   }
 }
 

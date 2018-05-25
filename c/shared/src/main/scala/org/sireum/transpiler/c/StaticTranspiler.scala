@@ -393,10 +393,15 @@ import StaticTranspiler._
       case exp: AST.Stmt.Expr =>
         val rhs = transpileExp(exp.exp)
         stmts = stmts :+ f(rhs, typeDecl(exp.typedOpt.get))
-      case exp: AST.Stmt.Block => halt(s"TODO: $exp") // TODO
-      case exp: AST.Stmt.If => halt(s"TODO: $exp") // TODO
+      case exp: AST.Stmt.Block =>
+        val bstmts = exp.body.stmts
+        for (stmt <- ops.ISZOps(bstmts).dropRight(1)) {
+          transpileStmt(stmt)
+        }
+        transpileAssignExp(bstmts(bstmts.size - 1).asAssignExp, f)
+      case exp: AST.Stmt.If => transpileIf(exp, Some(f))
       case exp: AST.Stmt.Match => halt(s"TODO: $exp") // TODO
-      case exp: AST.Stmt.Return => halt(s"TODO: $exp")
+      case exp: AST.Stmt.Return => transpileStmt(exp)
     }
   }
 
@@ -1373,13 +1378,22 @@ import StaticTranspiler._
       |}"""
   }
 
-  def transpileIf(stmt: AST.Stmt.If): Unit = {
+  def transpileIf(stmt: AST.Stmt.If, fOpt: Option[(ST, ST) => ST @pure]): Unit = {
     stmts = stmts ++ transpileLoc(stmt.posOpt)
     val cond = transpileExp(stmt.cond)
     val oldStmts = stmts
     stmts = ISZ()
-    for (stmt <- stmt.thenBody.stmts) {
-      transpileStmt(stmt)
+    fOpt match {
+      case Some(f) =>
+        val tstmts = stmt.thenBody.stmts
+        for (stmt <- ops.ISZOps(tstmts).dropRight(1)) {
+          transpileStmt(stmt)
+        }
+        transpileAssignExp(tstmts(tstmts.size - 1).asAssignExp, f)
+      case _ =>
+        for (stmt <- stmt.thenBody.stmts) {
+          transpileStmt(stmt)
+        }
     }
     if (stmt.elseBody.stmts.isEmpty) {
       stmts = oldStmts :+
@@ -1389,8 +1403,17 @@ import StaticTranspiler._
     } else {
       val tstmts = stmts
       stmts = ISZ()
-      for (stmt <- stmt.elseBody.stmts) {
-        transpileStmt(stmt)
+      fOpt match {
+        case Some(f) =>
+          val fstmts = stmt.elseBody.stmts
+          for (stmt <- ops.ISZOps(fstmts).dropRight(1)) {
+            transpileStmt(stmt)
+          }
+          transpileAssignExp(fstmts(fstmts.size - 1).asAssignExp, f)
+        case _ =>
+          for (stmt <- stmt.elseBody.stmts) {
+            transpileStmt(stmt)
+          }
       }
       stmts = oldStmts :+
         st"""if ($cond) {
@@ -1435,7 +1458,7 @@ import StaticTranspiler._
       }
       val local = localName(stmt.id.value)
       val tpe = transpileType(t)
-      init match {
+      init match { // TODO: mutable
         case _: AST.Stmt.Expr =>
           if (isScalar(typeKind(t)) || stmt.isVal) {
             transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
@@ -1450,7 +1473,7 @@ import StaticTranspiler._
           } else {
             stmts = stmts :+ st"DeclNew$tpe(_$local);"
             stmts = stmts :+ st"$tpe $local = ($tpe) &_$local;"
-            transpileAssignExp(init, (rhs, rhsT) => st"Type_assign(&$local, $rhs, sizeof($rhsT));")
+            transpileAssignExp(init, (rhs, rhsT) => st"Type_assign($local, $rhs, sizeof($rhsT));")
           }
       }
     }
@@ -1463,7 +1486,7 @@ import StaticTranspiler._
             case res: AST.ResolvedInfo.LocalVar =>
               res.scope match {
                 case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
-                case scope =>
+                case scope => // TODO: mutable
                   val t = expType(stmt.lhs)
                   if (isScalar(typeKind(t)) || scope == AST.ResolvedInfo.LocalVar.Scope.Current) {
                     transpileAssignExp(stmt.rhs, (rhs, _) => st"${localName(lhs.id.value)} = $rhs;")
@@ -1862,7 +1885,7 @@ import StaticTranspiler._
         }
       case stmt: AST.Stmt.VarPattern => transpileVarPattern(stmt) // TODO
       case stmt: AST.Stmt.Block => transpileBlock(stmt)
-      case stmt: AST.Stmt.If => transpileIf(stmt)
+      case stmt: AST.Stmt.If => transpileIf(stmt, None())
       case stmt: AST.Stmt.While => transpileWhile(stmt)
       case stmt: AST.Stmt.DoWhile => transpileDoWhile(stmt)
       case stmt: AST.Stmt.Match => transpileMatch(stmt)
