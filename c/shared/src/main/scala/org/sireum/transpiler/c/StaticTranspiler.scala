@@ -1774,7 +1774,12 @@ import StaticTranspiler._
       localRename = oldLocalRename
     }
     stmts = stmts ++ transpileLoc(stmt.posOpt)
-    val e = transpileExp(stmt.exp)
+    val e: ST = stmt.exp match {
+      case AST.Exp.Select(receiverOpt, AST.Id(string"native"), targs) if targs.isEmpty =>
+        val r = transpileExp(receiverOpt.get); r
+      case _ => val r = transpileExp(stmt.exp); r
+    }
+
     val temp = freshTempName()
     val handled: ST = stmt.exp.posOpt match {
       case Some(pos) => st"match_${pos.beginLine}"
