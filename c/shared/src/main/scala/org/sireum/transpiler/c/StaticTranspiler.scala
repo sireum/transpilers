@@ -1530,7 +1530,7 @@ import StaticTranspiler._
         transpilePattern(immutable, allowShadow, handledVar, st"${tpe}_$i($exp)", p)
       }
       stmts = oldStmts :+
-        st"""{
+        st"""if ($handledVar) {
         |  ${(stmts, "\n")}
         |}"""
     }
