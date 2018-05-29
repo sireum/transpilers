@@ -961,8 +961,7 @@ import StaticTranspiler._
             return if (res.id == string"T") trueLit else falseLit
           } else {
             if (res.isInObject) {
-              val name = mangleName(res.owner :+ res.id)
-              return st"$name(sf)"
+              return st"${mangleName(res.owner)}_${res.id}(sf)"
             } else {
               val t = currReceiverOpt.get
               return st"${transpileType(t)}_${fieldName(res.id)}_(this)"
@@ -1115,6 +1114,14 @@ import StaticTranspiler._
                 return r
               }
             case _ => halt(s"TODO: $res") // TODO
+          }
+        case res: AST.ResolvedInfo.Var =>
+          if (res.isInObject) {
+            return st"${mangleName(res.owner)}_${res.id}(sf)"
+          } else {
+            val receiver = select.receiverOpt.get
+            val e = transpileExp(receiver)
+            return st"${transpileType(expType(receiver))}_${fieldName(res.id)}_($e)"
           }
         case res => halt(s"TODO: $res") // TODO
       }
@@ -1424,7 +1431,7 @@ import StaticTranspiler._
     }
   }
 
-  def transpileMatch(stmt: AST.Stmt.Match): Unit = {
+  def transpileMatch(stmt: AST.Stmt.Match, fOpt: Option[(ST, ST) => ST @pure]): Unit = {
     halt("TODO") // TODO
   }
 
@@ -1458,23 +1465,23 @@ import StaticTranspiler._
       }
       val local = localName(stmt.id.value)
       val tpe = transpileType(t)
-      init match { // TODO: mutable
-        case _: AST.Stmt.Expr =>
-          if (isScalar(typeKind(t)) || stmt.isVal) {
-            transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
-          } else {
-            stmts = stmts :+ st"DeclNew$tpe(_$local);"
-            transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
-          }
-        case _ =>
-          if (isScalar(typeKind(t)) && !stmt.isVal) {
-            stmts = stmts :+ st"$tpe $local;"
-            transpileAssignExp(init, (rhs, _) => st"$local = $rhs;")
-          } else {
-            stmts = stmts :+ st"DeclNew$tpe(_$local);"
-            stmts = stmts :+ st"$tpe $local = ($tpe) &_$local;"
-            transpileAssignExp(init, (rhs, rhsT) => st"Type_assign($local, $rhs, sizeof($rhsT));")
-          }
+      val kind = typeKind(t)
+      val scalar = isScalar(kind)
+      val immutable = isImmutable(kind)
+      if (immutable && stmt.isVal) {
+        if (scalar) {
+          transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
+        } else {
+          transpileAssignExp(init, (rhs, _) => st"$tpe $local = ($tpe) $rhs;")
+        }
+      } else {
+        if (scalar) {
+          transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
+        } else {
+          stmts = stmts :+ st"DeclNew$tpe(_$local);"
+          stmts = stmts :+ st"$tpe $local = ($tpe) &_$local;"
+          transpileAssignExp(init, (rhs, rhsT) => st"Type_assign($local, $rhs, sizeof($rhsT));")
+        }
       }
     }
 
@@ -1486,9 +1493,10 @@ import StaticTranspiler._
             case res: AST.ResolvedInfo.LocalVar =>
               res.scope match {
                 case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
-                case scope => // TODO: mutable
+                case scope =>
                   val t = expType(stmt.lhs)
-                  if (isScalar(typeKind(t)) || scope == AST.ResolvedInfo.LocalVar.Scope.Current) {
+                  val kind = typeKind(t)
+                  if (isScalar(kind) || (isImmutable(kind) && scope == AST.ResolvedInfo.LocalVar.Scope.Current)) {
                     transpileAssignExp(stmt.rhs, (rhs, _) => st"${localName(lhs.id.value)} = $rhs;")
                   } else {
                     val id = localName(lhs.id.value)
@@ -1888,7 +1896,7 @@ import StaticTranspiler._
       case stmt: AST.Stmt.If => transpileIf(stmt, None())
       case stmt: AST.Stmt.While => transpileWhile(stmt)
       case stmt: AST.Stmt.DoWhile => transpileDoWhile(stmt)
-      case stmt: AST.Stmt.Match => transpileMatch(stmt)
+      case stmt: AST.Stmt.Match => transpileMatch(stmt, None())
       case stmt: AST.Stmt.For => transpileFor(stmt)
       case stmt: AST.Stmt.Return => transpileReturn(stmt)
       case _: AST.Stmt.Import => // skip

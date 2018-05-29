@@ -1573,6 +1573,23 @@ object StaticTemplate {
     return T
   }
 
+  @pure def isImmutable(kind: TypeKind.Type): B = {
+    kind match {
+      case TypeKind.Scalar1 =>
+      case TypeKind.Scalar8 =>
+      case TypeKind.Scalar16 =>
+      case TypeKind.Scalar32 =>
+      case TypeKind.Scalar64 =>
+      case TypeKind.R =>
+      case TypeKind.Enum =>
+      case TypeKind.IS =>
+      case TypeKind.Immutable =>
+      case TypeKind.ImmutableTrait =>
+      case _ => return F
+    }
+    return T
+  }
+
   @pure def isScalar(kind: TypeKind.Type): B = {
     kind match {
       case TypeKind.Scalar1 =>

@@ -164,6 +164,33 @@ class StaticTranspilerTest extends TestSuite {
                         |  u8"0xe5", u8"0x89", u8"0xc5", u8"0x1c", u8"0xa1", u8"0xa4", u8"0xa8", u8"0x41",
                         |  u8"0x6d", u8"0xf6", u8"0x54", u8"0x5a", u8"0x1c", u8"0xe8", u8"0xba", u8"0x00"
                         |))""".stripMargin)
+
+    * - testWorksheet("""@record trait Foo {
+                        |  def x: Z
+                        |}
+                        |@record class Bar(x: Z) extends Foo
+                        |@record class Baz extends Foo {
+                        |  def x: Z = {
+                        |    return 0
+                        |  }
+                        |}
+                        |val bar: Foo = Bar(4)
+                        |println(bar.x)
+                        |assert(bar.x == 4)""".stripMargin)
+
+    * - testWorksheet("""@record trait Foo {
+                        |  def x: Z
+                        |}
+                        |@record class Bar(x: Z) extends Foo
+                        |@record class Baz extends Foo {
+                        |  def x: Z = {
+                        |    return 0
+                        |  }
+                        |}
+                        |val baz: Foo = Baz()
+                        |println(baz.x)
+                        |assert(baz.x == 0)""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
