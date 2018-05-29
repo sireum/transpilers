@@ -10,19 +10,19 @@ object sha3 extends App {
     val arg0 = args(0)
     val size1 = args.size == 1
     var stdIn = F
-    val sha3: crypto.SHA3 =
-      if (arg0 == string"256") {
+    val sha3: crypto.SHA3 = arg0 match {
+      case string"256" =>
         stdIn = size1
         crypto.SHA3.init256
-      } else if (arg0 == string"384") {
+      case string"384" =>
         stdIn = size1
         crypto.SHA3.init384
-      } else if (arg0 == string"512") {
+      case string"512" =>
         stdIn = size1
         crypto.SHA3.init512
-      } else {
+      case _ =>
         crypto.SHA3.init512
-      }
+    }
     if (stdIn) {
       processStdIn(sha3)
     } else if (size1) {

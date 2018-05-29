@@ -401,7 +401,7 @@ import StaticTranspiler._
         }
         transpileAssignExp(bstmts(bstmts.size - 1).asAssignExp, f)
       case exp: AST.Stmt.If => transpileIf(exp, Some(f))
-      case exp: AST.Stmt.Match => halt(s"TODO: $exp") // TODO
+      case exp: AST.Stmt.Match => transpileMatch(exp, Some(f))
       case exp: AST.Stmt.Return => transpileStmt(exp)
     }
   }
@@ -1675,21 +1675,30 @@ import StaticTranspiler._
         if (name.string != pat.id.value) {
           localRename = localRename + pat.id.value ~> name
         }
+        val t = pat.attr.typedOpt.get
+        val kind = typeKind(t)
         pat.tipeOpt match {
           case Some(tipe) =>
             stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(tipe.typedOpt.get)}__is($exp);"
+            if (isScalar(kind)) {
+              stmts = stmts :+ st"if ($handledVar) { $name = $exp; }"
+            } else {
+              if (immutableParent) {
+                stmts = stmts :+ st"if ($handledVar) { $name = (${transpileType(t)}) $exp; }"
+              } else {
+                stmts = stmts :+ st"if ($handledVar) { Type_assign($name, $exp, sizeof(${typeDecl(t)})); }"
+              }
+            }
           case _ =>
-        }
-        val t = pat.attr.typedOpt.get
-        val kind = typeKind(t)
-        if (isScalar(kind)) {
-          stmts = stmts :+ st"if ($handledVar) { $name = $exp; }"
-        } else {
-          if (immutableParent) {
-            stmts = stmts :+ st"if ($handledVar) { $name = (${transpileType(t)}) $exp; }"
-          } else {
-            stmts = stmts :+ st"if ($handledVar) { Type_assign($name, $exp, sizeof(${typeDecl(t)})); }"
-          }
+            if (isScalar(kind)) {
+              stmts = stmts :+ st"$name = $exp;"
+            } else {
+              if (immutableParent) {
+                stmts = stmts :+ st"$name = (${transpileType(t)}) $exp;"
+              } else {
+                stmts = stmts :+ st"Type_assign($name, $exp, sizeof(${typeDecl(t)}));"
+              }
+            }
         }
       case pat: AST.Pattern.Structure =>
         pat.nameOpt match {
@@ -1719,9 +1728,9 @@ import StaticTranspiler._
       transpilePattern(immutable, T, handled, exp, cas.pattern)
       val patStmts = stmts
       stmts = ISZ()
-      val cond: ST = cas.condOpt match {
-        case Some(c) => val r = transpileExp(c); r
-        case _ => trueLit
+      val condOpt: Option[ST] = cas.condOpt match {
+        case Some(c) => val r = transpileExp(c); Some(r)
+        case _ => None()
       }
       val condStmts = stmts
       stmts = ISZ()
@@ -1737,27 +1746,44 @@ import StaticTranspiler._
             transpileStmt(bStmt)
           }
       }
-      stmts = oldStmts :+
-        st"""if (!$handled) {
-        |  $handled = T;
-        |  ${(patStmts, "\n")}
-        |  if ($handled) {
-        |    ${(condStmts, "\n")}
-        |    if ($cond) {
-        |      ${(stmts, "\n")}
-        |    }
-        |  }
-        |}"""
+      condOpt match {
+        case Some(cond) =>
+          stmts = oldStmts :+
+            st"""if (!$handled) {
+                |  $handled = T;
+                |  ${(patStmts, "\n")}
+                |  if ($handled) {
+                |    ${(condStmts, "\n")}
+                |    if ($cond) {
+                |      ${(stmts, "\n")}
+                |    } else {
+                |      $handled = F;
+                |    }
+                |  }
+                |}"""
+        case _ =>
+          stmts = oldStmts :+
+            st"""if (!$handled) {
+                |  $handled = T;
+                |  ${(patStmts, "\n")}
+                |  if ($handled) {
+                |    ${(stmts, "\n")}
+                |  }
+                |}"""
+      }
       localRename = oldLocalRename
     }
     stmts = stmts ++ transpileLoc(stmt.posOpt)
     val e = transpileExp(stmt.exp)
     val temp = freshTempName()
-    val handled = freshTempName()
+    val handled: ST = stmt.exp.posOpt match {
+      case Some(pos) => st"match_${pos.beginLine}"
+      case _ => freshTempName()
+    }
     stmts = stmts :+ st"${transpileType(expType(stmt.exp))} $temp = $e;"
     stmts = stmts :+ st"B $handled = F;"
     for (cas <- stmt.cases) {
-      transCase(handled, e, cas)
+      transCase(handled, temp, cas)
     }
     stmts = stmts :+ st"""sfAssert($handled, "Error when pattern matching.");"""
   }

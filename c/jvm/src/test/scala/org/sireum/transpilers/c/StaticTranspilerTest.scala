@@ -195,6 +195,17 @@ class StaticTranspilerTest extends TestSuite {
                         |val Some(Some(x)) = opt
                         |println(x)""".stripMargin)
 
+
+    * - testWorksheet("""val opt: Option[Option[Z]] = Some(Some(1))
+                        |val y = 1
+                        |opt match {
+                        |  case Some(Some(0)) => println("zero")
+                        |  case Some(Some(`y`)) => println("y")
+                        |  case Some(Some(x)) if x > 4 => println(">4")
+                        |  case Some(Some(x)) => println(x)
+                        |  case Some(None()) => println("Some(None())")
+                        |  case None() => println("None()")
+                        |}""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
