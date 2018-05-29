@@ -468,10 +468,10 @@ object StaticTemplate {
       |$cprintHeader;
       |$stringHeader;
       |
-      |#define ${name}_is(this) ((($name) this)->type == T$name)
+      |#define ${name}__is(this) ((($name) this)->type == T$name)
       |
-      |static inline $name ${name}_as(StackFrame caller, void *this) {
-      |  if (${name}_is(this)) return ($name) this;
+      |static inline $name ${name}__as(StackFrame caller, void *this) {
+      |  if (${name}__is(this)) return ($name) this;
       |  fprintf(stderr, "Invalid case from %s to $tpe.", TYPE_string(this));
       |  sfAbortImpl(caller, "");
       |  $abort

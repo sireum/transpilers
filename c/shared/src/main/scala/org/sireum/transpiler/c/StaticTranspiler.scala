@@ -189,6 +189,7 @@ import StaticTranspiler._
   var currReceiverOpt: Option[AST.Typed.Name] = None()
   var stmts: ISZ[ST] = ISZ()
   var nextTempNum: Z = 0
+  var localRename: HashMap[String, ST] = HashMap.empty
 
   def transpile(): Result = {
 
@@ -809,8 +810,7 @@ import StaticTranspiler._
           val args: ST =
             if (res.paramNames.isEmpty) st""
             else
-              st", ${(for (p <- ops.ISZOps(res.paramNames).zip(info.methodType.tpe.args)) yield
-                st"(${transpileType(p._2)}) ${localName(p._1)}", ", ")}"
+              st", ${(for (p <- ops.ISZOps(res.paramNames).zip(info.methodType.tpe.args)) yield st"(${transpileType(p._2)}) ${localName(p._1)}", ", ")}"
           if (scalar) {
             cases = cases :+ st"case T$tpe: return $mName(caller, ($tpe) this$args);"
           } else {
@@ -873,88 +873,137 @@ import StaticTranspiler._
     stmts = oldStmts
   }
 
-  @pure def transpileExp(exp: AST.Exp): ST = {
+  def checkBitWidth(posOpt: Option[Position], n: Z, bitWidth: Z, isUnsigned: B): Unit = {
+    var ok = T
+    val bw: Z = if (bitWidth == z"0") config.defaultBitWidth else bitWidth
+    bw match {
+      case z"8" =>
+        if (isUnsigned) {
+          ok = 0 <= n && n <= u8Max
+        } else {
+          ok = i8Min <= n && n <= i8Max
+        }
+      case z"16" =>
+        if (isUnsigned) {
+          ok = 0 <= n && n <= u16Max
+        } else {
+          ok = i16Min <= n && n <= i16Max
+        }
+      case z"32" =>
+        if (isUnsigned) {
+          ok = 0 <= n && n <= u32Max
+        } else {
+          ok = i32Min <= n && n <= i32Max
+        }
+      case z"64" =>
+        if (isUnsigned) {
+          ok = 0 <= n && n <= u64Max
+        } else {
+          ok = i64Min <= n && n <= i64Max
+        }
+      case _ => halt("Infeasible")
+    }
+    if (!ok) {
+      reporter.error(posOpt, transKind, s"Invalid ${config.defaultBitWidth}-bit Z literal '$n'.")
+    }
+  }
 
+  def transpileLitC(posOpt: Option[Position], c: C): ST = {
+    val ec = escapeChar(posOpt, c)
+    return st"'$ec'"
+  }
+
+  def transpileLitZ(posOpt: Option[Position], n: Z): ST = {
+    checkBitWidth(posOpt, n, config.defaultBitWidth, F)
+    return st"Z_C($n)"
+  }
+
+  @pure def transpileLitF32(n: F32): ST = {
+    return st"${n.string}F"
+  }
+
+  @pure def transpileLitF64(n: F64): ST = {
+    return st"${n.string}"
+  }
+
+  @pure def transpileLitR(n: R): ST = {
+    return st"${n.string}L"
+  }
+
+  def transpileLitString(posOpt: Option[Position], s: String): ST = {
+    val value = escapeString(posOpt, s)
+    return st"""string("$value")"""
+  }
+
+  def transpileLit(lit: AST.Lit): ST = {
     @pure def transLitB(exp: AST.Exp.LitB): ST = {
       return if (exp.value) trueLit else falseLit
     }
 
-    @pure def transLitC(exp: AST.Exp.LitC): ST = {
-      return st"'${escapeChar(exp.posOpt, exp.value)}'"
-    }
-
-    def checkBitWidth(n: Z, bitWidth: Z, isUnsigned: B): Unit = {
-      var ok = T
-      val bw: Z = if (bitWidth == z"0") config.defaultBitWidth else bitWidth
-      bw match {
-        case z"8" =>
-          if (isUnsigned) {
-            ok = 0 <= n && n <= u8Max
-          } else {
-            ok = i8Min <= n && n <= i8Max
-          }
-        case z"16" =>
-          if (isUnsigned) {
-            ok = 0 <= n && n <= u16Max
-          } else {
-            ok = i16Min <= n && n <= i16Max
-          }
-        case z"32" =>
-          if (isUnsigned) {
-            ok = 0 <= n && n <= u32Max
-          } else {
-            ok = i32Min <= n && n <= i32Max
-          }
-        case z"64" =>
-          if (isUnsigned) {
-            ok = 0 <= n && n <= u64Max
-          } else {
-            ok = i64Min <= n && n <= i64Max
-          }
-        case _ => halt("Infeasible")
-      }
-      if (!ok) {
-        reporter.error(exp.posOpt, transKind, s"Invalid ${config.defaultBitWidth}-bit Z literal '$n'.")
-      }
+    def transLitC(exp: AST.Exp.LitC): ST = {
+      val r = transpileLitC(exp.posOpt, exp.value)
+      return r
     }
 
     def transLitZ(exp: AST.Exp.LitZ): ST = {
-      val n = exp.value
-      checkBitWidth(n, config.defaultBitWidth, F)
-      return st"Z_C($n)"
+      val r = transpileLitZ(exp.posOpt, exp.value)
+      return r
     }
 
     @pure def transLitF32(exp: AST.Exp.LitF32): ST = {
-      return st"${exp.value.string}F"
+      return transpileLitF32(exp.value)
     }
 
     @pure def transLitF64(exp: AST.Exp.LitF64): ST = {
-      return st"${exp.value.string}"
+      return transpileLitF64(exp.value)
     }
 
     @pure def transLitR(exp: AST.Exp.LitR): ST = {
-      return st"${exp.string}L"
+      return transpileLitR(exp.value)
     }
 
     def transLitString(exp: AST.Exp.LitString): ST = {
-      val value = escapeString(exp.posOpt, exp.value)
-      return st"""string("$value")"""
+      val r = transpileLitString(exp.posOpt, exp.value)
+      return r
     }
 
-    @pure def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
-      val tname = typeName(expType(exp))
-      val info: TypeInfo.SubZ = ts.typeHierarchy.typeMap.get(tname).get.asInstanceOf[TypeInfo.SubZ]
-      val n = Z(exp.lits(0).value).get
-      checkBitWidth(n, info.ast.bitWidth, !info.ast.isSigned)
-      return st"${mangleName(tname)}_C($n)"
+    lit match {
+      case lit: AST.Exp.LitB => val r = transLitB(lit); return r
+      case lit: AST.Exp.LitC => val r = transLitC(lit); return r
+      case lit: AST.Exp.LitZ => val r = transLitZ(lit); return r
+      case lit: AST.Exp.LitF32 => val r = transLitF32(lit); return r
+      case lit: AST.Exp.LitF64 => val r = transLitF64(lit); return r
+      case lit: AST.Exp.LitR => val r = transLitR(lit); return r
+      case lit: AST.Exp.LitString => val r = transLitString(lit); return r
+    }
+  }
+
+  def transpileSubZLit(posOpt: Option[Position], t: AST.Typed, value: String): ST = {
+    val tname = typeName(t)
+    val info: TypeInfo.SubZ = ts.typeHierarchy.typeMap.get(tname).get.asInstanceOf[TypeInfo.SubZ]
+    val n = Z(value).get
+    checkBitWidth(posOpt, n, info.ast.bitWidth, !info.ast.isSigned)
+    return st"${mangleName(tname)}_C($n)"
+  }
+
+  def transpileExp(exp: AST.Exp): ST = {
+
+    def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
+      val r = transpileSubZLit(exp.posOpt, expType(exp), exp.lits(0).value)
+      return r
     }
 
     def transIdent(exp: AST.Exp.Ident): ST = {
       exp.attr.resOpt.get match {
         case res: AST.ResolvedInfo.LocalVar =>
-          res.scope match {
-            case AST.ResolvedInfo.LocalVar.Scope.Closure => halt(s"TODO: $exp") // TODO
-            case _ => return localName(exp.id.value)
+          val id = exp.id.value
+          localRename.get(id) match {
+            case Some(otherId) => return otherId
+            case _ =>
+              res.scope match {
+                case AST.ResolvedInfo.LocalVar.Scope.Closure => halt(s"TODO: $exp") // TODO
+                case _ => return localName(exp.id.value)
+              }
           }
         case res: AST.ResolvedInfo.Var =>
           if (res.owner == AST.Typed.sireumName && (res.id == string"T" || res.id == string"F")) {
@@ -1166,7 +1215,6 @@ import StaticTranspiler._
       }
     }
 
-
     def transExt(res: AST.ResolvedInfo.Method, retType: AST.Typed, invokeArgs: ISZ[AST.Exp]): ST = {
       val tpe = transpileType(retType)
       var args = ISZ[ST]()
@@ -1323,12 +1371,7 @@ import StaticTranspiler._
     }
 
     exp match {
-      case exp: AST.Exp.LitB => val r = transLitB(exp); return r
-      case exp: AST.Exp.LitC => val r = transLitC(exp); return r
-      case exp: AST.Exp.LitZ => val r = transLitZ(exp); return r
-      case exp: AST.Exp.LitF32 => val r = transLitF32(exp); return r
-      case exp: AST.Exp.LitF64 => val r = transLitF64(exp); return r
-      case exp: AST.Exp.LitR => val r = transLitR(exp); return r
+      case exp: AST.Lit => val r = transpileLit(exp); return r
       case exp: AST.Exp.StringInterpolate =>
         exp.prefix.native match {
           case "s" => halt(s"TODO: $exp") // TODO
@@ -1339,7 +1382,6 @@ import StaticTranspiler._
             val r = transSubZLit(exp)
             return r
         }
-      case exp: AST.Exp.LitString => val r = transLitString(exp); return r
       case exp: AST.Exp.Ident => val r = transIdent(exp); return r
       case exp: AST.Exp.Binary => val r = transBinary(exp); return r
       case exp: AST.Exp.Unary => val r = transUnary(exp); return r
@@ -1367,10 +1409,6 @@ import StaticTranspiler._
       case t: AST.Typed.Method if t.tpe.isByName => return t.tpe.ret
       case t => return t
     }
-  }
-
-  def transpileVarPattern(stmt: AST.Stmt.VarPattern): Unit = {
-    halt("TODO") // TODO
   }
 
   def transpileBlock(stmt: AST.Stmt.Block): Unit = {
@@ -1431,8 +1469,278 @@ import StaticTranspiler._
     }
   }
 
+  @pure def idPatternName(allowShadow: B, id: AST.Id): ST = {
+    if (allowShadow) {
+      val pos = id.attr.posOpt.get
+      return st"${id.value}_${pos.beginLine}_${pos.beginColumn}"
+    } else {
+      return st"${id.value}"
+    }
+  }
+
+  def declPatternVars(allowShadow: B, pat: AST.Pattern): Unit = {
+    def declId(id: AST.Id, t: AST.Typed): Unit = {
+      val name = idPatternName(allowShadow, id)
+      val kind = typeKind(t)
+      val tpe = transpileType(t)
+      if (isImmutable(kind)) {
+        stmts = stmts :+ st"$tpe $name;"
+      } else {
+        stmts = stmts :+ st"DeclNew$tpe(_$name);"
+        stmts = stmts :+ st"$tpe $name = &_$name;"
+      }
+    }
+    pat match {
+      case _: AST.Pattern.Literal =>
+      case _: AST.Pattern.LitInterpolate =>
+      case _: AST.Pattern.Ref =>
+      case _: AST.Pattern.SeqWildcard =>
+      case _: AST.Pattern.Wildcard =>
+      case pat: AST.Pattern.VarBinding => declId(pat.id, pat.attr.typedOpt.get)
+      case pat: AST.Pattern.Structure =>
+        pat.idOpt match {
+          case Some(id) => declId(id, pat.attr.typedOpt.get)
+          case _ =>
+        }
+        for (p <- pat.patterns) {
+          declPatternVars(allowShadow, p)
+        }
+    }
+  }
+
+  def transpilePattern(immutableParent: B, allowShadow: B, handledVar: ST, exp: ST, pat: AST.Pattern): Unit = {
+    def transTuplePattern(pat: AST.Pattern.Structure): Unit = {
+      val oldStmts = stmts
+      stmts = ISZ()
+      val t = pat.attr.typedOpt.get
+      val kind = typeKind(t)
+      val tpe = transpileType(t)
+      pat.idOpt match {
+        case Some(id) =>
+          val name = idPatternName(allowShadow, id)
+          if (name.string != id.value) {
+            localRename = localRename + id.value ~> name
+          }
+          stmts = stmts :+ st"$name = ($tpe) $exp;"
+        case _ =>
+      }
+      val immutable = isImmutable(kind)
+      for (pi <- ops.ISZOps(pat.patterns).zip(pat.patterns.indices.map(n => n + 1))) {
+        val (p, i) = pi
+        transpilePattern(immutable, allowShadow, handledVar, st"${tpe}_$i($exp)", p)
+      }
+      stmts = oldStmts :+
+        st"""{
+        |  ${(stmts, "\n")}
+        |}"""
+    }
+    def transSPattern(t: AST.Typed.Name, pat: AST.Pattern.Structure): Unit = {
+      val tpe = transpileType(t)
+      val iTpe = transpileType(t.args(0))
+      val hasWildcard: B =
+        if (pat.patterns.size > 0) pat.patterns(pat.patterns.size - 1).isInstanceOf[AST.Pattern.SeqWildcard] else F
+      if (hasWildcard) {
+        stmts = stmts :+ st"$handledVar = $handledVar && ${iTpe}__ge(${tpe}_size($exp), ${iTpe}_C(${pat.patterns.size - 1}));"
+      } else {
+        stmts = stmts :+ st"$handledVar = $handledVar && ${iTpe}__eq(${tpe}_size($exp), ${iTpe}_C(${pat.patterns.size}));"
+      }
+      val oldStmts = stmts
+      stmts = ISZ()
+      pat.idOpt match {
+        case Some(id) =>
+          val name = idPatternName(allowShadow, id)
+          if (name.string != id.value) {
+            localRename = localRename + id.value ~> name
+          }
+          stmts = stmts :+ st"$name = ($tpe) $exp;"
+        case _ =>
+      }
+      val immutable = isImmutable(typeKind(t))
+      for (pi <- ops.ISZOps(pat.patterns).zip(pat.patterns.indices.map(n => n + 1))) {
+        val (p, i) = pi
+        transpilePattern(immutable, allowShadow, handledVar, st"${tpe}_at($exp, ${iTpe}_C($i))", p)
+      }
+      stmts = oldStmts :+
+        st"""if ($handledVar) {
+        |  ${(stmts, "\n")}
+        |}"""
+    }
+    def transNamePattern(t: AST.Typed.Name, pat: AST.Pattern.Structure): Unit = {
+      val tpe = transpileType(t)
+      stmts = stmts :+ st"$handledVar = $handledVar && ${tpe}__is($exp);"
+      val adtInfo = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+      val sm = TypeChecker.buildTypeSubstMap(t.ids, pat.posOpt, adtInfo.ast.typeParams, t.args, reporter).get
+      val oldStmts = stmts
+      stmts = ISZ()
+      pat.idOpt match {
+        case Some(id) =>
+          val name = idPatternName(allowShadow, id)
+          if (name.string != id.value) {
+            localRename = localRename + id.value ~> name
+          }
+          stmts = stmts :+ st"$name = ($tpe) $exp;"
+        case _ =>
+      }
+      val immutable = isImmutable(typeKind(t))
+      val e = st"${tpe}__as($exp)"
+      for (idPattern <- ops.ISZOps(adtInfo.extractorTypeMap.keys).zip(pat.patterns)) {
+        val (id, p) = idPattern
+        transpilePattern(immutable, allowShadow, handledVar, st"${tpe}_${id}_($e)", p)
+      }
+      stmts = oldStmts :+
+        st"""if ($handledVar) {
+        |  ${(stmts, "\n")}
+        |}"""
+    }
+    pat match {
+      case pat: AST.Pattern.Literal =>
+        val e = transpileLit(pat.lit)
+        pat.lit match {
+          case _: AST.Exp.LitB => stmts = stmts :+ st"$handledVar = $handledVar && B__eq($exp, $e);"
+          case _: AST.Exp.LitC => stmts = stmts :+ st"$handledVar = $handledVar && C__eq($exp, $e);"
+          case _: AST.Exp.LitZ => stmts = stmts :+ st"$handledVar = $handledVar && Z__eq($exp, $e);"
+          case _: AST.Exp.LitF32 => stmts = stmts :+ st"$handledVar = $handledVar && F32__eq($exp, $e);"
+          case _: AST.Exp.LitF64 => stmts = stmts :+ st"$handledVar = $handledVar && F64__eq($exp, $e);"
+          case _: AST.Exp.LitR => stmts = stmts :+ st"$handledVar = $handledVar && R__eq($exp, $e);"
+          case _: AST.Exp.LitString => stmts = stmts :+ st"$handledVar = $handledVar && String__eq($exp, $e);"
+        }
+      case pat: AST.Pattern.LitInterpolate =>
+        pat.prefix.native match {
+          case "z" =>
+            val e = transpileLitZ(pat.posOpt, Z(pat.value).get)
+            stmts = stmts :+ st"$handledVar = $handledVar && Z__eq($exp, $e);"
+          case "c" =>
+            val s = conversions.String.toCis(pat.value)
+            val e = transpileLitC(pat.posOpt, s(0))
+            stmts = stmts :+ st"$handledVar = $handledVar && C__eq($exp, $e);"
+          case "f32" =>
+            val e = transpileLitF32(F32(pat.value).get)
+            stmts = stmts :+ st"$handledVar = $handledVar && F32__eq($exp, $e);"
+          case "f64" =>
+            val e = transpileLitF64(F64(pat.value).get)
+            stmts = stmts :+ st"$handledVar = $handledVar && F64__eq($exp, $e);"
+          case "r" =>
+            val e = transpileLitR(R(pat.value).get)
+            stmts = stmts :+ st"$handledVar = $handledVar && R__eq($exp, $e);"
+          case "string" =>
+            val e = transpileLitString(pat.posOpt, pat.value)
+            stmts = stmts :+ st"$handledVar = $handledVar && String__eq($exp, $e);"
+          case _ =>
+            val t = pat.attr.typedOpt.get
+            val e = transpileSubZLit(pat.posOpt, t, pat.value)
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, $e);"
+        }
+      case pat: AST.Pattern.Ref =>
+        val t = pat.attr.typedOpt.get
+        pat.attr.resOpt.get match {
+          case res: AST.ResolvedInfo.LocalVar =>
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${localName(res.id)});"
+          case res: AST.ResolvedInfo.Var =>
+            if (res.isInObject) {
+              stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id});"
+            } else {
+              stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}_(this));"
+            }
+          case res => halt(s"Infeasible: $res")
+        }
+      case _: AST.Pattern.SeqWildcard => // skip
+      case pat: AST.Pattern.Wildcard =>
+        pat.typeOpt match {
+          case Some(tpe) =>
+            val t = tpe.typedOpt.get
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__is($exp);"
+          case _ => // skip
+        }
+      case pat: AST.Pattern.VarBinding =>
+        val name = idPatternName(allowShadow, pat.id)
+        if (name.string != pat.id.value) {
+          localRename = localRename + pat.id.value ~> name
+        }
+        pat.tipeOpt match {
+          case Some(tipe) =>
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(tipe.typedOpt.get)}__is($exp);"
+          case _ =>
+        }
+        val t = pat.attr.typedOpt.get
+        val kind = typeKind(t)
+        if (isScalar(kind)) {
+          stmts = stmts :+ st"if ($handledVar) { $name = $exp; }"
+        } else {
+          if (immutableParent) {
+            stmts = stmts :+ st"if ($handledVar) { $name = (${transpileType(t)}) $exp; }"
+          } else {
+            stmts = stmts :+ st"if ($handledVar) { Type_assign($name, $exp, sizeof(${typeDecl(t)})); }"
+          }
+        }
+      case pat: AST.Pattern.Structure =>
+        pat.nameOpt match {
+          case Some(_) =>
+            val tName = pat.attr.typedOpt.get.asInstanceOf[AST.Typed.Name]
+            tName.ids match {
+              case AST.Typed.isName =>
+              case AST.Typed.msName =>
+              case AST.Typed.iszName =>
+              case AST.Typed.mszName =>
+              case AST.Typed.zsName =>
+              case _ => transNamePattern(tName, pat); return
+            }
+            transSPattern(tName, pat)
+          case _ => transTuplePattern(pat)
+        }
+    }
+  }
+
   def transpileMatch(stmt: AST.Stmt.Match, fOpt: Option[(ST, ST) => ST @pure]): Unit = {
-    halt("TODO") // TODO
+    val immutable = isImmutable(typeKind(expType(stmt.exp)))
+    def transCase(handled: ST, exp: ST, cas: AST.Case): Unit = {
+      val oldLocalRename = localRename
+      val oldStmts = stmts
+      stmts = ISZ()
+      declPatternVars(T, cas.pattern)
+      transpilePattern(immutable, T, handled, exp, cas.pattern)
+      val patStmts = stmts
+      stmts = ISZ()
+      val cond: ST = cas.condOpt match {
+        case Some(c) => val r = transpileExp(c); r
+        case _ => trueLit
+      }
+      val condStmts = stmts
+      stmts = ISZ()
+      fOpt match {
+        case Some(f) =>
+          val bStmts = cas.body.stmts
+          for (bStmt <- ops.ISZOps(bStmts).dropRight(1)) {
+            transpileStmt(bStmt)
+          }
+          transpileAssignExp(bStmts(bStmts.size - 1).asAssignExp, f)
+        case _ =>
+          for (bStmt <- cas.body.stmts) {
+            transpileStmt(bStmt)
+          }
+      }
+      stmts = oldStmts :+
+        st"""if (!$handled) {
+        |  $handled = T;
+        |  ${(patStmts, "\n")}
+        |  if ($handled) {
+        |    ${(condStmts, "\n")}
+        |    if ($cond) {
+        |      ${(stmts, "\n")}
+        |    }
+        |  }
+        |}"""
+      localRename = oldLocalRename
+    }
+    stmts = stmts ++ transpileLoc(stmt.posOpt)
+    val e = transpileExp(stmt.exp)
+    val temp = freshTempName()
+    val handled = freshTempName()
+    stmts = stmts :+ st"${transpileType(expType(stmt.exp))} $temp = $e;"
+    stmts = stmts :+ st"B $handled = F;"
+    for (cas <- stmt.cases) {
+      transCase(handled, e, cas)
+    }
+    stmts = stmts :+ st"""sfAssert($handled, "Error when pattern matching.");"""
   }
 
   @pure def transpileLoc(posOpt: Option[Position]): ISZ[ST] = {
@@ -1483,6 +1791,35 @@ import StaticTranspiler._
           transpileAssignExp(init, (rhs, rhsT) => st"Type_assign($local, $rhs, sizeof($rhsT));")
         }
       }
+    }
+
+    def transVarPattern(stmt: AST.Stmt.VarPattern): Unit = {
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      val t: AST.Typed = stmt.tipeOpt match {
+        case Some(tipe) => tipe.typedOpt.get
+        case _ => stmt.init.asInstanceOf[AST.Stmt.Expr].typedOpt.get
+      }
+      val temp = freshTempName()
+      val tpe = transpileType(t)
+      stmts = stmts :+ st"$tpe $temp;"
+      if (isScalar(typeKind(t))) {
+        transpileAssignExp(stmt.init, (rhs, _) => st"$temp = $rhs;")
+      } else {
+        transpileAssignExp(stmt.init, (rhs, _) => st"$temp = ($tpe) $rhs;")
+      }
+      val handled = freshTempName()
+      stmts = stmts :+ st"B $handled = T;"
+      declPatternVars(F, stmt.pattern)
+      val oldStmts = stmts
+      val oldLocalRename = localRename
+      stmts = ISZ()
+      transpilePattern(isImmutable(typeKind(t)), F, handled, temp, stmt.pattern)
+      stmts = oldStmts :+
+        st"""{
+        |  ${(stmts, "\n")}
+        |}"""
+      stmts = stmts :+ st"""sfAssert($handled, "Error during var pattern matching.");"""
+      localRename = oldLocalRename
     }
 
     def transAssign(stmt: AST.Stmt.Assign): Unit = {
@@ -1891,7 +2228,7 @@ import StaticTranspiler._
             }
           case exp => halt(s"Infeasible: $exp")
         }
-      case stmt: AST.Stmt.VarPattern => transpileVarPattern(stmt) // TODO
+      case stmt: AST.Stmt.VarPattern => transVarPattern(stmt) // TODO
       case stmt: AST.Stmt.Block => transpileBlock(stmt)
       case stmt: AST.Stmt.If => transpileIf(stmt, None())
       case stmt: AST.Stmt.While => transpileWhile(stmt)
