@@ -400,7 +400,7 @@ object StaticTemplate {
     val constructorInits: ISZ[ST] = for (q <- constructorParamTypes)
       yield
         if (isScalar(q._1)) st"this->${q._2} = ${q._2};"
-        else st"Type_assign(this->${q._2}, ${q._2}, sizeof(${q._3}));"
+        else st"Type_assign(&this->${q._2}, ${q._2}, sizeof(${q._3}));"
     return compiled(
       header = compiled.header :+ st"$constructorHeader;",
       impl = compiled.impl :+
@@ -489,15 +489,16 @@ object StaticTemplate {
 
     for (i <- constructorParamTypes.indices) {
       val vd = constructorParamTypes(i)
+      val pre: String = if (isScalar(vd.kind)) "" else "&"
       if (!vd.isHidden) {
-        eqStmts = eqStmts :+ st"if (${vd.tpePtr}__ne(this->${vd.id}, other->${vd.id})) return F;"
+        eqStmts = eqStmts :+ st"if (${vd.tpePtr}__ne(${pre}this->${vd.id}, ${pre}other->${vd.id})) return F;"
       }
       if (i > 0) {
         stringStmts = stringStmts :+ st"String_string(result, sf, sep);"
         cprintStmts = cprintStmts :+ st"String_cprint(sep, isOut);"
       }
-      stringStmts = stringStmts :+ st"${vd.tpePtr}_string(result, sf, this->${vd.id});"
-      cprintStmts = cprintStmts :+ st"${vd.tpePtr}_cprint(this->${vd.id}, isOut);"
+      stringStmts = stringStmts :+ st"${vd.tpePtr}_string(result, sf, ${pre}this->${vd.id});"
+      cprintStmts = cprintStmts :+ st"${vd.tpePtr}_cprint(${pre}this->${vd.id}, isOut);"
     }
     stringStmts = stringStmts :+ st"""String_string(result, sf, string(")"));"""
     cprintStmts = cprintStmts :+ st"""String_cprint(string(")"), isOut);"""
@@ -542,6 +543,7 @@ object StaticTemplate {
       st"""// $tpe
       |
       |#define ${name}__eq(this, other) Type__eq(this, other)
+      |#define ${name}__ne(this, other) (!Type__eq(this, other))
       |#define ${name}_cprint(this, isOut) Type_cprint(this, isOut)
       |#define ${name}_string(result, caller, this) Type_string(result, caller, this)
       |
@@ -1314,6 +1316,10 @@ object StaticTemplate {
 
   @pure def tupleName(size: Z): QName = {
     return AST.Typed.sireumName :+ s"Tuple$size"
+  }
+
+  @pure def funName(size: Z): QName = {
+    return AST.Typed.sireumName :+ s"Fun$size"
   }
 
   @pure def tuple(

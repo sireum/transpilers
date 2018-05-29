@@ -351,8 +351,8 @@ import StaticTranspiler._
 
   def genClassConstructor(nt: TypeSpecializer.NamedType): Unit = {
     val t = nt.tpe
-    val name = t.ids
-    val value = getCompiled(name)
+    val key = compiledKeyName(t)
+    val value = getCompiled(key)
     var types = ISZ[AST.Typed]()
     var cps = ISZ[(TypeKind.Type, String, ST, ST)]()
     for (cv <- nt.constructorVars.entries) {
@@ -380,9 +380,9 @@ import StaticTranspiler._
     }
 
     val uri =
-      filenameOfPosOpt(ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
-    val newValue = claszConstructor(value, uri, name, fingerprint(t)._1, cps, stmts)
-    compiledMap = compiledMap + name ~> newValue
+      filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
+    val newValue = claszConstructor(value, uri, key, fingerprint(t)._1, cps, stmts)
+    compiledMap = compiledMap + key ~> newValue
 
     nextTempNum = oldNextTempNum
     stmts = oldStmts
@@ -490,25 +490,25 @@ import StaticTranspiler._
   }
 
   def genTypeNames(): Unit = {
-    @pure def typeFilename(name: QName, t: AST.Typed): Option[QName] = {
+    @pure def typeFilename(t: AST.Typed): Option[QName] = {
       val tname: QName = t match {
         case t: AST.Typed.Name =>
           ts.typeHierarchy.typeMap.get(t.ids).get match {
             case _: TypeInfo.Enum => ops.ISZOps(t.ids).dropRight(1)
-            case _ => t.ids
+            case _ => compiledKeyName(t)
           }
-        case t: AST.Typed.Tuple => AST.Typed.sireumName :+ s"Tuple${t.args.size}"
-        case t: AST.Typed.Fun => AST.Typed.sireumName :+ s"Fun${t.args.size}"
+        case t: AST.Typed.Tuple => compiledKeyName(t)
+        case t: AST.Typed.Fun => compiledKeyName(t)
         case _ => halt("Infeasible")
       }
-      return if (tname == name) None() else if (tname.size == z"1") None() else Some(tname)
+      return if (tname.size == z"1") None() else Some(tname)
     }
 
-    @pure def includes(name: QName, ts: ISZ[AST.Typed]): ISZ[ST] = {
+    @pure def includes(ts: ISZ[AST.Typed]): ISZ[ST] = {
       var r = ISZ[ST]()
       for (t <- ts) {
         if (!builtInTypes.contains(t)) {
-          typeFilename(name, t) match {
+          typeFilename(t) match {
             case Some(n) => r = r :+ st"#include <${typeHeaderFilename(filenameOf(n))}>"
             case _ =>
           }
@@ -518,7 +518,7 @@ import StaticTranspiler._
     }
 
     def genArray(t: AST.Typed.Name): Unit = {
-      val key = t.ids
+      val key = AST.Typed.sireumName :+ fingerprint(t)._1.render
       val it = t.args(0)
       val et = t.args(1)
       val etKind = typeKind(et)
@@ -528,7 +528,7 @@ import StaticTranspiler._
       val value = getCompiled(key)
       val (minIndex, maxElementSize) = minIndexMaxElementSize(it, et)
       val otherType: AST.Typed.Name =
-        if (key == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, ISZ(it, et))
+        if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, ISZ(it, et))
         else AST.Typed.Name(AST.Typed.isName, ISZ(it, et))
       val otherTpeOpt: Option[ST] = ts.nameTypes.get(otherType.ids) match {
         case Some(s) if s.contains(TypeSpecializer.NamedType(otherType, Map.empty, Map.empty)) =>
@@ -537,7 +537,7 @@ import StaticTranspiler._
       }
       val newValue = array(
         value,
-        includes(key, ISZ(it, et)),
+        includes(ISZ(it, et)),
         t.string,
         t.ids == AST.Typed.isName,
         fingerprint(t)._1,
@@ -612,8 +612,8 @@ import StaticTranspiler._
       compiledMap = compiledMap + name ~> newValue
     }
     def genTuple(t: AST.Typed.Tuple): Unit = {
-      val name = tupleName(t.args.size)
-      val value = getCompiled(name)
+      val key = compiledKeyName(t)
+      val value = getCompiled(key)
       var paramTypes = ISZ[(TypeKind.Type, ST, ST)]()
       for (arg <- t.args) {
         genType(arg)
@@ -621,13 +621,13 @@ import StaticTranspiler._
         val kind = typeKind(arg)
         paramTypes = paramTypes :+ ((kind, typeDecl(arg), tPtr))
       }
-      val newValue = tuple(value, t.string, includes(name, t.args), fingerprint(t)._1, paramTypes)
-      compiledMap = compiledMap + name ~> newValue
+      val newValue = tuple(value, t.string, includes(t.args), fingerprint(t)._1, paramTypes)
+      compiledMap = compiledMap + key ~> newValue
     }
     def genClass(t: AST.Typed.Name): Unit = {
-      val name = t.ids
-      val value = getCompiled(name)
-      for (nt <- ts.nameTypes.get(name).get.elements if nt.tpe == t) {
+      val key = compiledKeyName(t)
+      val value = getCompiled(key)
+      for (nt <- ts.nameTypes.get(t.ids).get.elements if nt.tpe == t) {
         var types = ISZ[AST.Typed]()
         var cps = ISZ[Vard]()
         for (cv <- nt.constructorVars.entries) {
@@ -646,9 +646,9 @@ import StaticTranspiler._
           vs = vs :+ Vard(kind, fieldName(id).render, typeDecl(ct), tpe, !isVal, F)
         }
         val uri =
-          filenameOfPosOpt(ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
-        val newValue = clasz(value, uri, name, includes(name, types), t.string, fingerprint(t)._1, cps, vs)
-        compiledMap = compiledMap + name ~> newValue
+          filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
+        val newValue = clasz(value, uri, t.ids, includes(types), t.string, fingerprint(t)._1, cps, vs)
+        compiledMap = compiledMap + key ~> newValue
       }
     }
     def genTrait(t: AST.Typed.Name): Unit = {
@@ -658,10 +658,10 @@ import StaticTranspiler._
         val t = genType(tImpl)
         leafTypes = leafTypes :+ t
       }
-      val name = t.ids
-      val value = getCompiled(name)
-      val newValue = traitz(value, fingerprint(t)._1, t.string, includes(name, tImpls.map(t => t)), leafTypes)
-      compiledMap = compiledMap + name ~> newValue
+      val key = compiledKeyName(t)
+      val value = getCompiled(key)
+      val newValue = traitz(value, fingerprint(t)._1, t.string, includes(tImpls.map(t => t)), leafTypes)
+      compiledMap = compiledMap + key ~> newValue
     }
     def genFun(t: AST.Typed.Fun): Unit = {
       halt(s"TODO: $t") // TODO
@@ -858,10 +858,8 @@ import StaticTranspiler._
       |  ${(stmts, "\n")}
       |}"""
 
-    val key: QName = res.owner.size match {
-      case z"0" => res.owner
-      case n if n >= 3 && ops.ISZOps(res.owner).take(3) == AST.Typed.sireumName =>
-        sireumDir +: ops.ISZOps(compName(res.owner)).drop(3)
+    val key: QName = currReceiverOpt match {
+      case Some(rcv) => compiledKeyName(rcv)
       case _ => compName(res.owner)
     }
 
@@ -1019,7 +1017,7 @@ import StaticTranspiler._
         case res: AST.ResolvedInfo.Method =>
           val t = res.tpeOpt.get.ret
           if (res.isInObject) {
-            val r = transObjectMethodInvoke(t, methodNameRes(None(), res), ISZ())
+            val r = transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ())
             return r
           } else {
             val r = transInstanceMethodInvoke(currReceiverOpt.get, t, res, st"this", ISZ())
@@ -1153,7 +1151,7 @@ import StaticTranspiler._
             case AST.MethodMode.Method =>
               val t = expType(select)
               if (res.isInObject) {
-                val r = transObjectMethodInvoke(t, methodNameRes(None(), res), ISZ())
+                val r = transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ())
                 return r
               } else {
                 val receiver = select.receiverOpt.get
@@ -1176,11 +1174,16 @@ import StaticTranspiler._
       }
     }
 
-    def transObjectMethodInvoke(retType: AST.Typed, name: ST, invokeArgs: ISZ[AST.Exp]): ST = {
+    def transObjectMethodInvoke(targs: ISZ[AST.Typed], retType: AST.Typed, name: ST, invokeArgs: ISZ[AST.Exp]): ST = {
       var args = ISZ[ST]()
-      for (arg <- invokeArgs) {
+      for (p <- ops.ISZOps(invokeArgs).zip(targs)) {
+        val (arg, t) = p
         val a = transpileExp(arg)
-        args = args :+ a
+        if (isScalar(typeKind(t))) {
+          args = args :+ a
+        } else {
+          args = args :+ st"(${transpileType(t)}) $a"
+        }
       }
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
         return st"$name(sf${commaArgs(args)})"
@@ -1200,9 +1203,14 @@ import StaticTranspiler._
       invokeArgs: ISZ[AST.Exp]
     ): ST = {
       var args = ISZ[ST]()
-      for (arg <- invokeArgs) {
+      for (p <- ops.ISZOps(invokeArgs).zip(res.tpeOpt.get.args)) {
+        val (arg, t) = p
         val a = transpileExp(arg)
-        args = args :+ a
+        if (isScalar(typeKind(t))) {
+          args = args :+ a
+        } else {
+          args = args :+ st"(${transpileType(t)}) $a"
+        }
       }
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
         return st"${methodNameRes(Some(receiverType), res)}(sf, $receiver${commaArgs(args)})"
@@ -1218,9 +1226,14 @@ import StaticTranspiler._
     def transExt(res: AST.ResolvedInfo.Method, retType: AST.Typed, invokeArgs: ISZ[AST.Exp]): ST = {
       val tpe = transpileType(retType)
       var args = ISZ[ST]()
-      for (arg <- invokeArgs) {
+      for (p <- ops.ISZOps(invokeArgs).zip(res.tpeOpt.get.args)) {
+        val (arg, t) = p
         val a = transpileExp(arg)
-        args = args :+ a
+        if (isScalar(typeKind(t))) {
+          args = args :+ a
+        } else {
+          args = args :+ st"(${transpileType(t)}) $a"
+        }
       }
       val name: ST = if (sNameSet.contains(res.owner)) st"${tpe}_${res.id}" else methodNameRes(None(), res)
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
@@ -1237,9 +1250,14 @@ import StaticTranspiler._
       val tpe = transpileType(retType)
       val temp = freshTempName()
       var args = ISZ[ST]()
-      for (arg <- invokeArgs) {
+      for (p <- ops.ISZOps(invokeArgs).zip(method.tpeOpt.get.args)) {
+        val (arg, t) = p
         val a = transpileExp(arg)
-        args = args :+ a
+        if (isScalar(typeKind(t))) {
+          args = args :+ a
+        } else {
+          args = args :+ st"(${transpileType(t)}) $a"
+        }
       }
       stmts = stmts :+ st"DeclNew$tpe($temp);"
       stmts = stmts :+ st"${tpe}_apply(sf, &$temp${commaArgs(args)});"
@@ -1325,7 +1343,8 @@ import StaticTranspiler._
           res.mode match {
             case AST.MethodMode.Method =>
               if (res.isInObject) {
-                val r = transObjectMethodInvoke(expType(invoke), methodNameRes(None(), res), invoke.args)
+                val r =
+                  transObjectMethodInvoke(res.tpeOpt.get.args, expType(invoke), methodNameRes(None(), res), invoke.args)
                 return r
               } else {
                 val receiver = transReceiver()
@@ -1355,6 +1374,7 @@ import StaticTranspiler._
         case res: AST.ResolvedInfo.BuiltIn =>
           def enumInvoke(): ST = {
             val r = transObjectMethodInvoke(
+              invoke.args.map(e => e.typedOpt.get),
               expType(invoke),
               methodNameTyped(None(), invoke.ident.attr.typedOpt.get.asInstanceOf[AST.Typed.Method]),
               invoke.args
@@ -1568,8 +1588,6 @@ import StaticTranspiler._
     def transNamePattern(t: AST.Typed.Name, pat: AST.Pattern.Structure): Unit = {
       val tpe = transpileType(t)
       stmts = stmts :+ st"$handledVar = $handledVar && ${tpe}__is($exp);"
-      val adtInfo = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
-      val sm = TypeChecker.buildTypeSubstMap(t.ids, pat.posOpt, adtInfo.ast.typeParams, t.args, reporter).get
       val oldStmts = stmts
       stmts = ISZ()
       pat.idOpt match {
@@ -1582,7 +1600,8 @@ import StaticTranspiler._
         case _ =>
       }
       val immutable = isImmutable(typeKind(t))
-      val e = st"${tpe}__as($exp)"
+      val e = st"${tpe}__as(sf, $exp)"
+      val adtInfo = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
       for (idPattern <- ops.ISZOps(adtInfo.extractorTypeMap.keys).zip(pat.patterns)) {
         val (id, p) = idPattern
         transpilePattern(immutable, allowShadow, handledVar, st"${tpe}_${id}_($e)", p)
@@ -2395,6 +2414,16 @@ import StaticTranspiler._
 
   @pure def isControl(c: C): B = {
     return ('\u0000' <= c && c <= '\u001F') || ('\u007F' <= c && c <= '\u009F')
+  }
+
+  @pure def compiledKeyName(t: AST.Typed): QName = {
+    t match {
+      case t: AST.Typed.Name =>
+        return if (t.args.isEmpty) t.ids else ops.ISZOps(t.ids).dropRight(1) :+ fingerprint(t)._1.render
+      case t: AST.Typed.Tuple => return AST.Typed.sireumName :+ fingerprint(t)._1.render
+      case t: AST.Typed.Fun => return AST.Typed.sireumName :+ fingerprint(t)._1.render
+      case _ => halt("Infeasible")
+    }
   }
 
   def escapeString(posOpt: Option[Position], s: String): ST = {

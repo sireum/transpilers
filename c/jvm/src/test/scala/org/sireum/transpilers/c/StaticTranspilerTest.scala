@@ -191,6 +191,10 @@ class StaticTranspilerTest extends TestSuite {
                         |println(baz.x)
                         |assert(baz.x == 0)""".stripMargin)
 
+    * - testWorksheet("""val opt: Option[Option[Z]] = Some(Some(4))
+                        |val Some(Some(x)) = opt
+                        |println(x)""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
