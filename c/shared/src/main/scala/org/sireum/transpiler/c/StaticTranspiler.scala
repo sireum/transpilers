@@ -1775,11 +1775,9 @@ import StaticTranspiler._
     }
     stmts = stmts ++ transpileLoc(stmt.posOpt)
     val e: ST = stmt.exp match {
-      case AST.Exp.Select(receiverOpt, AST.Id(string"native"), targs) if targs.isEmpty =>
-        val r = transpileExp(receiverOpt.get); r
+      case e: AST.Exp.Select if isNativeRes(e.attr.resOpt.get) => val r = transpileExp(e.receiverOpt.get); r
       case _ => val r = transpileExp(stmt.exp); r
     }
-
     val temp = freshTempName()
     val handled: ST = stmt.exp.posOpt match {
       case Some(pos) => st"match_${pos.beginLine}"
@@ -2454,6 +2452,13 @@ import StaticTranspiler._
       case t: AST.Typed.Tuple => return AST.Typed.sireumName :+ fingerprint(t)._1.render
       case t: AST.Typed.Fun => return AST.Typed.sireumName :+ fingerprint(t)._1.render
       case _ => halt("Infeasible")
+    }
+  }
+
+  @pure def isNativeRes(res: AST.ResolvedInfo): B = {
+    res match {
+      case res: AST.ResolvedInfo.BuiltIn => return res.kind == AST.ResolvedInfo.BuiltIn.Kind.Native
+      case _ => return F
     }
   }
 
