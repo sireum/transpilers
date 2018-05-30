@@ -1430,7 +1430,7 @@ import StaticTranspiler._
             case AST.ResolvedInfo.BuiltIn.Kind.EnumByOrdinal => val r = enumInvoke(); return r
             case _ => halt(s"Infeasible: $res")
           }
-        case res => halt("Infeasible")
+        case _ => halt("Infeasible")
       }
     }
 
@@ -1454,12 +1454,12 @@ import StaticTranspiler._
       case exp: AST.Exp.Invoke => val r = transInvoke(exp); return r
       case exp: AST.Exp.InvokeNamed => halt("TODO") // TODO
       case exp: AST.Exp.If => halt("TODO") // TODO
-      case exp: AST.Exp.Super => halt("TODO") // TODO
-      case exp: AST.Exp.This => halt("TODO") // TODO
       case exp: AST.Exp.ForYield => halt("TODO") // TODO
-      case exp: AST.Exp.Eta => halt("TODO") // TODO
-      case exp: AST.Exp.Fun => halt("TODO") // TODO
-      case exp: AST.Exp.Quant => halt("TODO") // TODO
+      case exp: AST.Exp.This => halt("TODO") // TODO
+      case exp: AST.Exp.Super => halt("TODO") // TODO
+      case _: AST.Exp.Eta => halt("TODO") // TODO
+      case _: AST.Exp.Fun => halt("TODO") // TODO
+      case _: AST.Exp.Quant => halt("TODO") // TODO
     }
   }
 
