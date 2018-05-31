@@ -222,6 +222,8 @@ class StaticTranspilerTest extends TestSuite {
                         |  println(n)
                         |}""".stripMargin)
 
+    * - testWorksheet("""println(for (ss <- ISZ(ISZ("a", "b"), ISZ("c")); s <- ss) yield s"${s}1")""")
+
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {

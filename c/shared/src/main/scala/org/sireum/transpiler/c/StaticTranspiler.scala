@@ -1447,15 +1447,15 @@ import StaticTranspiler._
         val t = expType(arg)
         val tpe = transpileType(t)
         val e = transpileExp(arg)
-        stmts = stmts :+ st"${tpe}_string(&$temp, sf, $e);"
+        stmts = stmts :+ st"${tpe}_string((String) &$temp, sf, $e);"
         val lit = exp.lits(i)
         val s = transpileLitString(lit.posOpt, lit.value)
-        stmts = stmts :+ st"""String_string(&$temp, sf, $s);"""
+        stmts = stmts :+ st"""String_string((String) &$temp, sf, $s);"""
         i = i + 1
       }
       val lit = exp.lits(i)
       val s = transpileLitString(lit.posOpt, lit.value)
-      stmts = stmts :+ st"""String_string(&$temp, sf, $s);"""
+      stmts = stmts :+ st"""String_string((String) &$temp, sf, $s);"""
       return st"(&$temp)"
     }
 
