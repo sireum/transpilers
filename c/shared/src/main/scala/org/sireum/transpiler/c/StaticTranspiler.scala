@@ -8,7 +8,6 @@ import org.sireum.lang.symbol._
 import org.sireum.lang.symbol.Resolver.QName
 import org.sireum.transpilers.common.TypeSpecializer
 import StaticTemplate._
-import org.sireum.lang.ast.Exp
 import org.sireum.lang.tipe.TypeChecker
 
 object StaticTranspiler {
@@ -118,7 +117,7 @@ object StaticTranspiler {
   }
 
   @record class IdConstSub(id: String, const: Z) extends AST.MTransformer {
-    override def postExpIdent(o: AST.Exp.Ident): MOption[Exp] = {
+    override def postExpIdent(o: AST.Exp.Ident): MOption[AST.Exp] = {
       return if (o.id.value == id) MSome(AST.Exp.LitZ(const, AST.Attr(o.posOpt)))
       else AST.MTransformer.PostResultExpIdent
     }
@@ -1214,7 +1213,7 @@ import StaticTranspiler._
             val e = transpileExp(receiver)
             return st"${transpileType(expType(receiver))}_${fieldName(res.id)}_($e)"
           }
-        case res => halt(s"Infeasible")
+        case _ => halt(s"Infeasible")
       }
     }
 
@@ -1434,17 +1433,106 @@ import StaticTranspiler._
       }
     }
 
+    def transInvokeNamed(exp: AST.Exp.InvokeNamed): ST = {
+      val args: ISZ[AST.Exp] = ops.ISZOps(exp.args).sortWith((na1, na2) => na1.index < na2.index).map(na => na.arg)
+      val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args, exp.attr))
+      return r
+    }
+
+    def transStringInterpolate(exp: AST.Exp.StringInterpolate): ST = {
+      val temp = freshTempName()
+      stmts = stmts :+ st"DeclNewString($temp);"
+      var i = 0
+      for (arg <- exp.args) {
+        val t = expType(arg)
+        val tpe = transpileType(t)
+        val e = transpileExp(arg)
+        stmts = stmts :+ st"${tpe}_string(&$temp, sf, $e);"
+        val lit = exp.lits(i)
+        val s = transpileLitString(lit.posOpt, lit.value)
+        stmts = stmts :+ st"""String_string(&$temp, sf, $s);"""
+        i = i + 1
+      }
+      val lit = exp.lits(i)
+      val s = transpileLitString(lit.posOpt, lit.value)
+      stmts = stmts :+ st"""String_string(&$temp, sf, $s);"""
+      return st"(&$temp)"
+    }
+
+    def transIf(exp: AST.Exp.If): ST = {
+      val cond = transpileExp(exp.cond)
+      val t = expType(exp)
+      val scalar = isScalar(typeKind(t))
+      val tpe = transpileType(t)
+      val temp = freshTempName()
+      stmts = stmts :+ st"$tpe $temp;"
+      val oldStmts = stmts
+      stmts = ISZ()
+      val thenExp = transpileExp(exp.thenExp)
+      if (scalar) {
+        stmts = stmts :+ st"$temp = $thenExp;"
+      } else {
+        stmts = stmts :+ st"$temp = ($tpe) $thenExp;"
+      }
+      val thenStmts = stmts
+      stmts = ISZ()
+      val elseExp = transpileExp(exp.elseExp)
+      if (scalar) {
+        stmts = stmts :+ st"$temp = $elseExp;"
+      } else {
+        stmts = stmts :+ st"$temp = ($tpe) $elseExp;"
+      }
+      stmts = oldStmts :+
+        st"""if ($cond) {
+        |  ${(thenStmts, "\n")}
+        |} else {
+        |  ${(stmts, "\n")}
+        |}"""
+      return st"$temp"
+    }
+
+    def transForYield(exp: AST.Exp.ForYield): ST = {
+      val temp = freshTempName()
+      val t = expType(exp).asInstanceOf[AST.Typed.Name]
+      val it = t.args(0)
+      val et = t.args(1)
+      val index = freshTempName()
+      val tpe = transpileType(t)
+      stmts = stmts :+ st"DeclNew$tpe($temp);"
+      val indexType = arraySizeType(minIndexMaxElementSize(it, et)._2)
+      stmts = stmts :+ st"$indexType $index = 0;"
+      val oldStmts = stmts
+      stmts = ISZ()
+      stmts = stmts :+ st"""sfAssert($index < Max$tpe, "Insufficient maximum for $t elements.");"""
+      val e = transpileExp(exp.exp)
+      if (isScalar(typeKind(et))) {
+        stmts = stmts :+ st"$temp.value[$index] = $e;"
+      } else {
+        stmts = stmts :+ st"Type_assign(&$temp.value[$index], $e, sizeof(${typeDecl(et)}));"
+      }
+      stmts = stmts :+ st"$index++;"
+      val egs = exp.enumGens
+      var i = egs.size - 1
+      var body = transpileEnumGen(egs(i), stmts)
+      i = i - 1
+      while (i >= 0) {
+        body = transpileEnumGen(egs(i), body)
+        i = i - 1
+      }
+      stmts = oldStmts ++ body
+      stmts = stmts :+ st"$temp.size = $index;"
+      return st"(&$temp)"
+    }
+
     exp match {
       case exp: AST.Lit => val r = transpileLit(exp); return r
       case exp: AST.Exp.StringInterpolate =>
         exp.prefix.native match {
-          case "s" => halt(s"TODO: $exp") // TODO
+          case "s" => val r = transStringInterpolate(exp); return r
           case "st" =>
             reporter.error(exp.posOpt, transKind, "String template is not supported.")
             return abort
-          case _ =>
-            val r = transSubZLit(exp)
-            return r
+          case _ => val r = transSubZLit(exp); return r
         }
       case exp: AST.Exp.Ident => val r = transIdent(exp); return r
       case exp: AST.Exp.Binary => val r = transBinary(exp); return r
@@ -1452,11 +1540,11 @@ import StaticTranspiler._
       case exp: AST.Exp.Select => val r = transSelect(exp); return r
       case exp: AST.Exp.Tuple => val r = transTuple(exp); return r
       case exp: AST.Exp.Invoke => val r = transInvoke(exp); return r
-      case exp: AST.Exp.InvokeNamed => halt("TODO") // TODO
-      case exp: AST.Exp.If => halt("TODO") // TODO
-      case exp: AST.Exp.ForYield => halt("TODO") // TODO
-      case exp: AST.Exp.This => halt("TODO") // TODO
-      case exp: AST.Exp.Super => halt("TODO") // TODO
+      case exp: AST.Exp.InvokeNamed => val r = transInvokeNamed(exp); return r
+      case exp: AST.Exp.If => val r = transIf(exp); return r
+      case _: AST.Exp.This => return st"this"
+      case exp: AST.Exp.ForYield => val r = transForYield(exp); return r
+      case _: AST.Exp.Super => halt("TODO") // TODO
       case _: AST.Exp.Eta => halt("TODO") // TODO
       case _: AST.Exp.Fun => halt("TODO") // TODO
       case _: AST.Exp.Quant => halt("TODO") // TODO
@@ -1861,6 +1949,148 @@ import StaticTranspiler._
     return r
   }
 
+  def transpileEnumGen(eg: AST.EnumGen.For, body: ISZ[ST]): ISZ[ST] = {
+    stmts = ISZ()
+    val b: ISZ[ST] = eg.condOpt match {
+      case Some(cond) =>
+        val c = transpileExp(cond)
+        ISZ(st"""if ($c) {
+        |  ${(body, "\n")}
+        |}""")
+      case _ => body
+    }
+    stmts = ISZ()
+    eg.range match {
+      case range: AST.EnumGen.Range.Step =>
+        val start = transpileExp(range.start)
+        val end = transpileExp(range.end)
+        val (by, byE): (ST, Either[Z, ST]) = range.byOpt match {
+          case Some(byExp) =>
+            byExp match {
+              case byExp: AST.Exp.LitZ => val v = byExp.value; (st"$v", Either.Left(v))
+              case _ => val v = transpileExp(byExp); (v, Either.Right(v))
+            }
+          case _ => (st"1", Either.Left(1))
+        }
+        val id: ST = eg.idOpt match {
+          case Some(x) => st"${x.value}"
+          case _ => freshTempName()
+        }
+        val tpe = transpileType(expType(range.start))
+        stmts = stmts :+ st"$tpe $id = $start;"
+        val endTemp = freshTempName()
+        stmts = stmts :+ st"$tpe $endTemp = $end;"
+        val byTemp = freshTempName()
+        stmts = stmts :+ st"Z $byTemp = $by;"
+        val pos =
+          st"""while ($id ${if (range.isInclusive) "<=" else "<"} $endTemp) {
+          |  ${(b ++ transpileLoc(range.attr.posOpt), "\n")}
+          |  $id = ($tpe) ($id + $byTemp);
+          |}"""
+        val neg =
+          st"""while ($id ${if (range.isInclusive) ">=" else ">"} $endTemp) {
+          |  ${(b ++ transpileLoc(range.attr.posOpt), "\n")}
+          |  $id = ($tpe) ($id + $byTemp);
+          |}"""
+        byE match {
+          case Either.Left(n) =>
+            if (n > 0) {
+              stmts = stmts :+ pos
+            } else {
+              stmts = stmts :+ neg
+            }
+          case _ =>
+            stmts = stmts :+
+              st"""if ($byTemp > 0) {
+              |  $pos
+              |} else {
+              |  $neg
+              |}"""
+        }
+        return stmts
+      case range: AST.EnumGen.Range.Expr =>
+        val e = transpileExp(range.exp)
+        val t = expType(range.exp).asInstanceOf[AST.Typed.Name]
+        val it = t.args(0)
+        val et = t.args(1)
+        val tpe = transpileType(t)
+        val temp = freshTempName()
+        stmts = stmts :+ st"$tpe $temp = $e;"
+        val size = freshTempName()
+        val index = freshTempName()
+        val (minIndex, maxElements) = minIndexMaxElementSize(it, et)
+        val indexType = arraySizeType(maxElements)
+        stmts = stmts :+ st"$indexType $size = ($e)->size;"
+        (range.isIndices, range.isReverse) match {
+          case (F, F) =>
+            eg.idOpt match {
+              case Some(id) =>
+                val eTpe = transpileType(et)
+                return if (isScalar(typeKind(et)))
+                  stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                  |  $eTpe ${id.value} = $temp->value[$index];
+                  |  ${(b, "\n")}
+                  |}"""
+                else
+                  stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                  |  $eTpe ${id.value} = ($eTpe) &($temp->value[$index]);
+                  |  ${(b, "\n")}                
+                  |}"""
+              case _ =>
+                return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                |  ${(b, "\n")}
+                |}"""
+            }
+          case (F, T) =>
+            eg.idOpt match {
+              case Some(id) =>
+                val eTpe = transpileType(et)
+                return if (isScalar(typeKind(et)))
+                  stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                  |  $eTpe ${id.value} = $temp->value[$index];
+                  |  ${(b, "\n")}
+                  |}"""
+                else
+                  stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                  |  $eTpe ${id.value} = ($eTpe) &($temp->value[$index]);
+                  |  ${(b, "\n")}
+                  |}"""
+              case _ =>
+                return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                |  ${(b, "\n")}
+                |}"""
+            }
+          case (T, F) =>
+            eg.idOpt match {
+              case Some(id) =>
+                val iTpe = transpileType(it)
+                return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
+                |  ${(b, "\n")}
+                |}"""
+              case _ =>
+                return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                |  ${(b, "\n")}
+                |}"""
+            }
+          case (T, T) =>
+            eg.idOpt match {
+              case Some(id) =>
+                val iTpe = transpileType(it)
+                return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
+                |  ${(b, "\n")}
+                |}"""
+              case _ =>
+                return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                |  ${(b, "\n")}
+                |}"""
+            }
+          case _ => halt("Infeasible")
+        }
+    }
+  }
+
   def transpileStmt(stmt: AST.Stmt): Unit = {
 
     def transVar(stmt: AST.Stmt.Var): Unit = {
@@ -2202,70 +2432,6 @@ import StaticTranspiler._
             |}"""
         }
       }
-      def transEnumGen(eg: AST.EnumGen.For, body: ISZ[ST]): ISZ[ST] = {
-        eg.range match {
-          case range: AST.EnumGen.Range.Step =>
-            stmts = ISZ()
-            val start = transpileExp(range.start)
-            val end = transpileExp(range.end)
-            val (by, byE): (ST, Either[Z, ST]) = range.byOpt match {
-              case Some(byExp) =>
-                byExp match {
-                  case byExp: AST.Exp.LitZ => val v = byExp.value; (st"$v", Either.Left(v))
-                  case _ => val v = transpileExp(byExp); (v, Either.Right(v))
-                }
-              case _ => (st"1", Either.Left(1))
-            }
-            val id: ST = eg.idOpt match {
-              case Some(x) => st"${x.value}"
-              case _ => freshTempName()
-            }
-            val tpe = transpileType(expType(range.start))
-            stmts = stmts :+ st"$tpe $id = $start;"
-            val endTemp = freshTempName()
-            stmts = stmts :+ st"$tpe $endTemp = $end;"
-            val byTemp = freshTempName()
-            stmts = stmts :+ st"Z $byTemp = $by;"
-            val b: ISZ[ST] = eg.condOpt match {
-              case Some(cond) =>
-                val oldStmts = stmts
-                stmts = ISZ()
-                val c = transpileExp(cond)
-                stmts = oldStmts
-                ISZ(st"""if ($c) {
-                |  ${(body, "\n")}
-                |}""")
-              case _ => body
-            }
-            val pos =
-              st"""while ($id ${if (range.isInclusive) "<=" else "<"} $endTemp) {
-              |  ${(b ++ transpileLoc(range.attr.posOpt), "\n")}
-              |  $id = ($tpe) ($id + $byTemp);
-              |}"""
-            val neg =
-              st"""while ($id ${if (range.isInclusive) ">=" else ">"} $endTemp) {
-              |  ${(b ++ transpileLoc(range.attr.posOpt), "\n")}
-              |  $id = ($tpe) ($id + $byTemp);
-              |}"""
-            byE match {
-              case Either.Left(n) =>
-                if (n > 0) {
-                  stmts = stmts :+ pos
-                } else {
-                  stmts = stmts :+ neg
-                }
-              case _ =>
-                stmts = stmts :+
-                  st"""if ($byTemp > 0) {
-                  |  $pos
-                  |} else {
-                  |  $neg
-                  |}"""
-            }
-            return stmts
-          case range: AST.EnumGen.Range.Expr => halt(s"TODO: $range") // TODO
-        }
-      }
       if (config.forLoopOpt && stmt.enumGens.size == z"1") { // TODO: generalize for subz and multiple egs
         val eg = stmt.enumGens(0)
         eg.range match {
@@ -2286,9 +2452,9 @@ import StaticTranspiler._
         transpileStmt(stmt)
       }
       val egs = stmt.enumGens
-      var body = transEnumGen(egs(egs.size - 1), stmts)
+      var body = transpileEnumGen(egs(egs.size - 1), stmts)
       for (i <- (egs.size - 2) to z"0" by -1) {
-        body = transEnumGen(egs(i), body)
+        body = transpileEnumGen(egs(i), body)
       }
       stmts = oldStmts :+
         st"""{
@@ -2442,8 +2608,7 @@ import StaticTranspiler._
       if (isInObject) {
         if (noTypeParams) st"${mangleName(ids)}_$id"
         else st"${mangleName(ids)}_${id}_${fprint(t)}"
-      } else if (sNameSet.contains(ids)) { st"${transpileType(receiverTypeOpt.get)}_$id" }
-      else if (noTypeParams) {
+      } else if (sNameSet.contains(ids)) { st"${transpileType(receiverTypeOpt.get)}_$id" } else if (noTypeParams) {
         id.native match {
           case "unary_+" => st"${transpileType(receiverTypeOpt.get)}__plus"
           case "unary_-" => st"${transpileType(receiverTypeOpt.get)}__minus"

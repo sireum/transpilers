@@ -195,7 +195,6 @@ class StaticTranspilerTest extends TestSuite {
                         |val Some(Some(x)) = opt
                         |println(x)""".stripMargin)
 
-
     * - testWorksheet("""val opt: Option[Option[Z]] = Some(Some(1))
                         |val y = 1
                         |opt match {
@@ -206,6 +205,23 @@ class StaticTranspilerTest extends TestSuite {
                         |  case Some(None()) => println("Some(None())")
                         |  case None() => println("None()")
                         |}""".stripMargin)
+
+    * - testWorksheet("""for (n <- ISZ("a", "b", "c")) {
+                        |  println(n)
+                        |}""".stripMargin)
+
+    * - testWorksheet("""for (n <- ISZ("a", "b", "c").reverse) {
+                        |  println(n)
+                        |}""".stripMargin)
+
+    * - testWorksheet("""for (n <- ISZ("a", "b", "c").indices) {
+                        |  println(n)
+                        |}""".stripMargin)
+
+    * - testWorksheet("""for (n <- ISZ("a", "b", "c").indices.reverse) {
+                        |  println(n)
+                        |}""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
