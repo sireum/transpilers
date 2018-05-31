@@ -283,7 +283,7 @@ import StaticTranspiler._
       }
 
       val typeQNames = compiledMap.keys
-      r = r + ISZ[String]("type-composite.h") ~> typeCompositeH(
+      r = r + ISZ[String](runtimeDir, "type-composite.h") ~> typeCompositeH(
         config.maxStringSize,
         minIndexMaxElementSize(AST.Typed.z, AST.Typed.string)._2,
         typeNames
