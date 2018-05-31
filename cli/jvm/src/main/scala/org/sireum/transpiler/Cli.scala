@@ -128,9 +128,10 @@ import Cli._
           |    --sequence-size      Default maximum sequence size (expects an integer;
           |                           default is 100)
           |-s, --sequence           Custom maximum sequence sizes, each in the form of
-          |                           <type>=<size>, where <type> is either IS[,] or MS[,]
-          |                           with fully qualified index and element types
-          |                           (expects a string separated by ",")
+          |                           <type>=<size>, where <type> is either IS[,], MS[,],
+          |                           ISZ[], MSZ[], or ZS with fully qualified index and
+          |                           element types where applicable (expects a string
+          |                           separated by ",")
           |-p, --plugins            Plugin fully qualified names (expects a string
           |                           separated by ",")
           |-e, --exts               Extension file paths (expects path strings)

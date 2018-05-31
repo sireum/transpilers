@@ -8,7 +8,7 @@ import _root_.java.util.zip._
 import ammonite.ops._
 import org.sireum._
 import org.sireum.lang.FrontEnd
-import org.sireum.lang.ast.TopUnit
+import org.sireum.lang.{ast => AST}
 import org.sireum.lang.parser.Parser
 import org.sireum.lang.tipe._
 import org.sireum.message._
@@ -355,8 +355,8 @@ object CTranspiler {
         startTime()
       }
 
-      Parser.parseTopUnit[TopUnit.Program](slangFile._2._2, F, T, F, slangFile._2._1, reporter) match {
-        case Some(p: TopUnit.Program) =>
+      Parser.parseTopUnit[AST.TopUnit.Program](slangFile._2._2, F, T, F, slangFile._2._1, reporter) match {
+        case Some(p: AST.TopUnit.Program) =>
           val p2 = FrontEnd.checkWorksheet(thOpt, p, reporter)
           if (reporter.hasIssue) {
             reporter.printMessages()
@@ -410,6 +410,45 @@ object CTranspiler {
       startTime()
     }
 
+    var customArraySizes = HashMap.empty[AST.Typed, Z]
+    for (p <- o.customArraySizes) {
+      try {
+        val Array(key, value) = p.value.split('=')
+        val num = Z(value).get
+        if (num <= 0) {
+          eprintln(s"Custom sequence size should be positive: $p")
+          return TranspilingError
+        }
+        val e = Parser.parseExp[AST.Exp.Select](s"o[$key]")
+        e.targs(0) match {
+          case t: AST.Type.Named =>
+            t.name.ids.map(_.value.value) match {
+              case ISZ("MS") if t.typeArgs.size.toInt == 2 =>
+                customArraySizes = customArraySizes + AST.Typed
+                  .Name(AST.Typed.msName, ISZ(toTyped(t.typeArgs(0)), toTyped(t.typeArgs(1)))) ~> num
+              case ISZ("IS") if t.typeArgs.size.toInt == 2 =>
+                customArraySizes = customArraySizes + AST.Typed
+                  .Name(AST.Typed.isName, ISZ(toTyped(t.typeArgs(0)), toTyped(t.typeArgs(1)))) ~> num
+              case ISZ("ISZ") if t.typeArgs.size.toInt == 1 =>
+                customArraySizes = customArraySizes + AST.Typed
+                  .Name(AST.Typed.isName, ISZ(AST.Typed.z, toTyped(t.typeArgs(0)))) ~> num
+              case ISZ("MSZ") if t.typeArgs.size.toInt == 1 =>
+                customArraySizes = customArraySizes + AST.Typed
+                  .Name(AST.Typed.msName, ISZ(AST.Typed.z, toTyped(t.typeArgs(0)))) ~> num
+              case ISZ("ZS") if t.typeArgs.size.toInt == 0 =>
+                customArraySizes = customArraySizes + AST.Typed
+                  .Name(AST.Typed.msName, ISZ(AST.Typed.z, AST.Typed.z)) ~> num
+              case _ => throw new Exception
+            }
+          case _ => throw new Exception
+        }
+      } catch {
+        case _: Throwable =>
+          eprintln(s"Could not recognize custom sequence size configuration: $p")
+          return TranspilingError
+      }
+    }
+
     val config = StaticTranspiler.Config(
       projectName = o.projectName.getOrElse("main"),
       lineNumber = o.line,
@@ -417,7 +456,7 @@ object CTranspiler {
       defaultBitWidth = o.bitWidth,
       maxStringSize = o.maxStringSize,
       maxArraySize = o.maxArraySize,
-      customArraySizes = HashMap.empty,
+      customArraySizes = customArraySizes,
       extMethodTranspilerPlugins = plugins,
       exts = exts,
       forLoopOpt = o.unroll
@@ -488,6 +527,14 @@ object CTranspiler {
       }
       gzis.close()
       bos.toByteArray
+    }
+  }
+
+  def toTyped(t: AST.Type): AST.Typed = {
+    t match {
+      case t: AST.Type.Named => AST.Typed.Name(t.name.ids.map(_.value), t.typeArgs.map(toTyped))
+      case t: AST.Type.Tuple => AST.Typed.Tuple(t.args.map(toTyped))
+      case t: AST.Type.Fun => AST.Typed.Fun(t.isPure, t.isByName, t.args.map(toTyped), toTyped(t.ret))
     }
   }
 }
