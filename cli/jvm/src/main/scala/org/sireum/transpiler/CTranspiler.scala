@@ -14,8 +14,9 @@ import org.sireum.lang.tipe._
 import org.sireum.message._
 
 import scala.collection.JavaConverters._
-
 import Cli._
+import org.sireum.transpiler.c.StaticTranspiler
+import org.sireum.transpilers.common.TypeSpecializer
 
 object CTranspiler {
 
@@ -29,6 +30,8 @@ object CTranspiler {
   val InternalError: Int = -8
   val SavingError: Int = -9
   val LoadingError: Int = -10
+  val PluginError: Int = -11
+  val TranspilingError: Int = -12
 
   def run(o: CTranspilerOption): Int = {
     def readFile(f: File): (Option[String], String) = {
@@ -40,12 +43,6 @@ object CTranspiler {
       println()
       println("Please either specify sourcepath or Slang files as argument")
       return 0
-    }
-
-    if (o.args.size > 1) {
-      println(o.help)
-      println()
-      println("Only one Slang file as an argument is allowed")
     }
 
     val loadFileOpt: Option[File] = if (o.load.nonEmpty) {
@@ -85,13 +82,46 @@ object CTranspiler {
 
     val begin = System.currentTimeMillis
 
-    if (o.verbose && o.args.nonEmpty) {
-      println("Reading Slang file argument ...")
+    if (o.verbose && o.plugins.nonEmpty) {
+      println("Loading plugins ...")
       startTime()
     }
 
-    val slangFile: (String, (Option[String], String)) = {
-      val arg = o.args(0)
+    var plugins = ISZ[StaticTranspiler.ExtMethodTranspilerPlugin]()
+
+    for (p <- o.plugins) {
+      try {
+        val c = Class.forName(p.value)
+        plugins = plugins :+ c
+          .getDeclaredConstructor()
+          .newInstance()
+          .asInstanceOf[StaticTranspiler.ExtMethodTranspilerPlugin]
+      } catch {
+        case _: Throwable =>
+          eprintln(s"Could not load plugin: $p")
+          return PluginError
+      }
+    }
+
+    plugins = plugins ++ ISZ(
+      StaticTranspiler.StringConversionsExtMethodTranspilerPlugin(),
+      StaticTranspiler.NumberConversionsExtMethodTranspilerPlugin()
+    )
+
+    if (o.verbose) {
+      if (o.plugins.nonEmpty) {
+        stopTime()
+        println()
+      }
+
+      if (o.args.nonEmpty) {
+        println("Reading Slang file arguments ...")
+        startTime()
+      }
+    }
+
+    var slangFiles: ISZ[(String, (Option[String], String))] = ISZ()
+    for (arg <- o.args) {
       val f = new File(arg.value)
       if (!f.exists) {
         eprintln(s"File $arg does not exist.")
@@ -103,11 +133,40 @@ object CTranspiler {
         eprintln(s"Can only accept .slang files as arguments")
         return InvalidFile
       }
-      (arg, readFile(f))
+      slangFiles = slangFiles :+ ((arg, readFile(f)))
     }
 
     if (o.verbose) {
       if (o.args.nonEmpty) {
+        stopTime()
+        println()
+      }
+
+      if (o.exts.nonEmpty) {
+        println("Reading extension files ...")
+        startTime()
+      }
+    }
+
+    var exts: ISZ[StaticTranspiler.ExtFile] = ISZ()
+    for (ext <- o.exts) {
+      val f = new File(ext.value)
+      if (!f.exists) {
+        eprintln(s"File $ext does not exist.")
+        return InvalidFile
+      } else if (!f.isFile) {
+        eprintln(s"Path $ext is not a file.")
+        return InvalidFile
+      } else if (!f.getName.endsWith(".c") && !f.getName.endsWith(".h")) {
+        eprintln(s"Can only accept .h or .c files as extension files")
+        return InvalidFile
+      }
+      val p = readFile(f)
+      exts = exts :+ StaticTranspiler.ExtFile(p._1.get, p._2)
+    }
+
+    if (o.verbose) {
+      if (o.exts.nonEmpty) {
         stopTime()
         println()
       }
@@ -287,40 +346,113 @@ object CTranspiler {
       case _ =>
     }
 
-    val thOpt: Option[TypeHierarchy] = Some(th)
+    var thOpt: Option[TypeHierarchy] = Some(th)
+    var entryPoints = ISZ[TypeSpecializer.EntryPoint]()
+    for (slangFile <- slangFiles) {
+      if (o.verbose) {
+        println()
+        println(s"Parsing, resolving, type outlining, and type checking ${slangFile._1} ...")
+        startTime()
+      }
+
+      Parser.parseTopUnit[TopUnit.Program](slangFile._2._2, F, T, F, slangFile._2._1, reporter) match {
+        case Some(p: TopUnit.Program) =>
+          val p2 = FrontEnd.checkWorksheet(thOpt, p, reporter)
+          if (reporter.hasIssue) {
+            reporter.printMessages()
+            return InvalidSlangFiles
+          }
+          stopTime()
+
+          if (o.verbose) {
+            println()
+            println(s"Sanity checking computed symbol and type information of ${slangFile._1} ...")
+            startTime()
+          }
+
+          PostTipeAttrChecker.checkProgram(p2._2, reporter)
+
+          if (reporter.hasIssue) {
+            reporter.printMessages()
+            return InternalError
+          }
+
+          entryPoints = entryPoints :+ TypeSpecializer.EntryPoint.Worksheet(p2._2)
+          thOpt = Some(p2._1)
+
+        case Some(_) => eprintln(s"File '${slangFile._1}' does not contain a Slang program")
+        case _ =>
+      }
+    }
+    stopTime()
 
     if (o.verbose) {
       println()
-      println(s"Parsing, resolving, type outlining, and type checking ${slangFile._1} ...")
+      println(s"Specializing programs ...")
       startTime()
     }
 
-    Parser.parseTopUnit(slangFile._2._2, F, T, F, slangFile._2._1, reporter) match {
-      case Some(p: TopUnit.Program) =>
-        val p2 = FrontEnd.checkWorksheet(thOpt, p, reporter)
-        if (reporter.hasIssue) {
-          reporter.printMessages()
-          return InvalidSlangFiles
-        }
-        stopTime()
-
-        if (o.verbose) {
-          println()
-          println(s"Sanity checking computed symbol and type information of ${slangFile._1} ...")
-          startTime()
-        }
-
-        PostTipeAttrChecker.checkProgram(p2, reporter)
-
-        if (reporter.hasIssue) {
-          reporter.printMessages()
-          return InternalError
-        }
-        stopTime()
-
-      case Some(_) => eprintln(s"File '${slangFile._1}' does not contain a Slang program")
-      case _ =>
+    for (app <- o.apps) {
+      entryPoints = entryPoints :+ TypeSpecializer.EntryPoint.App(ISZ(app.value.split('.').map(String(_)): _*))
     }
+
+    val tsr = TypeSpecializer.specialize(thOpt.get, entryPoints, reporter)
+
+    if (reporter.hasIssue) {
+      reporter.printMessages()
+      return InternalError
+    }
+    stopTime()
+
+    if (o.verbose) {
+      println()
+      println("Transpiling to C ...")
+      startTime()
+    }
+
+    val config = StaticTranspiler.Config(
+      projectName = o.projectName.getOrElse("main"),
+      lineNumber = o.line,
+      fprintWidth = o.fingerprint,
+      defaultBitWidth = o.bitWidth,
+      maxStringSize = o.maxStringSize,
+      maxArraySize = o.maxArraySize,
+      customArraySizes = HashMap.empty,
+      extMethodTranspilerPlugins = plugins,
+      exts = exts,
+      forLoopOpt = o.unroll
+    )
+
+    val trans = StaticTranspiler(config, tsr, reporter)
+    val r = trans.transpile()
+
+    if (reporter.hasIssue) {
+      reporter.printMessages()
+      return TranspilingError
+    }
+    stopTime()
+
+    if (o.verbose) {
+      println()
+      println("Writing generated files ...")
+      startTime()
+    }
+
+    val resultDir = pwd / o.output.get.value
+    rm ! resultDir
+    mkdir ! resultDir
+
+    for (e <- r.files.entries) {
+      val path = e._1
+      var f = resultDir
+      for (segment <- path) {
+        f = f / segment.value
+      }
+      mkdir ! f / up
+      write.over(f, e._2.render.value)
+      println(s"Wrote $f")
+    }
+    stopTime()
 
     if (o.verbose) {
       val newUsed = rt.totalMemory - rt.freeMemory
@@ -345,6 +477,7 @@ object CTranspiler {
   }
 
   implicit class GZIS(val gzis: GZIPInputStream) extends AnyVal {
+
     def bytes: Array[Byte] = {
       val bos = new ByteArrayOutputStream
       val buffer = new Array[Byte](16384)

@@ -288,10 +288,10 @@ import StaticTranspiler._
         minIndexMaxElementSize(AST.Typed.z, AST.Typed.string)._2,
         typeNames
       )
-      r = r + ISZ[String]("types.h") ~> typesH(typeQNames, typeNames)
-      r = r + ISZ[String]("types.c") ~> typesC(typeNames)
-      r = r + ISZ[String]("all.h") ~> allH(typeQNames)
-      r = r + ISZ[String]("all.c") ~> allC(typeNames)
+      r = r + ISZ[String](runtimeDir, "types.h") ~> typesH(typeQNames, typeNames)
+      r = r + ISZ[String](runtimeDir, "types.c") ~> typesC(typeNames)
+      r = r + ISZ[String](runtimeDir, "all.h") ~> allH(typeQNames)
+      r = r + ISZ[String](runtimeDir, "all.c") ~> allC(typeNames)
       r = r ++ compiled(compiledMap)
       for (ext <- config.exts) {
         r = r + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> st"${ext.content}"

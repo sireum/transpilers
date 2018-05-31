@@ -44,6 +44,17 @@ object Cli {
     sourcepath: ISZ[String],
     output: Option[String],
     verbose: B,
+    projectName: Option[String],
+    apps: ISZ[String],
+    line: B,
+    unroll: B,
+    fingerprint: Z,
+    bitWidth: Z,
+    maxStringSize: Z,
+    maxArraySize: Z,
+    customArraySizes: ISZ[String],
+    plugins: ISZ[String],
+    exts: ISZ[String],
     save: Option[String],
     load: Option[String]
   ) extends SireumOption
@@ -92,7 +103,7 @@ import Cli._
     val help =
       st"""Slang To C Transpiler
           |
-          |Usage: <option>* [<slang-file>]
+          |Usage: <option>* ( <slang-file> )*
           |
           |Available Options:
           |-s, --sourcepath         Sourcepath of Slang .scala files (expects path
@@ -102,6 +113,28 @@ import Cli._
           |    --verbose            Enable verbose mode
           |-h, --help               Display this information
           |
+          |Configuration Options:
+          |-n, --name               Project name (expects a string)
+          |-a, --apps               @app fully qualified names (expects a string separated
+          |                           by ",")
+          |-l, --line               Disable runtime source line number
+          |-u, --unroll             Enable for-loop unrolling
+          |-f, --fingerprint        Generic entity fingerprinting size (expects an
+          |                           integer; default is 3)
+          |-b, --bits               Generic entity fingerprinting size (expects one of {
+          |                           64, 32, 16, 8 })
+          |    --string-size        Maximum string size (expects an integer; default is
+          |                           100)
+          |    --sequence-size      Default maximum sequence size (expects an integer;
+          |                           default is 100)
+          |-s, --sequence           Custom maximum sequence sizes, each in the form of
+          |                           <type>=<size>, where <type> is either IS[,] or MS[,]
+          |                           with fully qualified index and element types
+          |                           (expects a string separated by ",")
+          |-p, --plugins            Plugin fully qualified names (expects a string
+          |                           separated by ",")
+          |-e, --exts               Extension file paths (expects path strings)
+          |
           |Persistence Options:
           |    --save               Path to save type information to (outline should not
           |                           be enabled) (expects a path)
@@ -110,6 +143,17 @@ import Cli._
     var sourcepath: ISZ[String] = ISZ[String]()
     var output: Option[String] = Some("out")
     var verbose: B = false
+    var projectName: Option[String] = Some("main")
+    var apps: ISZ[String] = ISZ[String]()
+    var line: B = true
+    var unroll: B = false
+    var fingerprint: Z = 3
+    var bitWidth: Z = 64
+    var maxStringSize: Z = 100
+    var maxArraySize: Z = 100
+    var customArraySizes: ISZ[String] = ISZ[String]()
+    var plugins: ISZ[String] = ISZ[String]()
+    var exts: ISZ[String] = ISZ[String]()
     var save: Option[String] = None[String]()
     var load: Option[String] = None[String]()
     var j = i
@@ -138,6 +182,72 @@ import Cli._
              case Some(v) => verbose = v
              case _ => return None()
            }
+         } else if (arg == "-n" || arg == "--name") {
+           val o: Option[Option[String]] = parseString(args, j + 1)
+           o match {
+             case Some(v) => projectName = v
+             case _ => return None()
+           }
+         } else if (arg == "-a" || arg == "--apps") {
+           val o: Option[ISZ[String]] = parseStrings(args, j + 1, ',')
+           o match {
+             case Some(v) => apps = v
+             case _ => return None()
+           }
+         } else if (arg == "-l" || arg == "--line") {
+           val o: Option[B] = { j = j - 1; Some(!line) }
+           o match {
+             case Some(v) => line = v
+             case _ => return None()
+           }
+         } else if (arg == "-u" || arg == "--unroll") {
+           val o: Option[B] = { j = j - 1; Some(!unroll) }
+           o match {
+             case Some(v) => unroll = v
+             case _ => return None()
+           }
+         } else if (arg == "-f" || arg == "--fingerprint") {
+           val o: Option[Z] = parseNum(args, j + 1, Some(1), Some(64))
+           o match {
+             case Some(v) => fingerprint = v
+             case _ => return None()
+           }
+         } else if (arg == "-b" || arg == "--bits") {
+           val o: Option[Z] = parseNumChoice(args, j + 1, ISZ(z"64", z"32", z"16", z"8"))
+           o match {
+             case Some(v) => bitWidth = v
+             case _ => return None()
+           }
+         } else if (arg == "--string-size") {
+           val o: Option[Z] = parseNum(args, j + 1, None(), None())
+           o match {
+             case Some(v) => maxStringSize = v
+             case _ => return None()
+           }
+         } else if (arg == "--sequence-size") {
+           val o: Option[Z] = parseNum(args, j + 1, None(), None())
+           o match {
+             case Some(v) => maxArraySize = v
+             case _ => return None()
+           }
+         } else if (arg == "-s" || arg == "--sequence") {
+           val o: Option[ISZ[String]] = parseStrings(args, j + 1, ',')
+           o match {
+             case Some(v) => customArraySizes = v
+             case _ => return None()
+           }
+         } else if (arg == "-p" || arg == "--plugins") {
+           val o: Option[ISZ[String]] = parseStrings(args, j + 1, ',')
+           o match {
+             case Some(v) => plugins = v
+             case _ => return None()
+           }
+         } else if (arg == "-e" || arg == "--exts") {
+           val o: Option[ISZ[String]] = parsePaths(args, j + 1)
+           o match {
+             case Some(v) => exts = v
+             case _ => return None()
+           }
          } else if (arg == "--save") {
            val o: Option[Option[String]] = parsePath(args, j + 1)
            o match {
@@ -159,7 +269,7 @@ import Cli._
         isOption = F
       }
     }
-    return Some(CTranspilerOption(help, parseArguments(args, j), sourcepath, output, verbose, save, load))
+    return Some(CTranspilerOption(help, parseArguments(args, j), sourcepath, output, verbose, projectName, apps, line, unroll, fingerprint, bitWidth, maxStringSize, maxArraySize, customArraySizes, plugins, exts, save, load))
   }
 
   def parseArguments(args: ISZ[String], i: Z): ISZ[String] = {
