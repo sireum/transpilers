@@ -2390,15 +2390,15 @@ import StaticTranspiler._
       }
       e match {
         case e: AST.Exp.LitZ => return Some(e.value)
-        case e: AST.Exp.StringInterpolate => return None() // TODO
-        /*e.typedOpt.get match {
+        case e: AST.Exp.StringInterpolate =>
+          e.typedOpt.get match {
             case t: AST.Typed.Name =>
               ts.typeHierarchy.typeMap.get(t.ids).get match {
                 case _: TypeInfo.SubZ => return Z(e.lits(0).value)
                 case _ => return None()
               }
             case _ => return None()
-          }*/
+          }
         case e: AST.Exp.Ident => return fromRes(e.attr.resOpt.get)
         case e: AST.Exp.Select => return fromRes(e.attr.resOpt.get)
         case _ => return None()
@@ -2432,7 +2432,7 @@ import StaticTranspiler._
             |}"""
         }
       }
-      if (config.forLoopOpt && stmt.enumGens.size == z"1") { // TODO: generalize for subz and multiple egs
+      if (config.forLoopOpt && stmt.enumGens.size == z"1") {
         val eg = stmt.enumGens(0)
         eg.range match {
           case range: AST.EnumGen.Range.Step =>
