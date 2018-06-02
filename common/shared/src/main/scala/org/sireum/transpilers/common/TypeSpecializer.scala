@@ -99,6 +99,8 @@ object TypeSpecializer {
   val mainTpe: AST.Typed.Fun =
     AST.Typed.Fun(F, F, ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))), AST.Typed.z)
 
+  val preResultExpInvoke: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResultExpInvoke(continu = F)
+
   def specialize(
     th: TypeHierarchy,
     entryPoints: ISZ[EntryPoint],
@@ -113,8 +115,11 @@ object TypeSpecializer {
 
   @pure def substMethod(m: Info.Method, substMap: HashMap[String, AST.Typed]): Info.Method = {
     if (substMap.nonEmpty) {
-      val newAst = TypeSubstitutor(substMap).transformStmt(m.ast).get
-      return m(ast = newAst.asInstanceOf[AST.Stmt.Method])
+      val astOpt = TypeSubstitutor(substMap).transformStmt(m.ast)
+      astOpt match {
+        case MSome(newAst: AST.Stmt.Method) => return m(ast = newAst)
+        case _ => return m
+      }
     } else {
       return m
     }
@@ -122,8 +127,11 @@ object TypeSpecializer {
 
   @pure def substAssignExp(ast: AST.AssignExp, substMap: HashMap[String, AST.Typed]): AST.AssignExp = {
     if (substMap.nonEmpty) {
-      val newAst = TypeSubstitutor(substMap).transformAssignExp(ast).get
-      return newAst.asInstanceOf[AST.AssignExp]
+      val astOpt = TypeSubstitutor(substMap).transformAssignExp(ast)
+      astOpt match {
+        case MSome(newAst: AST.AssignExp) => return newAst
+        case _ => return ast
+      }
     } else {
       return ast
     }
@@ -240,7 +248,6 @@ import TypeSpecializer._
         workList = ISZ()
 
         for (m <- wl) {
-
           val set: HashSSet[Method] = methods.get(m.info.owner) match {
             case Some(s) => s
             case _ => HashSSet.empty
@@ -398,27 +405,46 @@ import TypeSpecializer._
       if (cm.ast.bodyOpt.nonEmpty) {
         cm
       } else {
-        var nodes: ISZ[CallGraph.Node] = ISZ(CallGraph.Node(T, F, cm.owner, cm.ast.sig.id.value))
-        var mOpt: Option[Info.Method] = None()
+        def subst(m: Info.Method, name: QName, typeParams: ISZ[AST.TypeParam]): Info.Method = {
+          for (ancestor <- info.ancestors if ancestor.ids == name) {
+            val sm = TypeChecker.buildTypeSubstMap(info.name, posOpt, typeParams, ancestor.args, reporter).get
+            return substMethod(m, sm)
+          }
+          halt("Infeasible")
+        }
+        var owners = ISZ(cm.owner)
+        var found: Option[Info.Method] = None()
         do {
-          var parentNodes: ISZ[CallGraph.Node] = ISZ()
-          for (node <- nodes if mOpt.isEmpty) {
-            for (parent <- methodRefinement.parentsOf(node).elements if mOpt.isEmpty) {
-              val cInfo: Info.Method = th.typeMap.get(parent.owner).get match {
-                case tInfo: TypeInfo.AbstractDatatype => tInfo.methods.get(parent.id).get
-                case tInfo: TypeInfo.Sig => tInfo.methods.get(parent.id).get
-                case _ => halt("Infeasible")
-              }
-              if (cInfo.ast.bodyOpt.isEmpty) {
-                parentNodes = parentNodes :+ CallGraph.Node(T, F, cInfo.owner, cInfo.ast.sig.id.value)
-              } else {
-                mOpt = Some(cInfo)
-              }
+          val curr = owners
+          owners = ISZ()
+          for (owner <- curr if found.isEmpty) {
+            th.typeMap.get(owner).get match {
+              case tInfo: TypeInfo.AbstractDatatype =>
+                val m = tInfo.methods.get(method.id).get
+                if (m.ast.bodyOpt.isEmpty) {
+                  for (p <- tInfo.ast.parents) {
+                    owners = owners :+ p.typedOpt.get.asInstanceOf[AST.Typed.Name].ids
+                  }
+                } else {
+                  val r = subst(m, tInfo.name, tInfo.ast.typeParams)
+                  found = Some(r)
+                }
+              case tInfo: TypeInfo.Sig =>
+                val m = tInfo.methods.get(method.id).get
+                if (m.ast.bodyOpt.isEmpty) {
+                  for (p <- tInfo.ast.parents) {
+                    owners = owners :+ p.typedOpt.get.asInstanceOf[AST.Typed.Name].ids
+                  }
+                } else {
+                  val r = subst(m, tInfo.name, tInfo.ast.typeParams)
+                  found = Some(r)
+                }
+              case _ => halt("Infeasible")
             }
           }
-          nodes = parentNodes
-        } while (mOpt.isEmpty || nodes.isEmpty)
-        mOpt.get(owner = method.owner)
+        } while (owners.nonEmpty && found.isEmpty)
+        assert(found.nonEmpty, "Infeasible")
+        found.get
       }
     }
 
@@ -761,15 +787,18 @@ import TypeSpecializer._
   }
 
   override def preExpInvoke(o: AST.Exp.Invoke): AST.MTransformer.PreResult[AST.Exp] = {
-    if (o.ident.id.value == string"apply") {
-      return AST.MTransformer.PreResultExpInvoke
+    if (o.ident.id.value != string"apply") {
+      o.attr.resOpt.get match {
+        case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
+        case _ =>
+      }
     }
-    o.attr.resOpt.get match {
-      case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
-      case _ =>
-    }
-
-    return AST.MTransformer.PreResultExpInvoke
+    AST.MTransformer.transformOption(o.receiverOpt, transformExp _)
+    transformResolvedAttr(o.ident.attr)
+    AST.MTransformer.transformISZ(o.targs, transformType _)
+    AST.MTransformer.transformISZ(o.args, transformExp _)
+    transformResolvedAttr(o.attr)
+    return preResultExpInvoke
   }
 
   override def preExpInvokeNamed(o: AST.Exp.InvokeNamed): AST.MTransformer.PreResult[AST.Exp] = {
@@ -777,7 +806,12 @@ import TypeSpecializer._
       case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
       case _ =>
     }
-    return AST.MTransformer.PreResultExpInvokeNamed
+    AST.MTransformer.transformOption(o.receiverOpt, transformExp _)
+    transformResolvedAttr(o.ident.attr)
+    AST.MTransformer.transformISZ(o.targs, transformType _)
+    AST.MTransformer.transformISZ(o.args, transformNamedArg _)
+    transformResolvedAttr(o.attr)
+    return preResultExpInvoke
   }
 
   override def preTyped(o: AST.Typed): AST.MTransformer.PreResult[AST.Typed] = {

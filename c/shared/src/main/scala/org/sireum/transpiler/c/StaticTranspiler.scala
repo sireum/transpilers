@@ -180,7 +180,8 @@ object StaticTranspiler {
 
 import StaticTranspiler._
 
-@record class StaticTranspiler(config: Config, ts: TypeSpecializer.Result, reporter: Reporter) {
+@record class StaticTranspiler(config: Config, ts: TypeSpecializer.Result) {
+  val reporter: Reporter = Reporter.create
   var compiledMap: HashMap[QName, Compiled] = HashMap.empty
   var typeNameMap: HashMap[AST.Typed, ST] = HashMap.empty
   var mangledTypeNameMap: HashMap[String, AST.Typed] = HashMap.empty
@@ -190,7 +191,7 @@ import StaticTranspiler._
   var nextTempNum: Z = 0
   var localRename: HashMap[String, ST] = HashMap.empty
 
-  def transpile(): Result = {
+  def transpile(rep: Reporter): Result = {
 
     var r = HashSMap.empty[QName, ST]
     var cFilenames: ISZ[String] = ISZ()
@@ -220,6 +221,7 @@ import StaticTranspiler._
             i = i + 1
         }
       }
+      rep.reports(reporter.messages)
     }
 
     def transpileObjectVars(name: QName, vars: HashSSet[String]): Unit = {
@@ -370,6 +372,7 @@ import StaticTranspiler._
     val oldNextTempNum = nextTempNum
     val oldStmts = stmts
     val oldReceiverOpts = currReceiverOpt
+    currReceiverOpt = Some(t)
     nextTempNum = 0
     stmts = ISZ()
 
@@ -1061,6 +1064,8 @@ import StaticTranspiler._
             val r = transInstanceMethodInvoke(t, methodNameRes(Some(currReceiverOpt.get), res), st"this", ISZ(), ISZ())
             return r
           }
+        case res: AST.ResolvedInfo.EnumElement =>
+          return st"${mangleName(res.owner)}_${enumName(res.name)}"
         case res => halt(s"Infeasible: $res")
       }
     }
@@ -1408,10 +1413,14 @@ import StaticTranspiler._
                   transObjectMethodInvoke(res.tpeOpt.get.args, expType(invoke), methodNameRes(None(), res), invoke.args)
                 return r
               } else {
+                val receiverType: AST.Typed.Name = invoke.receiverOpt match {
+                  case Some(rcv) => expType(rcv).asInstanceOf[AST.Typed.Name]
+                  case _ => currReceiverOpt.get
+                }
                 val receiver = transReceiver()
                 val r = transInstanceMethodInvoke(
                   expType(invoke),
-                  methodNameRes(Some(expType(invoke.receiverOpt.get).asInstanceOf[AST.Typed.Name]), res),
+                  methodNameRes(Some(receiverType), res),
                   receiver,
                   res.tpeOpt.get.args,
                   invoke.args

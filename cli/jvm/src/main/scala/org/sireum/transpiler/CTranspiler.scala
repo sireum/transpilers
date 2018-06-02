@@ -383,8 +383,8 @@ object CTranspiler {
         case Some(_) => eprintln(s"File '${slangFile._1}' does not contain a Slang program")
         case _ =>
       }
+      stopTime()
     }
-    stopTime()
 
     if (o.verbose) {
       println()
@@ -406,8 +406,8 @@ object CTranspiler {
 
     val tsr = TypeSpecializer.specialize(thOpt.get, entryPoints, forwardingMap, reporter)
 
+    reporter.printMessages()
     if (reporter.hasIssue) {
-      reporter.printMessages()
       return InternalError
     }
     stopTime()
@@ -470,11 +470,11 @@ object CTranspiler {
       forLoopOpt = o.unroll
     )
 
-    val trans = StaticTranspiler(config, tsr, reporter)
-    val r = trans.transpile()
+    val trans = StaticTranspiler(config, tsr)
+    val r = trans.transpile(reporter)
 
+    reporter.printMessages()
     if (reporter.hasIssue) {
-      reporter.printMessages()
       return TranspilingError
     }
     stopTime()

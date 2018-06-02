@@ -265,12 +265,12 @@ class StaticTranspilerTest extends TestSuite {
 
     val ts = TypeSpecializer.specialize(th, ISZ(TypeSpecializer.EntryPoint.Worksheet(p)), HashMap.empty, reporter)
 
-    val trans = StaticTranspiler(config, ts, reporter)
+    val trans = StaticTranspiler(config, ts)
 
-    val r = trans.transpile()
+    val r = trans.transpile(reporter)
 
-    if (trans.reporter.hasIssue) {
-      trans.reporter.printMessages()
+    reporter.printMessages()
+    if (reporter.hasIssue) {
       assert(F)
     }
 
