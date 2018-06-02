@@ -5,13 +5,12 @@ import ammonite.ops._
 
 object BuildingControlGenPeriodicApp extends scala.App {
 
-  if (args.length != 1) {
-    println("Usage: BuildingControlGenPeriodicApp <slang-embedded-path>")
+  if (args.length != 2) {
+    println("Usage: BuildingControlGenPeriodicApp <slang-embedded-path> <output-path>")
   } else {
 
-    val out = root / 'Volumes / 'RAM / 'out
-    //val out = pwd / 'output
-    val path = args(0)
+    val path = Path(new File(args(0)).getCanonicalFile.getAbsoluteFile)
+    val out = Path(new File(args(1)).getCanonicalFile.getAbsoluteFile)
     val currentFile = Path(new File(implicitly[sourcecode.File].value).getParentFile) / up / 'c / "ext.c"
     Cli(File.pathSeparatorChar).parseSireum(
       ISZ(
@@ -21,7 +20,7 @@ object BuildingControlGenPeriodicApp extends scala.App {
         "--sourcepath",
         s"$path/art:$path/building-control-gen-periodic/src/main",
         "--apps",
-        "building_control_gen_periodic.Fan_i_AEP,building_control_gen_periodic.Fan_i_App,building_control_gen_periodic.TempControl_i_AEP,building_control_gen_periodic.TempControl_i_App,building_control_gen_periodic.TempSensor_i_App",
+        "building_control_gen_periodic.Fan_i_AEP,building_control_gen_periodic.Fan_i_App,building_control_gen_periodic.TempControl_i_AEP,building_control_gen_periodic.TempControl_i_App,building_control_gen_periodic.TempSensor_i_App,building_control_gen_periodic.Main",
         "--forward",
         "art.ArtNative=building_control_gen_periodic.ArtNix,building_control_gen_periodic.Platform=building_control_gen_periodic.PlatformNix",
         "--exts",
