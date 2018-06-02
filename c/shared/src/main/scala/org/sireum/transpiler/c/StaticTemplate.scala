@@ -472,6 +472,10 @@ object StaticTemplate {
     }
 
     val eqHeader = st"B ${name}__eq($name this, $name other)"
+    val neHeader =
+      st"""static inline B ${name}__ne($name this, $name other) {
+      |  return !${name}__eq(this, other);
+      |}"""
     val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
 
@@ -481,6 +485,7 @@ object StaticTemplate {
       |${(accessors, "\n")}
       |
       |$eqHeader;
+      |$neHeader;
       |$cprintHeader;
       |$stringHeader;
       |

@@ -209,9 +209,7 @@ import StaticTranspiler._
           case ep: TypeSpecializer.EntryPoint.App =>
             val m = ts.typeHierarchy.nameMap.get(ep.name :+ "main").get.asInstanceOf[Info.Method]
             val atExitOpt: Option[Info.Method] = ts.typeHierarchy.nameMap.get(ep.name :+ "atExit") match {
-              case Some(info: Info.Method) =>
-                transpileMethod(TypeSpecializer.Method(None(), info))
-                Some(info)
+              case Some(info: Info.Method) => Some(info)
               case _ => None()
             }
             val (exeName, main) = transpileMain(m, atExitOpt, i)
@@ -830,7 +828,9 @@ import StaticTranspiler._
             if (res.paramNames.isEmpty) st""
             else
               st", ${(for (p <- ops.ISZOps(res.paramNames).zip(info.methodType.tpe.args)) yield st"(${transpileType(p._2)}) ${localId(p._1)}", ", ")}"
-          if (scalar) {
+          if (rt == AST.Typed.unit) {
+            cases = cases :+ st"case T$tpe: $mName(caller, ($tpe) this$args); return;"
+          } else if (scalar) {
             cases = cases :+ st"case T$tpe: return $mName(caller, ($tpe) this$args);"
           } else {
             cases = cases :+ st"case T$tpe: Type_assign(result, $mName(caller, ($tpe) this$args), sizeof($rTpe)); return;"
@@ -1620,7 +1620,6 @@ import StaticTranspiler._
   }
 
   def transpileIf(stmt: AST.Stmt.If, fOpt: Option[(ST, ST) => ST @pure]): Unit = {
-    stmts = stmts ++ transpileLoc(stmt.posOpt)
     val cond = transpileExp(stmt.cond)
     val oldStmts = stmts
     stmts = ISZ()
@@ -1949,7 +1948,6 @@ import StaticTranspiler._
       }
       localRename = oldLocalRename
     }
-    stmts = stmts ++ transpileLoc(stmt.posOpt)
     val e: ST = stmt.exp match {
       case e: AST.Exp.Select if isNativeRes(e.attr.resOpt.get) => val r = transpileExp(e.receiverOpt.get); r
       case _ => val r = transpileExp(stmt.exp); r
@@ -2142,15 +2140,21 @@ import StaticTranspiler._
       val kind = typeKind(t)
       val scalar = isScalar(kind)
       val immutable = isImmutable(kind)
-      if (immutable && stmt.isVal) {
-        if (scalar) {
-          transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
-        } else {
-          transpileAssignExp(init, (rhs, _) => st"$tpe $local = ($tpe) $rhs;")
+      if (scalar) {
+        init match {
+          case _: AST.Stmt.Expr => transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
+          case _ =>
+            stmts = stmts :+ st"$tpe $local;"
+            transpileAssignExp(init, (rhs, _) => st"$local = $rhs;")
         }
       } else {
-        if (scalar) {
-          transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
+        if (immutable && stmt.isVal) {
+          init match {
+            case _: AST.Stmt.Expr => transpileAssignExp(init, (rhs, _) => st"$tpe $local = ($tpe) $rhs;")
+            case _ =>
+              stmts = stmts :+ st"$tpe $local;"
+              transpileAssignExp(init, (rhs, _) => st"$local = ($tpe) $rhs;")
+          }
         } else {
           stmts = stmts :+ st"DeclNew$tpe(_$local);"
           stmts = stmts :+ st"$tpe $local = ($tpe) &_$local;"
@@ -2213,7 +2217,10 @@ import StaticTranspiler._
                 transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, (${transpileType(expType(lhs))}) $rhs);")
               } else {
                 val t = currReceiverOpt.get
-                transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this,(${transpileType(expType(lhs))}) $rhs);")
+                transpileAssignExp(
+                  stmt.rhs,
+                  (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this,(${transpileType(expType(lhs))}) $rhs);"
+                )
               }
             case _ => halt("Infeasible")
           }
@@ -2224,7 +2231,10 @@ import StaticTranspiler._
             transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, (${transpileType(expType(lhs))}) $rhs);")
           } else {
             val t = expType(lhs.receiverOpt.get)
-            transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);")
+            transpileAssignExp(
+              stmt.rhs,
+              (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);"
+            )
           }
         case lhs: AST.Exp.Invoke =>
           val (receiverType, receiver): (AST.Typed.Name, ST) = lhs.receiverOpt match {
@@ -2535,16 +2545,26 @@ import StaticTranspiler._
             } else {
               stmts = stmts ++ transpileLoc(stmt.posOpt)
               val e = transpileExp(exp)
-              stmts = stmts :+ st"$e;"
+              val t = expType(exp)
+              if (t == AST.Typed.unit) {
+                stmts = stmts :+ st"$e;"
+              } else {
+                val temp = freshTempName()
+                stmts = stmts :+ st"${transpileType(t)} $temp = $e;"
+              }
             }
           case exp => halt(s"Infeasible: $exp")
         }
       case stmt: AST.Stmt.VarPattern => transVarPattern(stmt)
       case stmt: AST.Stmt.Block => transpileBlock(stmt)
-      case stmt: AST.Stmt.If => transpileIf(stmt, None())
+      case stmt: AST.Stmt.If =>
+        stmts = stmts ++ transpileLoc(stmt.posOpt)
+        transpileIf(stmt, None())
       case stmt: AST.Stmt.While => transpileWhile(stmt)
       case stmt: AST.Stmt.DoWhile => transpileDoWhile(stmt)
-      case stmt: AST.Stmt.Match => transpileMatch(stmt, None())
+      case stmt: AST.Stmt.Match =>
+        stmts = stmts ++ transpileLoc(stmt.posOpt)
+        transpileMatch(stmt, None())
       case stmt: AST.Stmt.For => transpileFor(stmt)
       case stmt: AST.Stmt.Return => transpileReturn(stmt)
       case _: AST.Stmt.Method => halt("TODO") // TODO
