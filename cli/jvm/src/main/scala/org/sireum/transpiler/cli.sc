@@ -43,7 +43,7 @@ val cTranspiler: Tool = Tool(
       Opt(name = "maxArraySize", longKey = "sequence-size", shortKey = None(),
         tpe = Type.Num(None(), 100, None(), None()),
         description = "Default maximum sequence size"),
-      Opt(name = "customArraySizes", longKey = "sequence", shortKey = Some('s'),
+      Opt(name = "customArraySizes", longKey = "sequence", shortKey = Some('c'),
         tpe = Type.Str(Some(','), None()),
         description = "Custom maximum sequence sizes, each in the form of <type>=<size>, where <type> is either IS[,], MS[,], ISZ[], MSZ[], or ZS with fully qualified index and element types where applicable"),
       Opt(name = "plugins", longKey = "plugins", shortKey = Some('p'),

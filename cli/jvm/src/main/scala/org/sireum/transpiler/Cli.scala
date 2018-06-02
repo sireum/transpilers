@@ -128,7 +128,7 @@ import Cli._
           |                           100)
           |    --sequence-size      Default maximum sequence size (expects an integer;
           |                           default is 100)
-          |-s, --sequence           Custom maximum sequence sizes, each in the form of
+          |-c, --sequence           Custom maximum sequence sizes, each in the form of
           |                           <type>=<size>, where <type> is either IS[,], MS[,],
           |                           ISZ[], MSZ[], or ZS with fully qualified index and
           |                           element types where applicable (expects a string
@@ -236,7 +236,7 @@ import Cli._
              case Some(v) => maxArraySize = v
              case _ => return None()
            }
-         } else if (arg == "-s" || arg == "--sequence") {
+         } else if (arg == "-c" || arg == "--sequence") {
            val o: Option[ISZ[String]] = parseStrings(args, j + 1, ',')
            o match {
              case Some(v) => customArraySizes = v

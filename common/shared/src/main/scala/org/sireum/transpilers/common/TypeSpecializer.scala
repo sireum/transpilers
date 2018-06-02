@@ -789,8 +789,10 @@ import TypeSpecializer._
     eOpt match {
       case Some(e) =>
         e.typedOpt.get match {
+          case _: AST.Typed.Package => return None()
           case _: AST.Typed.Object => return None()
-          case _ => return Some(e.typedOpt.get.asInstanceOf[AST.Typed.Name])
+          case t: AST.Typed.Name => return Some(t)
+          case _ => halt(s"Infeasible: $e")
         }
       case _ => return None()
     }
