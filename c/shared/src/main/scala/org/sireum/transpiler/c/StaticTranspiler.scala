@@ -1832,7 +1832,7 @@ import StaticTranspiler._
             stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${localId(res.id)});"
           case res: AST.ResolvedInfo.Var =>
             if (res.isInObject) {
-              stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id});"
+              stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}(sf));"
             } else {
               stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}_(this));"
             }
