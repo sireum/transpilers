@@ -833,7 +833,7 @@ import StaticTranspiler._
           } else if (scalar) {
             cases = cases :+ st"case T$tpe: return $mName(caller, ($tpe) this$args);"
           } else {
-            cases = cases :+ st"case T$tpe: Type_assign(result, $mName(caller, ($tpe) this$args), sizeof($rTpe)); return;"
+            cases = cases :+ st"case T$tpe: $mName(result, caller, ($tpe) this$args); return;"
           }
       }
     }
@@ -1417,7 +1417,10 @@ import StaticTranspiler._
                   case Some(rcv) => expType(rcv).asInstanceOf[AST.Typed.Name]
                   case _ => currReceiverOpt.get
                 }
-                val receiver = transReceiver()
+                val receiver: ST = invoke.receiverOpt match {
+                  case Some(rcv) => val r = transpileExp(rcv); r
+                  case _ => st"this"
+                }
                 val r = transInstanceMethodInvoke(
                   expType(invoke),
                   methodNameRes(Some(receiverType), res),

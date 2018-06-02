@@ -466,7 +466,7 @@ object StaticTemplate {
       } else {
         accessors = accessors :+ st"#define ${name}_${vd.id}_(this) ((${vd.tpePtr}) &(this)->${vd.id})"
         if (vd.isVar) {
-          accessors = accessors :+ st"#define ${name}_${vd.id}_a(this, value) Type_assign((this)->${vd.id}, value, sizeof(${vd.tpe}))"
+          accessors = accessors :+ st"#define ${name}_${vd.id}_a(this, value) Type_assign(&(this)->${vd.id}, value, sizeof(${vd.tpe}))"
         }
       }
     }
