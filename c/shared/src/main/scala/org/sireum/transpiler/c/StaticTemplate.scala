@@ -246,8 +246,10 @@ object StaticTemplate {
   }
 
   @pure def cmake(project: String, mainFilenames: ISZ[String], filess: ISZ[QName]): ST = {
+    val mainFs = HashSet ++ mainFilenames
+
     @pure def files(filess: ISZ[QName]): ISZ[ST] = {
-      return for (f <- filess)
+      return for (f <- filess if !(f.size == z"1" && mainFs.contains(f(0))))
         yield if (f.size == z"1") st"${f(0)}" else st"${(ops.ISZOps(f).dropRight(1), "/")}/${f(f.size - 1)}"
     }
 
@@ -264,12 +266,14 @@ object StaticTemplate {
     }
 
     @pure def target(filename: String): ST = {
+      val name = removeExt(filename)
       val r =
         st"""
-        |add_executable($filename
+        |add_executable($name
+        |        $filename
         |        ${(files(filess), "\n")})
         |
-        |target_include_directories($filename
+        |target_include_directories($name
         |        ${(includeDirs(filess), "\n")})"""
       return r
     }

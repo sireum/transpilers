@@ -204,7 +204,7 @@ import StaticTranspiler._
             val (exeName, main) = transpileWorksheet(ep.program, i)
             val cFilename = s"$exeName.c"
             r = r + ISZ[String](cFilename) ~> main
-            cFilenames = cFilenames :+ exeName
+            cFilenames = cFilenames :+ cFilename
             i = i + 1
           case ep: TypeSpecializer.EntryPoint.App =>
             val m = ts.typeHierarchy.nameMap.get(ep.name :+ "main").get.asInstanceOf[Info.Method]
@@ -215,7 +215,7 @@ import StaticTranspiler._
             val (exeName, main) = transpileMain(m, atExitOpt, i)
             val cFilename = s"$exeName.c"
             r = r + ISZ[String](cFilename) ~> main
-            cFilenames = cFilenames :+ exeName
+            cFilenames = cFilenames :+ cFilename
             i = i + 1
         }
       }
