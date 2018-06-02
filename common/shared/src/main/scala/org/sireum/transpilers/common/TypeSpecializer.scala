@@ -94,6 +94,7 @@ object TypeSpecializer {
   val emptyCVars: Map[String, (B, B, AST.Typed)] = Map.empty
   val emptyVars: Map[String, (B, AST.Typed, AST.AssignExp)] = Map.empty
   val objectConstructorType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(), AST.Typed.unit)
+  val atExitType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(), AST.Typed.unit)
 
   val mainTpe: AST.Typed.Fun =
     AST.Typed.Fun(F, F, ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))), AST.Typed.z)
@@ -158,7 +159,21 @@ import TypeSpecializer._
           th.nameMap.get(name) match {
             case Some(m: Info.Method) =>
               m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe match {
-                case `mainTpe` => workList = workList :+ Method(None(), m)
+                case `mainTpe` =>
+                  workList = workList :+ Method(None(), m)
+                  th.nameMap.get(inf.name :+ "atExit") match {
+                    case Some(atexit: Info.Method) =>
+                      if (atexit.methodType.tpe == atExitType) {
+                        workList = workList :+ Method(None(), atexit)
+                      } else {
+                        reporter.error(
+                          None(),
+                          tsKind,
+                          st"'${(ep.name, ".")}' app's atExit method is not of type $atExitType.".render
+                        )
+                      }
+                    case _ =>
+                  }
                 case _ =>
                   reporter
                     .error(None(), tsKind, st"'${(ep.name, ".")}' app's main method is not of type $mainTpe.".render)

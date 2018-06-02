@@ -235,7 +235,10 @@ object StaticTemplate {
       |void Type_string(String result, StackFrame caller, void *this) {
       |  TYPE type = ((Type) this)->type;
       |  switch (type) {
-      |    ${(for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string(result, caller, (${tn._2}) this); return;", "\n")}
+      |    ${(
+        for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string(result, caller, (${tn._2}) this); return;",
+        "\n"
+      )}
       |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
       |}"""
@@ -356,11 +359,24 @@ object StaticTemplate {
     return r
   }
 
-  @pure def main(filename: String, owner: QName, id: String, iszStringType: ST, iszSizeType: String): ST = {
+  @pure def main(
+    filename: String,
+    owner: QName,
+    id: String,
+    iszStringType: ST,
+    iszSizeType: String,
+    atExit: ISZ[ST]
+  ): ST = {
     val r =
       st"""#include <all.h>
       |
+      |void atExit(void) {
+      |  ${(atExit, "\n")}
+      |}
+      |
       |int main(int argc, char *argv[]) {
+      |  atexit(atExit);
+      |
       |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<App>", 0);
       |
       |  DeclNew$iszStringType(t_args);

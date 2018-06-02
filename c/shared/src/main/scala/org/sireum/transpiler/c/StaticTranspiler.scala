@@ -207,7 +207,13 @@ import StaticTranspiler._
             i = i + 1
           case ep: TypeSpecializer.EntryPoint.App =>
             val m = ts.typeHierarchy.nameMap.get(ep.name :+ "main").get.asInstanceOf[Info.Method]
-            val (exeName, main) = transpileMain(m, i)
+            val atExitOpt: Option[Info.Method] = ts.typeHierarchy.nameMap.get(ep.name :+ "atExit") match {
+              case Some(info: Info.Method) =>
+                transpileMethod(TypeSpecializer.Method(None(), info))
+                Some(info)
+              case _ => None()
+            }
+            val (exeName, main) = transpileMain(m, atExitOpt, i)
             val cFilename = s"$exeName.c"
             r = r + ISZ[String](cFilename) ~> main
             cFilenames = cFilenames :+ exeName
@@ -731,12 +737,22 @@ import StaticTranspiler._
     }
   }
 
-  def transpileMain(m: Info.Method, i: Z): (String, ST) = {
+  def transpileMain(m: Info.Method, atExitOpt: Option[Info.Method], i: Z): (String, ST) = {
     val fileUriOpt: Option[String] = m.ast.posOpt match {
       case Some(pos) => pos.uriOpt
       case _ => None()
     }
     val fname = filename(fileUriOpt, "main")
+    val atExit: ISZ[ST] = atExitOpt match {
+      case Some(atexit) =>
+        val oldStmts = stmts
+        stmts = ISZ()
+        transObjectMethodInvoke(ISZ(), AST.Typed.unit, methodNameRes(None(), atexit.methodRes), ISZ())
+        val r = stmts
+        stmts = oldStmts
+        r
+      case _ => ISZ()
+    }
     return (
       if (i == z"0") "main" else s"main$i",
       main(
@@ -744,7 +760,8 @@ import StaticTranspiler._
         m.owner,
         m.ast.sig.id.value,
         transpileType(iszStringType),
-        arraySizeType(minIndexMaxElementSize(iszStringType.args(0), iszStringType.args(1))._2)
+        arraySizeType(minIndexMaxElementSize(iszStringType.args(0), iszStringType.args(1))._2),
+        atExit
       )
     )
   }
@@ -983,6 +1000,28 @@ import StaticTranspiler._
     return st"${mangleName(tname)}_C($n)"
   }
 
+  def transObjectMethodInvoke(targs: ISZ[AST.Typed], retType: AST.Typed, name: ST, invokeArgs: ISZ[AST.Exp]): ST = {
+    var args = ISZ[ST]()
+    for (p <- ops.ISZOps(invokeArgs).zip(targs)) {
+      val (arg, t) = p
+      val a = transpileExp(arg)
+      if (isScalar(typeKind(t))) {
+        args = args :+ a
+      } else {
+        args = args :+ st"(${transpileType(t)}) $a"
+      }
+    }
+    if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
+      return st"$name(sf${commaArgs(args)})"
+    } else {
+      val temp = freshTempName()
+      val tpe = transpileType(retType)
+      stmts = stmts :+ st"DeclNew$tpe($temp);"
+      stmts = stmts :+ st"$name(&$temp, sf${commaArgs(args)});"
+      return st"(&$temp)"
+    }
+  }
+
   def transpileExp(exp: AST.Exp): ST = {
 
     def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
@@ -1217,27 +1256,6 @@ import StaticTranspiler._
       }
     }
 
-    def transObjectMethodInvoke(targs: ISZ[AST.Typed], retType: AST.Typed, name: ST, invokeArgs: ISZ[AST.Exp]): ST = {
-      var args = ISZ[ST]()
-      for (p <- ops.ISZOps(invokeArgs).zip(targs)) {
-        val (arg, t) = p
-        val a = transpileExp(arg)
-        if (isScalar(typeKind(t))) {
-          args = args :+ a
-        } else {
-          args = args :+ st"(${transpileType(t)}) $a"
-        }
-      }
-      if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
-        return st"$name(sf${commaArgs(args)})"
-      } else {
-        val temp = freshTempName()
-        val tpe = transpileType(retType)
-        stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"$name(&$temp, sf${commaArgs(args)});"
-        return st"(&$temp)"
-      }
-    }
     def transInstanceMethodInvoke(
       retType: AST.Typed,
       name: ST,
