@@ -1217,12 +1217,12 @@ import StaticTranspiler._
               val e = transpileExp(select.receiverOpt.get)
               val t = select.targs(0).typedOpt.get
               val tpe = transpileType(t)
-              return st"${tpe}__as($e)"
+              return st"${tpe}__as(sf, $e)"
             case AST.ResolvedInfo.BuiltIn.Kind.IsInstanceOf =>
               val e = transpileExp(select.receiverOpt.get)
               val t = select.targs(0).typedOpt.get
               val tpe = transpileType(t)
-              return st"${tpe}__is($e)"
+              return st"${tpe}__is(sf, $e)"
             case AST.ResolvedInfo.BuiltIn.Kind.String =>
               val receiver = select.receiverOpt.get
               val e = transpileExp(receiver)
@@ -1433,7 +1433,17 @@ import StaticTranspiler._
               res.owner :+ res.id match {
                 case AST.Typed.isName => val r = transSApply(); return r
                 case AST.Typed.msName => val r = transSApply(); return r
-                case _ => val r = transConstructor(res, expType(invoke), invoke.args); return r
+                case AST.Typed.bName => halt("TODO") // TODO
+                case AST.Typed.cName => halt("TODO") // TODO
+                case AST.Typed.zName => halt("TODO") // TODO
+                case AST.Typed.f32Name => halt("TODO") // TODO
+                case AST.Typed.f64Name => halt("TODO") // TODO
+                case AST.Typed.rName => halt("TODO") // TODO
+                case name =>
+                  ts.typeHierarchy.typeMap.get(name) match {
+                    case Some(_: TypeInfo.SubZ) => halt("TODO") // TODO
+                    case _ => val r = transConstructor(res, expType(invoke), invoke.args); return r
+                  }
               }
             case AST.MethodMode.Copy => val r = transConstructor(res, expType(invoke), invoke.args); return r
             case AST.MethodMode.Extractor => halt(s"Infeasible: $res")
@@ -1753,7 +1763,7 @@ import StaticTranspiler._
     }
     def transNamePattern(t: AST.Typed.Name, pat: AST.Pattern.Structure): Unit = {
       val tpe = transpileType(t)
-      stmts = stmts :+ st"$handledVar = $handledVar && ${tpe}__is($exp);"
+      stmts = stmts :+ st"$handledVar = $handledVar && ${tpe}__is(sf, $exp);"
       val oldStmts = stmts
       stmts = ISZ()
       pat.idOpt match {
@@ -1833,7 +1843,7 @@ import StaticTranspiler._
         pat.typeOpt match {
           case Some(tpe) =>
             val t = tpe.typedOpt.get
-            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__is($exp);"
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__is(sf, $exp);"
           case _ => // skip
         }
       case pat: AST.Pattern.VarBinding =>
@@ -1845,7 +1855,7 @@ import StaticTranspiler._
         val kind = typeKind(t)
         pat.tipeOpt match {
           case Some(tipe) =>
-            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(tipe.typedOpt.get)}__is($exp);"
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(tipe.typedOpt.get)}__is(sf, $exp);"
             if (isScalar(kind)) {
               stmts = stmts :+ st"if ($handledVar) { $name = $exp; }"
             } else {
@@ -2200,10 +2210,10 @@ import StaticTranspiler._
             case res: AST.ResolvedInfo.Var =>
               if (res.isInObject) {
                 val name = mangleName(res.owner :+ res.id)
-                transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, $rhs);")
+                transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, (${transpileType(expType(lhs))}) $rhs);")
               } else {
                 val t = currReceiverOpt.get
-                transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this, $rhs);")
+                transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this,(${transpileType(expType(lhs))}) $rhs);")
               }
             case _ => halt("Infeasible")
           }
@@ -2211,10 +2221,10 @@ import StaticTranspiler._
           val res = lhs.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Var]
           if (res.isInObject) {
             val name = mangleName(res.owner :+ res.id)
-            transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, $rhs);")
+            transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, (${transpileType(expType(lhs))}) $rhs);")
           } else {
             val t = expType(lhs.receiverOpt.get)
-            transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this, $rhs);")
+            transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);")
           }
         case lhs: AST.Exp.Invoke =>
           val (receiverType, receiver): (AST.Typed.Name, ST) = lhs.receiverOpt match {

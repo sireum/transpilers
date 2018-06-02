@@ -484,10 +484,10 @@ object StaticTemplate {
       |$cprintHeader;
       |$stringHeader;
       |
-      |#define ${name}__is(this) ((($name) this)->type == T$name)
+      |#define ${name}__is(sf, this) ((($name) this)->type == T$name)
       |
       |static inline $name ${name}__as(StackFrame caller, void *this) {
-      |  if (${name}__is(this)) return ($name) this;
+      |  if (${name}__is(caller, this)) return ($name) this;
       |  fprintf(stderr, "Invalid case from %s to $tpe.", TYPE_string(this));
       |  sfAbortImpl(caller, "");
       |  $abort
@@ -563,12 +563,12 @@ object StaticTemplate {
       |#define ${name}_cprint(this, isOut) Type_cprint(this, isOut)
       |#define ${name}_string(result, caller, this) Type_string(result, caller, this)
       |
-      |B ${name}__is(void *this);
+      |B ${name}__is(StackFrame caller, void *this);
       |$name ${name}__as(StackFrame caller, void *this);"""
     val impl =
       st"""// $tpe
       |
-      |B ${name}__is(void *this) {
+      |B ${name}__is(StackFrame caller, void *this) {
       |  switch(((Type) this)->type) {
       |    ${(for (t <- leafTypes) yield st"case T$t: return T;", "\n")}
       |    default: return F;

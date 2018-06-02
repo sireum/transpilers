@@ -168,6 +168,7 @@ import TypeSpecializer._
             case Some(m: Info.Method) =>
               m.typedOpt.get.asInstanceOf[AST.Typed.Method].tpe match {
                 case `mainTpe` =>
+                  addType(mainTpe.args(0))
                   workList = workList :+ Method(None(), m)
                   th.nameMap.get(inf.name :+ "atExit") match {
                     case Some(atexit: Info.Method) =>
