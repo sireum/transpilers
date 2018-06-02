@@ -747,15 +747,17 @@ import StaticTranspiler._
     val atExit: ISZ[ST] = atExitOpt match {
       case Some(atexit) =>
         val oldStmts = stmts
-        stmts = ISZ()
-        transObjectMethodInvoke(ISZ(), AST.Typed.unit, methodNameRes(None(), atexit.methodRes), ISZ())
-        val r = stmts
+        val e = transObjectMethodInvoke(ISZ(), AST.Typed.unit, methodNameRes(None(), atexit.methodRes), ISZ())
+        val r = ISZ(
+          st"StackFrame sf = NULL;",
+          st"$e;"
+        )
         stmts = oldStmts
         r
       case _ => ISZ()
     }
     return (
-      if (i == z"0") "main" else s"main$i",
+      if (fname != string"main") removeExt(fname) else if (i == z"0") "main" else s"main$i",
       main(
         fname,
         m.owner,
