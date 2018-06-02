@@ -292,7 +292,7 @@ object StaticTemplate {
   }
 
   @pure def typeManglingMap(entries: ISZ[(String, String)]): ST = {
-    val sortedEntries = ops.ISZOps(entries).sortWith((p1, p2) => p1._1 <= p2._2)
+    val sortedEntries = ops.ISZOps(entries).sortWith((p1, p2) => p1._1 < p2._1)
     return st"${(for (p <- sortedEntries) yield st"${p._1}=${p._2}", "\n")}"
   }
 
@@ -933,7 +933,7 @@ object StaticTemplate {
   }
 
   @pure def elementName(owner: QName, id: String): ST = {
-    return st"${mangleName(owner)}_${enumName(id)}"
+    return st"${mangleName(owner)}_${enumId(id)}"
   }
 
   @pure def enum(
@@ -947,12 +947,12 @@ object StaticTemplate {
     val mangledName = mangleName(name)
 
     @pure def enumCase(element: String): ST = {
-      val r = st"""case ${mangledName}_${enumName(element)}: String_assign(result, string("$element")); return;"""
+      val r = st"""case ${mangledName}_${enumId(element)}: String_assign(result, string("$element")); return;"""
       return r
     }
 
     @pure def elementName(id: String): ST = {
-      return st"${mangledName}_${enumName(id)}"
+      return st"${mangledName}_${enumId(id)}"
     }
 
     val indices = elements.indices.map((n: Z) => n)
@@ -1529,15 +1529,46 @@ object StaticTemplate {
     return st"${(ids, ".")}".render
   }
 
-  @pure def localName(id: String): ST = {
+  @pure def localId(id: String): ST = {
     return if (keywords.contains(id)) st"l_$id" else encodeName(id)
   }
 
-  @pure def fieldName(id: String): ST = {
+  @pure def methodId(id: String): ST = {
+    if (keywords.contains(id)) {
+      return st"m_$id"
+    } else {
+      id match {
+        case AST.Exp.BinaryOp.Add => return st"_add"
+        case AST.Exp.BinaryOp.Sub => return st"_sub"
+        case AST.Exp.BinaryOp.Mul => return st"_mul"
+        case AST.Exp.BinaryOp.Div => return st"_div"
+        case AST.Exp.BinaryOp.Rem => return st"_rem"
+        case AST.Exp.BinaryOp.Eq => return st"_eq"
+        case AST.Exp.BinaryOp.Ne => return st"_ne"
+        case AST.Exp.BinaryOp.Shl => return st"_lt"
+        case AST.Exp.BinaryOp.Shr => return st"_le"
+        case AST.Exp.BinaryOp.Ushr => return st"_gt"
+        case AST.Exp.BinaryOp.Lt => return st"_ge"
+        case AST.Exp.BinaryOp.Le => return st"_shl"
+        case AST.Exp.BinaryOp.Gt => return st"_shr"
+        case AST.Exp.BinaryOp.Ge => return st"_ushr"
+        case AST.Exp.BinaryOp.And => return st"_and"
+        case AST.Exp.BinaryOp.Or => return st"_or"
+        case AST.Exp.BinaryOp.Xor => return st"_xor"
+        case AST.Exp.BinaryOp.Append => return st"_append"
+        case AST.Exp.BinaryOp.Prepend => return st"_prepend"
+        case AST.Exp.BinaryOp.AppendAll => return st"_appendall"
+        case AST.Exp.BinaryOp.RemoveAll => return st"_removeall"
+        case _ => return encodeName(id)
+      }
+    }
+  }
+
+  @pure def fieldId(id: String): ST = {
     return if (keywords.contains(id)) st"f_$id" else encodeName(id)
   }
 
-  @pure def enumName(id: String): ST = {
+  @pure def enumId(id: String): ST = {
     return if (keywords.contains(id)) st"E_$id" else encodeName(id)
   }
 
