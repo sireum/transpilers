@@ -1020,7 +1020,7 @@ import StaticTranspiler._
       val temp = freshTempName()
       val tpe = transpileType(retType)
       stmts = stmts :+ st"DeclNew$tpe($temp);"
-      stmts = stmts :+ st"$name(&$temp, sf${commaArgs(args)});"
+      stmts = stmts :+ st"$name(($tpe) &$temp, sf${commaArgs(args)});"
       return st"(&$temp)"
     }
   }
@@ -1284,7 +1284,7 @@ import StaticTranspiler._
         val temp = freshTempName()
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"$name(&$temp, sf, $receiver${commaArgs(args)});"
+        stmts = stmts :+ st"$name(($tpe) &$temp, sf, $receiver${commaArgs(args)});"
         return st"(&$temp)"
       }
     }
@@ -1307,7 +1307,7 @@ import StaticTranspiler._
       } else {
         val temp = freshTempName()
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"$name(&$temp, sf${commaArgs(args)});"
+        stmts = stmts :+ st"$name(($tpe) &$temp, sf${commaArgs(args)});"
         return st"(&$temp)"
       }
     }
@@ -2523,6 +2523,7 @@ import StaticTranspiler._
                 case _ => halt("Infeasible")
               }
             } else {
+              stmts = stmts ++ transpileLoc(stmt.posOpt)
               val e = transpileExp(exp)
               stmts = stmts :+ st"$e;"
             }

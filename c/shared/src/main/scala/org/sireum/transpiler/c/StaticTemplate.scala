@@ -505,7 +505,7 @@ object StaticTemplate {
 
     for (i <- constructorParamTypes.indices) {
       val vd = constructorParamTypes(i)
-      val pre: String = if (isScalar(vd.kind)) "" else "&"
+      val pre: ST = if (isScalar(vd.kind)) st"" else st"(${vd.tpePtr}) &"
       if (!vd.isHidden) {
         eqStmts = eqStmts :+ st"if (${vd.tpePtr}__ne(${pre}this->${vd.id}, ${pre}other->${vd.id})) return F;"
       }

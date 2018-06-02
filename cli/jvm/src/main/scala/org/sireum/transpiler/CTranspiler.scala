@@ -2,7 +2,6 @@ package org.sireum.transpiler
 
 import _root_.java.io._
 import _root_.java.nio.charset._
-import _root_.java.nio.file._
 import _root_.java.util.zip._
 
 import ammonite.ops._
@@ -183,7 +182,7 @@ object CTranspiler {
       } else if (f.isFile) {
         if (f.getName.endsWith(".scala")) {
           var isSlang = F
-          for (firstLine <- Files.lines(f.toPath, StandardCharsets.UTF_8).limit(1).iterator.asScala) {
+          for (firstLine <- java.nio.file.Files.lines(f.toPath, StandardCharsets.UTF_8).limit(1).iterator.asScala) {
             isSlang = firstLine
               .replaceAllLiterally(" ", "")
               .replaceAllLiterally("\t", "")
@@ -485,7 +484,7 @@ object CTranspiler {
       startTime()
     }
 
-    val resultDir = pwd / o.output.get.value
+    val resultDir = Path(new File(o.output.get.value).getCanonicalFile.getAbsolutePath)
     rm ! resultDir
     mkdir ! resultDir
 

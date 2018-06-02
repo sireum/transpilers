@@ -13,3 +13,4 @@ target
 /c/app/sha3
 /c/app/sha3-unrolled
 .DS_Store
+/output
