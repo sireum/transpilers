@@ -55,6 +55,7 @@ object Cli {
     customArraySizes: ISZ[String],
     plugins: ISZ[String],
     exts: ISZ[String],
+    forwarding: ISZ[String],
     save: Option[String],
     load: Option[String]
   ) extends SireumOption
@@ -119,8 +120,8 @@ import Cli._
           |                           by ",")
           |-l, --line               Disable runtime source line number
           |-u, --unroll             Enable for-loop unrolling
-          |-f, --fingerprint        Generic entity fingerprinting size (expects an
-          |                           integer; default is 3)
+          |-f, --fingerprint        Default bit-width for unbounded integer types (e.g.,
+          |                           Z) (expects an integer; default is 3)
           |-b, --bits               Generic entity fingerprinting size (expects one of {
           |                           64, 32, 16, 8 })
           |    --string-size        Maximum string size (expects an integer; default is
@@ -135,6 +136,9 @@ import Cli._
           |-p, --plugins            Plugin fully qualified names (expects a string
           |                           separated by ",")
           |-e, --exts               Extension file paths (expects path strings)
+          |-w, --forward            Object forwarding, each in form of <name>=<name>,
+          |                           where <name> is a fully qualified name of an object
+          |                           (expects a string separated by ",")
           |
           |Persistence Options:
           |    --save               Path to save type information to (outline should not
@@ -155,6 +159,7 @@ import Cli._
     var customArraySizes: ISZ[String] = ISZ[String]()
     var plugins: ISZ[String] = ISZ[String]()
     var exts: ISZ[String] = ISZ[String]()
+    var forwarding: ISZ[String] = ISZ[String]()
     var save: Option[String] = None[String]()
     var load: Option[String] = None[String]()
     var j = i
@@ -249,6 +254,12 @@ import Cli._
              case Some(v) => exts = v
              case _ => return None()
            }
+         } else if (arg == "-w" || arg == "--forward") {
+           val o: Option[ISZ[String]] = parseStrings(args, j + 1, ',')
+           o match {
+             case Some(v) => forwarding = v
+             case _ => return None()
+           }
          } else if (arg == "--save") {
            val o: Option[Option[String]] = parsePath(args, j + 1)
            o match {
@@ -270,7 +281,7 @@ import Cli._
         isOption = F
       }
     }
-    return Some(CTranspilerOption(help, parseArguments(args, j), sourcepath, output, verbose, projectName, apps, line, unroll, fingerprint, bitWidth, maxStringSize, maxArraySize, customArraySizes, plugins, exts, save, load))
+    return Some(CTranspilerOption(help, parseArguments(args, j), sourcepath, output, verbose, projectName, apps, line, unroll, fingerprint, bitWidth, maxStringSize, maxArraySize, customArraySizes, plugins, exts, forwarding, save, load))
   }
 
   def parseArguments(args: ISZ[String], i: Z): ISZ[String] = {

@@ -33,7 +33,7 @@ val cTranspiler: Tool = Tool(
         description = "Enable for-loop unrolling"),
       Opt(name = "fingerprint", longKey = "fingerprint", shortKey = Some('f'),
         tpe = Type.Num(None(), 3, Some(1), Some(64)),
-        description = "Generic entity fingerprinting size"),
+        description = "Default bit-width for unbounded integer types (e.g., Z)"),
       Opt(name = "bitWidth", longKey = "bits", shortKey = Some('b'),
         tpe = Type.NumChoice(None(), ISZ(64, 32, 16, 8)),
         description = "Generic entity fingerprinting size"),
@@ -52,6 +52,9 @@ val cTranspiler: Tool = Tool(
       Opt(name = "exts", longKey = "exts", shortKey = Some('e'),
         tpe = Type.Path(T, None()),
         description = "Extension file paths"),
+      Opt(name = "forwarding", longKey = "forward", shortKey = Some('w'),
+        tpe = Type.Str(Some(','), None()),
+        description = "Object forwarding, each in form of <name>=<name>, where <name> is a fully qualified name of an object"),
     )),
     OptGroup(name = "Persistence", opts = ISZ(
       Opt(name = "save", longKey = "save", shortKey = None(), tpe = Type.Path(F, None()),

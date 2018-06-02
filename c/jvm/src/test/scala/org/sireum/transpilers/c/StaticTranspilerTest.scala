@@ -263,7 +263,7 @@ class StaticTranspilerTest extends TestSuite {
       assert(F)
     }
 
-    val ts = TypeSpecializer.specialize(th, ISZ(TypeSpecializer.EntryPoint.Worksheet(p)), reporter)
+    val ts = TypeSpecializer.specialize(th, ISZ(TypeSpecializer.EntryPoint.Worksheet(p)), HashMap.empty, reporter)
 
     val trans = StaticTranspiler(config, ts, reporter)
 

@@ -2603,12 +2603,15 @@ import StaticTranspiler._
     noTypeParams: B,
     t: AST.Typed.Fun
   ): ST = {
-    val ids = owner
     val r: ST =
       if (isInObject) {
+        val ids: QName = ts.forwarding.get(owner) match {
+          case Some(o) => o
+          case _ => owner
+        }
         if (noTypeParams) st"${mangleName(ids)}_$id"
         else st"${mangleName(ids)}_${id}_${fprint(t)}"
-      } else if (sNameSet.contains(ids)) { st"${transpileType(receiverTypeOpt.get)}_$id" } else if (noTypeParams) {
+      } else if (sNameSet.contains(owner)) { st"${transpileType(receiverTypeOpt.get)}_$id" } else if (noTypeParams) {
         id.native match {
           case "unary_+" => st"${transpileType(receiverTypeOpt.get)}__plus"
           case "unary_-" => st"${transpileType(receiverTypeOpt.get)}__minus"

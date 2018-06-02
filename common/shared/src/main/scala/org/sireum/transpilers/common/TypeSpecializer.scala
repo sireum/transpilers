@@ -38,6 +38,7 @@ object TypeSpecializer {
     traitMethods: HashSSet[SMethod],
     methods: HashSMap[QName, HashSSet[Method]],
     extMethods: HashSSet[SMethod],
+    forwarding: HashMap[QName, QName],
     typeImpl: Poset[AST.Typed.Name],
     callGraph: Graph[SMember, B]
   )
@@ -97,8 +98,13 @@ object TypeSpecializer {
   val mainTpe: AST.Typed.Fun =
     AST.Typed.Fun(F, F, ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))), AST.Typed.z)
 
-  def specialize(th: TypeHierarchy, entryPoints: ISZ[EntryPoint], reporter: Reporter): Result = {
-    val ts = TypeSpecializer(th, entryPoints)
+  def specialize(
+    th: TypeHierarchy,
+    entryPoints: ISZ[EntryPoint],
+    forwarding: HashMap[QName, QName],
+    reporter: Reporter
+  ): Result = {
+    val ts = TypeSpecializer(th, entryPoints, forwarding)
     val r = ts.specialize()
     reporter.reports(ts.reporter.messages)
     return r
@@ -126,7 +132,8 @@ object TypeSpecializer {
 
 import TypeSpecializer._
 
-@record class TypeSpecializer(th: TypeHierarchy, eps: ISZ[EntryPoint]) extends AST.MTransformer {
+@record class TypeSpecializer(th: TypeHierarchy, eps: ISZ[EntryPoint], forwarding: HashMap[QName, QName])
+    extends AST.MTransformer {
   val reporter: Reporter = Reporter.create
   val methodRefinement: Poset[CallGraph.Node] = CallGraph.methodRefinements(th)
   var nameTypes: HashSMap[QName, HashSSet[NamedType]] = HashSMap.empty
@@ -336,7 +343,19 @@ import TypeSpecializer._
       buildLeaves(info)
     }
 
-    return Result(th, eps, nameTypes, otherTypes, objectVars, traitMethods, methods, extMethods, typeImpl, callGraph)
+    return Result(
+      th,
+      eps,
+      nameTypes,
+      otherTypes,
+      objectVars,
+      traitMethods,
+      methods,
+      extMethods,
+      forwarding,
+      typeImpl,
+      callGraph
+    )
   }
 
   def classMethodImpl(posOpt: Option[Position], method: SMethod): Info.Method = {
@@ -408,11 +427,20 @@ import TypeSpecializer._
     callGraph = callGraph + caller ~> target
   }
 
-  def addSMethod(posOpt: Option[Position], method: SMethod): Unit = {
-    method.mode match {
+  def addSMethod(posOpt: Option[Position], m: SMethod): Unit = {
+    m.mode match {
       case AST.MethodMode.Method =>
       case AST.MethodMode.Ext =>
       case _ => return
+    }
+
+    val method: SMethod = if (m.receiverOpt.isEmpty) {
+      forwarding.get(m.owner) match {
+        case Some(owner) => val r = m(owner = owner); callGraph = callGraph + m ~> r; r
+        case _ => m
+      }
+    } else {
+      m
     }
 
     if (seen.contains(method)) {

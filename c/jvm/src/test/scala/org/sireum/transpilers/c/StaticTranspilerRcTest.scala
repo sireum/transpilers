@@ -81,7 +81,7 @@ class StaticTranspilerRcTest extends TestSuite {
       assert(F)
     }
 
-    val ts = TypeSpecializer.specialize(th, ISZ(TypeSpecializer.EntryPoint.App(ISZ("sha3"))), reporter)
+    val ts = TypeSpecializer.specialize(th, ISZ(TypeSpecializer.EntryPoint.App(ISZ("sha3"))), HashMap.empty, reporter)
 
     val trans = StaticTranspiler(config, ts, reporter)
 
