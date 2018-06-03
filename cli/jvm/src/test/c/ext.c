@@ -40,11 +40,6 @@ void building_control_gen_periodic_MessageQueue_receive(Tuple2_D0E3BB result, St
   struct Message r;
   msgrcv(msqid, &msize, sizeof(size_t), 0, 0);
   msgrcv(msqid, &r, msize.size, 0, 0);
-  //printf("%s", "Received from port ");
-  //Z_cprint((Z) r.mtype, T);
-  //printf("%s", " data: ");
-  //art_DataContent_cprint(&r.data, T);
-  //printf("\n");
   result->type = TTuple2_D0E3BB;
   result->_1 = (Z) r.mtype;
   Type_assign(&result->_2, &r.data, msize.size);
@@ -54,11 +49,6 @@ Unit building_control_gen_periodic_MessageQueue_send(StackFrame caller, Z msgid,
   struct MessageSize msize = { .mtype = port, .size = sizeOf((Type) d) };
   struct Message m = { .mtype = port, .data = *d };
   int msqid = msgget((key_t) msgid, 0644);
-  //printf("%s", "Sending to port ");
-  //Z_cprint(port, T);
-  //printf("%s", " data: ");
-  //art_DataContent_cprint(d, T);
-  //printf("\n");
   msgsnd(msqid, &msize, sizeof(size_t), 0);
   msgsnd(msqid, &m, msize.size, 0);
 }
