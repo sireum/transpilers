@@ -289,6 +289,9 @@ object StaticTemplate {
       |
       |add_compile_options(-Werror)
       |
+      |MATH(EXPR stack_size "4 * 1000 * 1000")
+      |set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size,$${stack_size}")
+      |
       |add_compile_options("$$<$$<CONFIG:Release>:-O2>")
       |
       |${(mains, "\n\n")}"""
@@ -373,13 +376,18 @@ object StaticTemplate {
   ): ST = {
     val r =
       st"""#include <all.h>
+      |#include <signal.h>
       |
-      |void atExit(void) {
+      |void atExit(int signum) {
       |  ${(atExit, "\n")}
       |}
       |
       |int main(int argc, char *argv[]) {
-      |  atexit(atExit);
+      |  struct sigaction action;
+      |  action.sa_handler = atExit;
+      |  sigemptyset(&action.sa_mask);
+      |  action.sa_flags = 0;
+      |  sigaction(SIGTERM, &action, NULL);
       |
       |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<App>", 0);
       |
@@ -1267,7 +1275,7 @@ object StaticTemplate {
     |  Z size = result->size;
     |  Z newSize = size + nSize;
     |  sfAssert(newSize <= MaxString, "Insufficient maximum for String characters.");
-    |  snprintf(&(result->value[result->size]), nSize, ${mangledName}_F, this);
+    |  snprintf(&(result->value[result->size]), nSize + 1, ${mangledName}_F, this);
     |  result->size = newSize;
     |}""")
     optionTypeOpt match {
@@ -1487,10 +1495,11 @@ object StaticTemplate {
       globals = globals :+ st"$t _${name}_$id;"
       accessorHeaders = accessorHeaders :+ st"$h;"
       val scalar = isScalar(kind)
+      val pre: ST = if (scalar) st"" else st"($tPtr) &"
       accessors = accessors :+
         st"""$h {
         |  ${name}_init(caller);
-        |  return ${if (scalar) "" else "&"}_${name}_$id;
+        |  return ${pre}_${name}_$id;
         |}"""
       if (isVar) {
         val h2 = st"void ${name}_${id}_a(StackFrame caller, $tPtr p_$id)"

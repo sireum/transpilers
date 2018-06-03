@@ -19,6 +19,8 @@ object BuildingControlGenPeriodicApp extends scala.App {
         "--verbose",
         "--sourcepath",
         s"$path/art:$path/building-control-gen-periodic/src/main",
+        "--string-size",
+        "256",
         "--apps",
         "building_control_gen_periodic.Fan_i_AEP,building_control_gen_periodic.Fan_i_App,building_control_gen_periodic.TempControl_i_AEP,building_control_gen_periodic.TempControl_i_App,building_control_gen_periodic.TempSensor_i_App,building_control_gen_periodic.Main",
         "--forward",
@@ -36,10 +38,10 @@ object BuildingControlGenPeriodicApp extends scala.App {
     }
 
     %('cmake, ".")(out)
+    %('make, "-j8")(out)
     rm ! out / 'CMakeFiles
     rm ! out / "cmake_install.cmake"
     rm ! out / "CMakeCache.txt"
-    %('make, "-j8")(out)
   }
 
 }

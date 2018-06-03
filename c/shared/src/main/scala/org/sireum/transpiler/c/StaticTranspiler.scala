@@ -748,10 +748,7 @@ import StaticTranspiler._
       case Some(atexit) =>
         val oldStmts = stmts
         val e = transObjectMethodInvoke(ISZ(), AST.Typed.unit, methodNameRes(None(), atexit.methodRes), ISZ())
-        val r = ISZ(
-          st"StackFrame sf = NULL;",
-          st"$e;"
-        )
+        val r = ISZ(st"StackFrame sf = NULL;", st"$e;")
         stmts = oldStmts
         r
       case _ => ISZ()
@@ -1023,7 +1020,7 @@ import StaticTranspiler._
       val tpe = transpileType(retType)
       stmts = stmts :+ st"DeclNew$tpe($temp);"
       stmts = stmts :+ st"$name(($tpe) &$temp, sf${commaArgs(args)});"
-      return st"(&$temp)"
+      return st"(($tpe) &$temp)"
     }
   }
 
@@ -1066,8 +1063,7 @@ import StaticTranspiler._
             val r = transInstanceMethodInvoke(t, methodNameRes(Some(currReceiverOpt.get), res), st"this", ISZ(), ISZ())
             return r
           }
-        case res: AST.ResolvedInfo.EnumElement =>
-          return st"${mangleName(res.owner)}_${enumId(res.name)}"
+        case res: AST.ResolvedInfo.EnumElement => return st"${mangleName(res.owner)}_${enumId(res.name)}"
         case res => halt(s"Infeasible: $res")
       }
     }
@@ -1287,7 +1283,7 @@ import StaticTranspiler._
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
         stmts = stmts :+ st"$name(($tpe) &$temp, sf, $receiver${commaArgs(args)});"
-        return st"(&$temp)"
+        return st"(($tpe) &$temp)"
       }
     }
 
@@ -1310,7 +1306,7 @@ import StaticTranspiler._
         val temp = freshTempName()
         stmts = stmts :+ st"DeclNew$tpe($temp);"
         stmts = stmts :+ st"$name(($tpe) &$temp, sf${commaArgs(args)});"
-        return st"(&$temp)"
+        return st"(($tpe) &$temp)"
       }
     }
 
@@ -1486,19 +1482,19 @@ import StaticTranspiler._
       stmts = stmts :+ st"DeclNewString($temp);"
       var i = 0
       for (arg <- exp.args) {
+        val lit = exp.lits(i)
+        val s = transpileLitString(lit.posOpt, lit.value)
+        stmts = stmts :+ st"""String_string((String) &$temp, sf, $s);"""
         val t = expType(arg)
         val tpe = transpileType(t)
         val e = transpileExp(arg)
         stmts = stmts :+ st"${tpe}_string((String) &$temp, sf, $e);"
-        val lit = exp.lits(i)
-        val s = transpileLitString(lit.posOpt, lit.value)
-        stmts = stmts :+ st"""String_string((String) &$temp, sf, $s);"""
         i = i + 1
       }
       val lit = exp.lits(i)
       val s = transpileLitString(lit.posOpt, lit.value)
       stmts = stmts :+ st"""String_string((String) &$temp, sf, $s);"""
-      return st"(&$temp)"
+      return st"((String) &$temp)"
     }
 
     def transIf(exp: AST.Exp.If): ST = {
@@ -1840,6 +1836,8 @@ import StaticTranspiler._
             } else {
               stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}_(this));"
             }
+          case res: AST.ResolvedInfo.EnumElement =>
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${enumId(res.name)});"
           case res => halt(s"Infeasible: $res")
         }
       case _: AST.Pattern.SeqWildcard => // skip

@@ -776,7 +776,11 @@ import TypeSpecializer._
         currSMethodOpt match {
           case Some(sm) =>
             val receiver: AST.Typed.Name = o.receiverOpt match {
-              case Some(r) => r.typedOpt.get.asInstanceOf[AST.Typed.Name]
+              case Some(r) => r.typedOpt.get match {
+                case t: AST.Typed.Method if t.tpe.isByName => t.tpe.ret.asInstanceOf[AST.Typed.Name]
+                case t: AST.Typed.Name => t
+                case _ => halt("Infeasible")
+              }
               case _ => currReceiverOpt.get
             }
             addClassSVar(o.posOpt, sm, receiver, v)
