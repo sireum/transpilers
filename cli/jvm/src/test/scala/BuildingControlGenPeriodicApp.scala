@@ -71,10 +71,8 @@ object BuildingControlGenPeriodicApp extends scala.App {
                                        |set -e
                                        |export SCRIPT_HOME=$( cd "$( dirname "$0" )" &> /dev/null && pwd )
                                        |cd $SCRIPT_HOME
-                                       |#mac/TempControl_i_AEP 2> /dev/null &
-                                       |#mac/Fan_i_AEP 2> /dev/null &
-                                       |open -a Terminal mac/TempControl_i_AEP
-                                       |open -a Terminal mac/Fan_i_AEP
+                                       |mac/TempControl_i_AEP 2> /dev/null &
+                                       |mac/Fan_i_AEP 2> /dev/null &
                                        |open -a Terminal mac/TempControl_i_App
                                        |open -a Terminal mac/TempSensor_i_App
                                        |open -a Terminal mac/Fan_i_App
