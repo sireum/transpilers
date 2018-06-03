@@ -1,19 +1,9 @@
 #include <all.h>
 #include <sys/msg.h>
-
-#ifdef _WIN32
-#include <Windows.h>
-#else
 #include <unistd.h>
-#endif
 
 #define MIN_TEMP 55
 #define MAX_TEMP 100
-
-struct MessageSize {
-  long mtype;
-  size_t size;
-};
 
 struct Message {
   long mtype;
@@ -36,29 +26,20 @@ Unit building_control_gen_periodic_MessageQueue_remove(StackFrame caller, Z msgi
 }
 
 void building_control_gen_periodic_MessageQueue_receive(Tuple2_D0E3BB result, StackFrame caller) {
-  struct MessageSize msize;
   struct Message r;
-  msgrcv(msqid, &msize, sizeof(size_t), 0, 0);
-  msgrcv(msqid, &r, msize.size, 0, 0);
+  msgrcv(msqid, &r, sizeof(union art_DataContent), 0, 0);
   result->type = TTuple2_D0E3BB;
   result->_1 = (Z) r.mtype;
-  Type_assign(&result->_2, &r.data, msize.size);
+  Type_assign(&result->_2, &r.data, sizeOf((Type) &r.data));
 }
 
 Unit building_control_gen_periodic_MessageQueue_send(StackFrame caller, Z msgid, Z port, art_DataContent d) {
-  struct MessageSize msize = { .mtype = port, .size = sizeOf((Type) d) };
   struct Message m = { .mtype = port, .data = *d };
-  int msqid = msgget((key_t) msgid, 0644);
-  msgsnd(msqid, &msize, sizeof(size_t), 0);
-  msgsnd(msqid, &m, msize.size, 0);
+  msgsnd(msgget((key_t) msgid, 0644), &m, sizeof(union art_DataContent), 0);
 }
 
 Unit building_control_gen_periodic_Process_sleep(StackFrame caller, Z n) {
-#ifdef _WIN32
-  Sleep((DWORD) n);
-#else
   usleep((useconds_t) n * 1000);
-#endif
 }
 
 building_control_gen_periodic_BuildingControl_FanAck building_control_gen_periodic_BuildingControl_FanNative_fanCmdActuate(StackFrame caller, building_control_gen_periodic_BuildingControl_FanCmd cmd) {

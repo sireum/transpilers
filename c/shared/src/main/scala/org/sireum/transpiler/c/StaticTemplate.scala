@@ -285,7 +285,7 @@ object StaticTemplate {
     // set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size,$${stack_size}")
 
     val r =
-      st"""cmake_minimum_required(VERSION 3.9)
+      st"""cmake_minimum_required(VERSION 3.6.2)
       |
       |project($project)
       |
