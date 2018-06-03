@@ -42,6 +42,33 @@ object BuildingControlGenPeriodicApp extends scala.App {
     rm ! out / 'CMakeFiles
     rm ! out / "cmake_install.cmake"
     rm ! out / "CMakeCache.txt"
+    write.over(out / "run-mac.sh", """#!/usr/bin/env bash -e
+                                     |export SCRIPT_HOME=$( cd "$( dirname "$0" )" &> /dev/null && pwd )
+                                     |cd $SCRIPT_HOME
+                                     |./TempControl_i_AEP 2> /dev/null &
+                                     |./Fan_i_AEP 2> /dev/null &
+                                     |open -a Terminal ./TempControl_i_App
+                                     |open -a Terminal ./TempSensor_i_App
+                                     |open -a Terminal ./Fan_i_App
+                                     |read -p "Press enter to start ..."
+                                     |./Main""".stripMargin)
+    write.over(out / "run-nix.sh", """#!/usr/bin/env bash -e
+                                     |export SCRIPT_HOME=$( cd "$( dirname "$0" )" &> /dev/null && pwd )
+                                     |cd $SCRIPT_HOME
+                                     |./TempControl_i_AEP 2> /dev/null &
+                                     |./Fan_i_AEP 2> /dev/null &
+                                     |xterm -e sh -c ./TempControl_i_App &
+                                     |xterm -e sh -c ./TempSensor_i_App &
+                                     |xterm -e sh -c ./Fan_i_App &
+                                     |read -p "Press enter to start ..."
+                                     |./Main""".stripMargin)
+    write.over(out / "stop.sh", """#!/usr/bin/env bash -e
+                                  |pkill TempSensor_i_App TempControl_i_App Fan_i_App Fan_i_AEP TempControl_i_AEP
+                                  |killall -9 TempSensor_i_App TempControl_i_App Fan_i_App Fan_i_AEP TempControl_i_AEP
+                                  |ipcs""".stripMargin)
+    %('chmod, "+x", "run-mac.sh")(out)
+    %('chmod, "+x", "run-nix.sh")(out)
+    %('chmod, "+x", "stop.sh")(out)
   }
 
 }
