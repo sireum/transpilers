@@ -69,11 +69,9 @@ void building_control_gen_periodic_BuildingControl_TempSensorNative_currentTempG
   if (temp == 0) {
     temp = MIN_TEMP;
   }
-
   temp += delta;
   if (temp < MIN_TEMP) delta = 4;
   else if (temp > MAX_TEMP) delta = -4;
-
   result->degree = (F32) temp;
   result->unit = building_control_gen_periodic_BuildingControl_TempUnit_Fahrenheit;
 }
