@@ -13,3 +13,13 @@ To test:
 
 It runs [StaticTranspilerTests](https://github.com/santoslab/sireum-transpilers/blob/master/c/jvm/src/test/scala/org/sireum/transpilers/c/StaticTranspilerTest.scala),
 which first compiles each specified worksheet to C, then run CMake, make, and the resulting program.
+
+## Building CLI
+
+To build cli:
+
+```bash
+mill transpilers.cli.assembly
+```
+
+The resulting executable script is at: `out/transpilers/cli/assembly/dest/out.jar`.
