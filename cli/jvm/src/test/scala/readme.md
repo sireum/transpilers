@@ -112,7 +112,7 @@ Below is a depiction of the architecture:
   [CLion](https://www.jetbrains.com/clion/) IDE for C/C++; for example, it was used to develop [ext.c](src/c/ext/ext.c).
 
 
-## Natively Running on Unix-like Host
+## Natively Running The Simulation on Unix-like Host
 
 ### macOS
 
@@ -122,13 +122,15 @@ Below is a depiction of the architecture:
 
 * CMake (available through [MacPorts](https://www.macports.org))
 
-**Compiling**
+[**Compiling**](bin/compile-mac.sh)
 
 ```bash
-bin/compile-mac.sh
+MAKE_ARGS="-j 8" bin/compile-mac.sh
 ```
 
-**Running**
+Note: the `MAKE_ARGS` above sets the compilation to use 8 cores (adjust accordingly).
+
+[**Running**](bin/run-mac.sh)
 
 ```bash
 bin/run-mac.sh
@@ -136,7 +138,7 @@ bin/run-mac.sh
 
 This will open new terminal windows for the three component apps; press the enter key to start the simulation.
 
-**Stopping Simulation**
+[**Stopping Simulation**](bin/stop.sh)
 
 ```bash
 bin/stop.sh
@@ -150,13 +152,13 @@ bin/stop.sh
 
 * CMake (available through the Linux distribution package manager)
 
-**Compiling**
+[**Compiling**](bin/compile-linux.sh)
 
 ```bash
-bin/compile-linux.sh
+MAKE_ARGS="-j 8" bin/compile-linux.sh
 ```
 
-**Running**
+[**Running**](bin/run-linux.sh)
 
 ```bash
 bin/run-linux.sh
@@ -164,7 +166,7 @@ bin/run-linux.sh
 
 This will open new terminal windows for the three component apps; press the enter key to start the simulation.
 
-**Stopping Simulation**
+[**Stopping Simulation**](bin/stop.sh)
 
 ```bash
 bin/stop.sh
@@ -180,25 +182,24 @@ Install the following packages
 <path-cygwin-setup>/setup-x86_64.exe -q --packages=cygrunsrv,make,cmake,clang,procps-ng
 ```
 
-Then run [cygserver] (needed System V MessageQueue).
+Then run [cygserver](https://www.cygwin.com/cygwin-ug-net/using-cygserver.html) (needed for System V MessageQueue).
 
-**Compiling**
+[**Compiling**](bin/compile-cygwin.sh)
 
 ```bash
-bin/compile-cygwin.sh
+MAKE_ARGS="-j 8" bin/compile-cygwin.sh
 ```
 
-**Running**
+[**Running**](bin/run-cygwin.sh)
 
 ```bash
-bin/run-cygiwn.sh
+bin/run-cygwin.sh
 ```
 
 This will open new terminal windows for the three component apps; press the enter key to start the simulation.
 
-**Stopping Simulation**
+[**Stopping Simulation**](bin/stop.sh)
 
 ```bash
 bin/stop.sh
 ```
-
