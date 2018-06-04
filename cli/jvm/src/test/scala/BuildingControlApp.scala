@@ -4,23 +4,28 @@ import java.io._
 
 import ammonite.ops._
 
-object BuildingControlGenPeriodicApp extends scala.App {
+object BuildingControlApp extends scala.App {
 
   if (args.length != 2) {
-    println("Usage: BuildingControlGenPeriodicApp <slang-embedded-path> <output-path>")
+    println("Usage: BuildingControlApp <slang-embedded-path> <output-path>")
   } else {
+    transpile("building-control-gen")
+    transpile("building-control-gen-periodic")
+  }
 
+  def transpile(example: Predef.String): Unit = {
     val slangPath = Path(new File(args(0)).getCanonicalFile.getAbsoluteFile)
-    val out = Path(new File(args(1)).getCanonicalFile.getAbsoluteFile)
+    val out = Path(new File(args(1)).getCanonicalFile.getAbsoluteFile) / example
     val dir = Path(new File(implicitly[sourcecode.File].value).getParentFile)
-    val readme = dir / "readme.md"
-    val extFile = dir / up / 'c / "ext.c"
+    val pkg = example.replaceAllLiterally("-", "_")
+    val extFile = dir / up / 'c / pkg / "ext.c"
+    val readme = dir / pkg / "readme.md"
 
     rm ! out
 
     mkdir ! out / 'src
-    cp(slangPath / "building-control-gen-periodic" / 'src / 'aadl, out / 'src / 'aadl)
-    cp(slangPath / "building-control-gen-periodic" / 'src / 'main, out / 'src / 'scala)
+    cp(slangPath / example / 'src / 'aadl, out / 'src / 'aadl)
+    cp(slangPath / example / 'src / 'main, out / 'src / 'scala)
     cp(slangPath / 'art / 'src / 'main / 'scala / 'art, out / 'src / 'scala / 'art)
     cp(readme, out / "readme.md")
 
@@ -28,11 +33,9 @@ object BuildingControlGenPeriodicApp extends scala.App {
                                            |set -e
                                            |export SCRIPT_HOME=$( cd "$( dirname "$0" )" &> /dev/null && pwd )
                                            |cd $SCRIPT_HOME
-                                           |rm -fR mac
                                            |mkdir -p mac
-                                           |cd $SCRIPT_HOME/../src/c
-                                           |mkdir -p mac
-                                           |cd mac
+                                           |mkdir -p $SCRIPT_HOME/../src/c/mac
+                                           |cd $SCRIPT_HOME/../src/c/mac
                                            |cmake -DCMAKE_BUILD_TYPE=Release ..
                                            |make $MAKE_ARGS
                                            |mv *_App $SCRIPT_HOME/mac/
@@ -43,11 +46,9 @@ object BuildingControlGenPeriodicApp extends scala.App {
                                              |set -e
                                              |export SCRIPT_HOME=$( cd "$( dirname "$0" )" &> /dev/null && pwd )
                                              |cd $SCRIPT_HOME
-                                             |rm -fR linux
                                              |mkdir -p linux
-                                             |cd $SCRIPT_HOME/../src/c
-                                             |mkdir -p linux
-                                             |cd linux
+                                             |mkdir -p $SCRIPT_HOME/../src/c/linux
+                                             |cd $SCRIPT_HOME/../src/c/linux
                                              |cmake -DCMAKE_BUILD_TYPE=Release ..
                                              |make $MAKE_ARGS
                                              |mv *_App $SCRIPT_HOME/linux/
@@ -58,11 +59,9 @@ object BuildingControlGenPeriodicApp extends scala.App {
                                               |set -e
                                               |export SCRIPT_HOME=$( cd "$( dirname "$0" )" &> /dev/null && pwd )
                                               |cd $SCRIPT_HOME
-                                              |rm -fR win
                                               |mkdir -p win
-                                              |cd $SCRIPT_HOME/../src/c
-                                              |mkdir -p win
-                                              |cd win
+                                              |mkdir -p $SCRIPT_HOME/../src/c/win
+                                              |cd $SCRIPT_HOME/../src/c/win
                                               |cmake -DCMAKE_BUILD_TYPE=Release ..
                                               |make $MAKE_ARGS
                                               |mv *.exe $SCRIPT_HOME/win/""".stripMargin)
@@ -136,9 +135,9 @@ object BuildingControlGenPeriodicApp extends scala.App {
         "--sequence",
         "ISZ[org.sireumString]=2",
         "--apps",
-        "building_control_gen_periodic.Fan_i_AEP,building_control_gen_periodic.Fan_i_App,building_control_gen_periodic.TempControl_i_AEP,building_control_gen_periodic.TempControl_i_App,building_control_gen_periodic.TempSensor_i_App,building_control_gen_periodic.Main",
+        s"$pkg.Fan_i_AEP,$pkg.Fan_i_App,$pkg.TempControl_i_AEP,$pkg.TempControl_i_App,$pkg.TempSensor_i_App,$pkg.Main",
         "--forward",
-        "art.ArtNative=building_control_gen_periodic.ArtNix,building_control_gen_periodic.Platform=building_control_gen_periodic.PlatformNix",
+        s"art.ArtNative=$pkg.ArtNix,$pkg.Platform=$pkg.PlatformNix",
         "--exts",
         extFile.toString,
         "--output-dir",
