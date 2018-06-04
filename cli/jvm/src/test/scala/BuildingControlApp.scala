@@ -4,16 +4,25 @@ import java.io._
 
 import ammonite.ops._
 
-object BuildingControlApp extends scala.App {
-
+object BuildingControlGenPeriodicApp extends scala.App {
   if (args.length != 2) {
     println("Usage: BuildingControlApp <slang-embedded-path> <output-path>")
   } else {
-    transpile("building-control-gen")
-    transpile("building-control-gen-periodic")
+    BuildingControlApp.transpile(args, "building-control-gen-periodic")
   }
+}
 
-  def transpile(example: Predef.String): Unit = {
+object BuildingControlGenApp extends scala.App {
+  if (args.length != 2) {
+    println("Usage: BuildingControlApp <slang-embedded-path> <output-path>")
+  } else {
+    BuildingControlApp.transpile(args, "building-control-gen")
+  }
+}
+
+object BuildingControlApp {
+
+  def transpile(args: Array[Predef.String], example: Predef.String): Unit = {
     val slangPath = Path(new File(args(0)).getCanonicalFile.getAbsoluteFile)
     val out = Path(new File(args(1)).getCanonicalFile.getAbsoluteFile) / example
     val dir = Path(new File(implicitly[sourcecode.File].value).getParentFile)

@@ -733,7 +733,7 @@ object StaticTemplate {
         |  $sizeType thisSize = this->size;
         |  Type_assign(result, this, sizeof(struct $name));
         |  result->value[thisSize] = value;
-        |  result->size = ($sizeType) thisSize + 1;
+        |  result->size = ($sizeType) (thisSize + 1);
         |}
         |
         |$prependHeader {
@@ -743,7 +743,7 @@ object StaticTemplate {
         |  result->value[0] = value;
         |  for ($sizeType i = 0; i < thisSize; i++)
         |    result->value[i + 1] = this->value[i];
-        |  result->size = ($sizeType) thisSize + 1;
+        |  result->size = ($sizeType) (thisSize + 1);
         |}
         |
         |$appendAllHeader {
@@ -754,7 +754,7 @@ object StaticTemplate {
         |  Type_assign(result, this, sizeof($name));
         |  for ($sizeType i = 0; i < otherSize; i++)
         |    result->value[thisSize + i] = other->value[i];
-        |  result->size = ($sizeType) thisSize + otherSize;
+        |  result->size = ($sizeType) (thisSize + otherSize);
         |}
         |
         |$removeHeader {
@@ -853,21 +853,19 @@ object StaticTemplate {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
         |  sfAssert(this->size + 1 <= Max$name, "Insufficient maximum for $tpe elements.");
         |  $sizeType thisSize = this->size;
-        |  $sizeType size = thisSize + 1;
         |  Type_assign(result, this, sizeof(struct $name));
         |  Type_assign(&result->value[thisSize], value, sizeof($elementType));
-        |  result->size = size;
+        |  result->size = ($sizeType) (thisSize + 1);
         |}
         |
         |$prependHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
         |  sfAssert(this->size + 1 <= Max$name, "Insufficient maximum for $tpe elements.");
         |  $sizeType thisSize = this->size;
-        |  $sizeType size = thisSize + 1;
         |  Type_assign(&result->value[0], value, sizeof($elementType));
         |  for ($sizeType i = 0; i < thisSize; i++)
         |    Type_assign(&result->value[i + 1], &this->value[i], sizeof($elementType));
-        |  result->size = size;
+        |  result->size = ($sizeType) thisSize + 1;
         |}
         |
         |$appendAllHeader {
@@ -875,11 +873,10 @@ object StaticTemplate {
         |  sfAssert(this->size + other->size <= Max$name, "Insufficient maximum for $tpe elements.");
         |  $sizeType thisSize = this->size;
         |  $sizeType otherSize = other->size;
-        |  $sizeType size = thisSize + otherSize;
         |  Type_assign(result, this, sizeof(struct $name));
         |  for ($sizeType i = 0; i < otherSize; i++)
         |    Type_assign(&result->value[thisSize + i], &other->value[i], sizeof($elementType));
-        |  result->size = size;
+        |  result->size = ($sizeType) thisSize + otherSize;
         |}
         |
         |$removeHeader {

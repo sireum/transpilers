@@ -2102,10 +2102,18 @@ import StaticTranspiler._
             eg.idOpt match {
               case Some(id) =>
                 val iTpe = transpileType(it)
-                return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
-                |  ${(b, "\n")}
-                |}"""
+                if (minIndex == z"0") {
+                  return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                                      |  $iTpe ${id.value} = ($iTpe) $index;
+                                      |  ${(b, "\n")}
+                                      |}"""
+
+                } else {
+                  return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                                      |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
+                                      |  ${(b, "\n")}
+                                      |}"""
+                }
               case _ =>
                 return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
                 |  ${(b, "\n")}
@@ -2115,10 +2123,17 @@ import StaticTranspiler._
             eg.idOpt match {
               case Some(id) =>
                 val iTpe = transpileType(it)
-                return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
-                |  ${(b, "\n")}
-                |}"""
+                if (minIndex == z"0") {
+                  return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                                      |  $iTpe ${id.value} = ($iTpe) $index;
+                                      |  ${(b, "\n")}
+                                      |}"""
+                } else {
+                  return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                                      |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
+                                      |  ${(b, "\n")}
+                                      |}"""
+                }
               case _ =>
                 return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
                 |  ${(b, "\n")}
@@ -2151,13 +2166,8 @@ import StaticTranspiler._
             transpileAssignExp(init, (rhs, _) => st"$local = $rhs;")
         }
       } else {
-        if (immutable && stmt.isVal) {
-          init match {
-            case _: AST.Stmt.Expr => transpileAssignExp(init, (rhs, _) => st"$tpe $local = ($tpe) $rhs;")
-            case _ =>
-              stmts = stmts :+ st"$tpe $local;"
-              transpileAssignExp(init, (rhs, _) => st"$local = ($tpe) $rhs;")
-          }
+        if (immutable && stmt.isVal && init.isInstanceOf[AST.Stmt.Expr]) {
+          transpileAssignExp(init, (rhs, _) => st"$tpe $local = ($tpe) $rhs;")
         } else {
           stmts = stmts :+ st"DeclNew$tpe(_$local);"
           stmts = stmts :+ st"$tpe $local = ($tpe) &_$local;"
