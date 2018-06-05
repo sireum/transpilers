@@ -224,6 +224,29 @@ class StaticTranspilerTest extends TestSuite {
 
     * - testWorksheet("""println(for (ss <- ISZ(ISZ("a", "b"), ISZ("c")); s <- ss) yield s"${s}1")""")
 
+    * - testWorksheet("""import org.sireum.N._
+                        |println(B("T"))
+                        |println(B("F"))
+                        |println(B("true"))
+                        |println(B("false"))
+                        |println(B("5"))
+                        |println(C("abc"))
+                        |println(C(""))
+                        |println(Z("123"))
+                        |println(Z("abc"))
+                        |println(F32("0"))
+                        |println(F32("1.0"))
+                        |println(F32("a"))
+                        |println(F64("0"))
+                        |println(F64("1.0"))
+                        |println(F64("a"))
+                        |println(R("0"))
+                        |println(R("1.0"))
+                        |println(R("a"))
+                        |println(N("0"))
+                        |println(N("-1"))
+      """.stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
@@ -294,13 +317,14 @@ class StaticTranspilerTest extends TestSuite {
     %('cmake, "-DCMAKE_BUILD_TYPE=Release", ".")(resultDir)
 
     val ldir = dir / s"L${line.value}"
-    rm ! ldir / 'CMakeFiles
-    rm ! ldir / "cmake_install.cmake"
-    rm ! ldir / "CMakeCache.txt"
 
     println()
     println("Running make ...")
     %('make)(resultDir)
+
+    rm ! ldir / 'CMakeFiles
+    rm ! ldir / "cmake_install.cmake"
+    rm ! ldir / "CMakeCache.txt"
 
     println()
     println(s"Running ${config.projectName} ...")

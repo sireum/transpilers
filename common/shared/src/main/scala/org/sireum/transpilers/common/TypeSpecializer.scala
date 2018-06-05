@@ -626,6 +626,37 @@ import TypeSpecializer._
         }
         if (set.size != newSet.size) {
           nameTypes = nameTypes + o.ids ~> newSet
+          o.ids match {
+            case AST.Typed.optionName =>
+              o.args(0) match {
+                case AST.Typed.b =>
+                  addType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.b)))
+                  addType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.b)))
+                case AST.Typed.c =>
+                  addType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.c)))
+                  addType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.c)))
+                case AST.Typed.z =>
+                  addType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.z)))
+                  addType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.z)))
+                case AST.Typed.f32 =>
+                  addType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.f32)))
+                  addType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.f32)))
+                case AST.Typed.f64 =>
+                  addType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.f64)))
+                  addType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.f64)))
+                case AST.Typed.r =>
+                  addType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.r)))
+                  addType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.r)))
+                case _ =>
+                  th.typeMap.get(o.ids) match {
+                    case Some(_: TypeInfo.SubZ) =>
+                      addType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.Name(o.ids, ISZ()))))
+                      addType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.Name(o.ids, ISZ()))))
+                    case _ =>
+                  }
+              }
+            case _ =>
+          }
         }
       case _: AST.Typed.Enum => // skip
       case _: AST.Typed.Tuple => otherTypes = otherTypes + o
@@ -776,11 +807,12 @@ import TypeSpecializer._
         currSMethodOpt match {
           case Some(sm) =>
             val receiver: AST.Typed.Name = o.receiverOpt match {
-              case Some(r) => r.typedOpt.get match {
-                case t: AST.Typed.Method if t.tpe.isByName => t.tpe.ret.asInstanceOf[AST.Typed.Name]
-                case t: AST.Typed.Name => t
-                case _ => halt("Infeasible")
-              }
+              case Some(r) =>
+                r.typedOpt.get match {
+                  case t: AST.Typed.Method if t.tpe.isByName => t.tpe.ret.asInstanceOf[AST.Typed.Name]
+                  case t: AST.Typed.Name => t
+                  case _ => halt("Infeasible")
+                }
               case _ => currReceiverOpt.get
             }
             addClassSVar(o.posOpt, sm, receiver, v)
@@ -794,7 +826,8 @@ import TypeSpecializer._
   override def preExpInvoke(o: AST.Exp.Invoke): AST.MTransformer.PreResult[AST.Exp] = {
     if (o.ident.id.value != string"apply") {
       o.attr.resOpt.get match {
-        case m: AST.ResolvedInfo.Method => addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
+        case m: AST.ResolvedInfo.Method =>
+          addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
         case _ =>
       }
     }

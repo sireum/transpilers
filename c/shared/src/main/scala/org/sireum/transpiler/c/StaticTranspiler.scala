@@ -185,6 +185,13 @@ import StaticTranspiler._
   var compiledMap: HashMap[QName, Compiled] = HashMap.empty
   var typeNameMap: HashMap[AST.Typed, ST] = HashMap.empty
   var mangledTypeNameMap: HashMap[String, AST.Typed] = HashMap.empty
+  var allHEntries: ISZ[ST] = ISZ()
+  var allCEntries: ISZ[ST] = ISZ()
+  var bConstructor: B = F
+  var zConstructor: B = F
+  var f32Constructor: B = F
+  var f64Constructor: B = F
+  var rConstructor: B = F
 
   var currReceiverOpt: Option[AST.Typed.Name] = None()
   var stmts: ISZ[ST] = ISZ()
@@ -296,8 +303,8 @@ import StaticTranspiler._
       )
       r = r + ISZ[String](runtimeDir, "types.h") ~> typesH(typeQNames, typeNames)
       r = r + ISZ[String](runtimeDir, "types.c") ~> typesC(typeNames)
-      r = r + ISZ[String](runtimeDir, "all.h") ~> allH(typeQNames)
-      r = r + ISZ[String](runtimeDir, "all.c") ~> allC(typeNames)
+      r = r + ISZ[String](runtimeDir, "all.h") ~> allH(typeQNames, allHEntries)
+      r = r + ISZ[String](runtimeDir, "all.c") ~> allC(typeNames, allCEntries)
       r = r ++ compiled(compiledMap)
       for (ext <- config.exts) {
         r = r + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> st"${ext.content}"
@@ -596,8 +603,6 @@ import StaticTranspiler._
         case Some(s) if s.contains(TypeSpecializer.NamedType(optionType, Map.empty, Map.empty)) =>
           val someType = AST.Typed.Name(someName, ISZ(t))
           val noneType = AST.Typed.Name(noneName, ISZ(t))
-          genType(someType)
-          genType(noneType)
           Some((fingerprint(optionType)._1, fingerprint(someType)._1, fingerprint(noneType)._1))
         case _ => None()
       }
@@ -1431,18 +1436,81 @@ import StaticTranspiler._
             case AST.MethodMode.Spec => halt(s"TODO: $res") // TODO
             case AST.MethodMode.Ext => val r = transExt(res, expType(invoke), invoke.args); return r
             case AST.MethodMode.Constructor =>
+              def basicConstructor(name: QName): ST = {
+                val e = transpileExp(invoke.args(0))
+                val tpe = transpileType(expType(invoke))
+                val temp = freshTempName()
+                stmts = stmts :+ st"DeclNew$tpe($temp);"
+                stmts = stmts :+ st"${mangleName(name)}_apply(&$temp, $e);"
+                return st"(&$temp)"
+              }
               res.owner :+ res.id match {
                 case AST.Typed.isName => val r = transSApply(); return r
                 case AST.Typed.msName => val r = transSApply(); return r
-                case AST.Typed.bName => halt("TODO") // TODO
-                case AST.Typed.cName => halt("TODO") // TODO
-                case AST.Typed.zName => halt("TODO") // TODO
-                case AST.Typed.f32Name => halt("TODO") // TODO
-                case AST.Typed.f64Name => halt("TODO") // TODO
-                case AST.Typed.rName => halt("TODO") // TODO
+                case AST.Typed.bName =>
+                  if (!bConstructor) {
+                    genBConstructor()
+                  }
+                  bConstructor = T
+                  val r = basicConstructor(AST.Typed.bName)
+                  return r
+                case AST.Typed.zName =>
+                  if (!zConstructor) {
+                    genZConstructor()
+                  }
+                  zConstructor = T
+                  val r = basicConstructor(AST.Typed.zName)
+                  return r
+                case AST.Typed.f32Name =>
+                  if (!f32Constructor) {
+                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.f32)))
+                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.f32)))
+                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.f32)))
+                    genFloatConstructor(AST.Typed.f32Name, optTpe, someTpe, noneTpe, "float", "strtof")
+                  }
+                  f32Constructor = T
+                  val r = basicConstructor(AST.Typed.f32Name)
+                  return r
+                case AST.Typed.f64Name =>
+                  if (!f64Constructor) {
+                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.f64)))
+                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.f64)))
+                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.f64)))
+                    genFloatConstructor(AST.Typed.f64Name, optTpe, someTpe, noneTpe, "double", "strtod")
+                  }
+                  f64Constructor = T
+                  val r = basicConstructor(AST.Typed.f64Name)
+                  return r
+                case AST.Typed.rName =>
+                  if (!rConstructor) {
+                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.r)))
+                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.r)))
+                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.r)))
+                    genFloatConstructor(AST.Typed.rName, optTpe, someTpe, noneTpe, "long double", "strtold")
+                  }
+                  rConstructor = T
+                  val r = basicConstructor(AST.Typed.rName)
+                  return r
+                case AST.Typed.cName =>
+                  val optTpe = transpileType(expType(invoke))
+                  val someT = AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.c))
+                  val someTpe = transpileType(someT)
+                  val noneT = AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.c))
+                  val noneTpe = transpileType(noneT)
+                  val e = transpileExp(invoke.args(0))
+                  val temp = freshTempName()
+                  stmts = stmts :+ st"DeclNew$optTpe($temp);"
+                  stmts = stmts :+
+                    st"""if ($e->size == 0) {
+                    |  $temp.type = T$noneTpe;
+                    |} else {
+                    |  $temp.type = T$someTpe;
+                    |  $temp.$someTpe.value = (C) $e->value[0];
+                    |}"""
+                  return st"(&$temp)"
                 case name =>
                   ts.typeHierarchy.typeMap.get(name) match {
-                    case Some(_: TypeInfo.SubZ) => halt("TODO") // TODO
+                    case Some(_: TypeInfo.SubZ) => val r = basicConstructor(name); return r
                     case _ => val r = transConstructor(res, expType(invoke), invoke.args); return r
                   }
               }
@@ -2104,15 +2172,15 @@ import StaticTranspiler._
                 val iTpe = transpileType(it)
                 if (minIndex == z"0") {
                   return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                                      |  $iTpe ${id.value} = ($iTpe) $index;
-                                      |  ${(b, "\n")}
-                                      |}"""
+                  |  $iTpe ${id.value} = ($iTpe) $index;
+                  |  ${(b, "\n")}
+                  |}"""
 
                 } else {
                   return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                                      |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
-                                      |  ${(b, "\n")}
-                                      |}"""
+                  |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
+                  |  ${(b, "\n")}
+                  |}"""
                 }
               case _ =>
                 return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
@@ -2125,14 +2193,14 @@ import StaticTranspiler._
                 val iTpe = transpileType(it)
                 if (minIndex == z"0") {
                   return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                                      |  $iTpe ${id.value} = ($iTpe) $index;
-                                      |  ${(b, "\n")}
-                                      |}"""
+                  |  $iTpe ${id.value} = ($iTpe) $index;
+                  |  ${(b, "\n")}
+                  |}"""
                 } else {
                   return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                                      |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
-                                      |  ${(b, "\n")}
-                                      |}"""
+                  |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
+                  |  ${(b, "\n")}
+                  |}"""
                 }
               case _ =>
                 return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
@@ -2593,6 +2661,42 @@ import StaticTranspiler._
       case _: AST.Stmt.LStmt => // skip
       case _: AST.Stmt.SubZ => // skip
     }
+  }
+
+  def genZConstructor(): Unit = {
+    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.z)))
+    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.z)))
+    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.z)))
+    val cTypeUp = st"INT${config.defaultBitWidth}"
+    val (header, impl) = strToNum(
+      AST.Typed.zName,
+      optTpe,
+      someTpe,
+      noneTpe,
+      "long long",
+      "strtoll",
+      T,
+      T,
+      st"${cTypeUp}_MIN",
+      st"${cTypeUp}_MAX"
+    )
+    allHEntries = allHEntries :+ header
+    allCEntries = allCEntries :+ impl
+  }
+
+  def genFloatConstructor(name: QName, optTpe: ST, someTpe: ST, noneTpe: ST, cType: String, cStrTo: String): Unit = {
+    val (header, impl) = strToNum(name, optTpe, someTpe, noneTpe, cType, cStrTo, F, F, st"", st"")
+    allHEntries = allHEntries :+ header
+    allCEntries = allCEntries :+ impl
+  }
+
+  def genBConstructor(): Unit = {
+    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.b)))
+    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.b)))
+    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.b)))
+    val (header, impl) = strToB(optTpe, someTpe, noneTpe)
+    allHEntries = allHEntries :+ header
+    allCEntries = allCEntries :+ impl
   }
 
   @pure def transpileType(tpe: AST.Typed): ST = {

@@ -123,7 +123,7 @@ object StaticTemplate {
       |  C value[MaxString + 1];
       |};
       |
-      |#define string(v) (String) &((struct { TYPE type; Z size; C value[sizeof(v)]; }) { TString, Z_C(sizeof (v) - 1), v })
+      |#define string(v) ((String) &((struct { TYPE type; Z size; C value[sizeof(v)]; }) { TString, Z_C(sizeof (v) - 1), v }))
       |#define DeclNewString(x) struct StaticString x = { .type = TString }
       |
       |static inline B String__eq(String this, String other) {
@@ -195,7 +195,7 @@ object StaticTemplate {
     return r
   }
 
-  @pure def allH(names: ISZ[QName]): ST = {
+  @pure def allH(names: ISZ[QName], entries: ISZ[ST]): ST = {
     val r =
       st"""#ifndef SIREUM_ALL_H
       |#define SIREUM_ALL_H
@@ -206,14 +206,16 @@ object StaticTemplate {
       |B Type__eq(void *t1, void *t2);
       |void Type_cprint(void *this, B isOut);
       |void Type_string(String result, StackFrame caller, void* this);
+      |${(entries, "\n")}
       |
       |#endif"""
     return r
   }
 
-  @pure def allC(typeNames: ISZ[(String, ST, ST)]): ST = {
+  @pure def allC(typeNames: ISZ[(String, ST, ST)], entries: ISZ[ST]): ST = {
     val r =
       st"""#include <all.h>
+      |#include <errno.h>
       |
       |B Type__eq(void *t1, void *t2) {
       |  TYPE type = ((Type) t1)->type;
@@ -241,7 +243,9 @@ object StaticTemplate {
       )}
       |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
-      |}"""
+      |}
+      |
+      |${(entries, "\n\n")}"""
     return r
   }
 
@@ -279,7 +283,6 @@ object StaticTemplate {
     }
 
     val mains: ISZ[ST] = for (f <- mainFilenames) yield target(f)
-
 
     // MATH(EXPR stack_size "4 * 1000 * 1000")
     // set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size,$${stack_size}")
@@ -1194,11 +1197,11 @@ object StaticTemplate {
     }
     val min: ST = minOpt match {
       case Some(m) => st"${mangledName}_C($m)"
-      case _ => st"${mangledName}_C(${cTypeUp}_MIN)"
+      case _ => st"${cTypeUp}_MIN"
     }
     val max: ST = maxOpt match {
       case Some(m) => st"${mangledName}_C($m)"
-      case _ => st"${mangledName}_C(${cTypeUp}_MAX)"
+      case _ => st"${cTypeUp}_MAX"
     }
     val hex: ST = if (isBitVector && isUnsigned) st"0${bitWidth / 4}" else st""
     val typeHeader =
@@ -1288,7 +1291,10 @@ object StaticTemplate {
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
       header = compiled.header :+ st"${(header, ";\n")};",
-      impl = compiled.impl :+ st"${(impl, "\n\n")}"
+      impl = compiled.impl :+
+        st"""#include <errno.h>
+        |
+        |${(impl, "\n\n")}"""
     )
   }
 
@@ -1305,9 +1311,9 @@ object StaticTemplate {
     max: ST
   ): (ST, ST) = {
     val mangledName = mangleName(name)
-    val header = st"void ${mangledName}_apply($optName result, StackFrame sf, String s)"
+    val header = st"void ${mangledName}_apply($optName result, String s)"
     val base: ST = if (hasBase) st", 0" else st""
-    val rangeCheck: ST = if (hasRange) st"" else st" && $min <= n && n <= $max"
+    val rangeCheck: ST = if (hasRange) st" && $min <= n && n <= $max" else st""
     val impl =
       st"""$header {
       |  char *endptr;
@@ -1315,14 +1321,14 @@ object StaticTemplate {
       |  $cType n = $cStrTo(s->value, &endptr$base);
       |  if (errno) {
       |    errno = 0;
-      |    Type_assign(result, &((struct $noneName) { .type = T$noneName }));
+      |    Type_assign(result, &((struct $noneName) { .type = T$noneName }), sizeof(struct $noneName));
       |    return;
       |  }
-      |  if (s->value - endptr == 0$rangeCheck)
-      |    Type_assign(result, &((struct $someName) { .type = T$someName, .value = ($mangledName) n }));
-      |  else Type_assign(result, &((struct $noneName) { .type = T$noneName }));
+      |  if (&s->value[s->size] - endptr == 0$rangeCheck)
+      |    Type_assign(result, &((struct $someName) { .type = T$someName, .value = ($mangledName) n }), sizeof(struct $someName));
+      |  else Type_assign(result, &((struct $noneName) { .type = T$noneName }), sizeof(struct $noneName));
       |}"""
-    return (header, impl)
+    return (st"$header;", impl)
   }
 
   @pure def strToB(optName: ST, someName: ST, noneName: ST): (ST, ST) = {
@@ -1338,11 +1344,11 @@ object StaticTemplate {
       |  else if (s->size == 4 && memcmp(s->value, "true", 4) == 0) r = T;
       |  else if (s->size == 5 && memcmp(s->value, "false", 5) == 0) r = F;
       |  else noResult = T;
-      |  if (noResult) Type_assign(result, &((struct $noneName) { .type = T$noneName }))
-      |  else if (r) Type_assign(result, &((struct $someName) { .type = T$someName, .value = T }));
-      |  else Type_assign(result, &((struct $someName) { .type = T$someName, .value = F }));
+      |  if (noResult) Type_assign(result, &((struct $noneName) { .type = T$noneName }), sizeof(struct $noneName));
+      |  else if (r) Type_assign(result, &((struct $someName) { .type = T$someName, .value = T }), sizeof(struct $someName));
+      |  else Type_assign(result, &((struct $someName) { .type = T$someName, .value = F }), sizeof(struct $someName));
       |}"""
-    return (header, impl)
+    return (st"$header;", impl)
   }
 
   @pure def tupleName(size: Z): QName = {
