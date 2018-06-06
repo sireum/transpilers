@@ -16,7 +16,13 @@ which first compiles each specified worksheet to C, then run CMake, make, and th
 
 ## Building CLI
 
-To build cli:
+Run [setup.sh](setup.sh) (one time only):
+
+```bash
+SIREUM_HOME=<kekinian-path> ./setup.sh
+```
+ 
+Then:
 
 ```bash
 mill transpilers.cli.assembly
