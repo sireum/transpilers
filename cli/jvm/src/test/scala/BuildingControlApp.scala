@@ -143,6 +143,8 @@ object BuildingControlApp {
         "16",
         "--sequence",
         "ISZ[org.sireumString]=2",
+        "--constants",
+        "art.Art.maxComponents=3,art.Art.maxPorts=14",
         "--apps",
         s"$pkg.Fan_i_AEP,$pkg.Fan_i_App,$pkg.TempControl_i_AEP,$pkg.TempControl_i_App,$pkg.TempSensor_i_App,$pkg.Main",
         "--forward",

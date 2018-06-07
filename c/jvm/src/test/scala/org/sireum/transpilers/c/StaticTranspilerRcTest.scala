@@ -67,6 +67,7 @@ class StaticTranspilerRcTest extends TestSuite {
       maxStringSize = 256,
       maxArraySize = 256,
       customArraySizes = HashMap ++ ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 24),
+      customConstants = HashMap.empty,
       extMethodTranspilerPlugins = ISZ(
         NumberConversionsExtMethodTranspilerPlugin(),
         StringConversionsExtMethodTranspilerPlugin()

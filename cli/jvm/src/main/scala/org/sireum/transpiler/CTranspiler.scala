@@ -456,6 +456,22 @@ object CTranspiler {
       }
     }
 
+    var constants = HashMap.empty[ISZ[String], AST.Exp]
+    for (p <- o.customConstants) {
+      try {
+        val Array(key, value) = p.value.split('=')
+        val e = Parser.parseExp[AST.Exp](value)
+        e match {
+          case e: AST.Lit => constants = constants + ISZ(key.split('.').map(x => String(x.trim)): _*) ~> e
+          case _ => throw new Exception
+        }
+      } catch {
+        case _: Throwable =>
+          eprintln(s"Could not recognize custom object var constant configuration: $p")
+          return TranspilingError
+      }
+    }
+
     val config = StaticTranspiler.Config(
       projectName = o.projectName.getOrElse("main"),
       lineNumber = o.line,
@@ -464,6 +480,7 @@ object CTranspiler {
       maxStringSize = o.maxStringSize,
       maxArraySize = o.maxArraySize,
       customArraySizes = customArraySizes,
+      customConstants = constants,
       extMethodTranspilerPlugins = plugins,
       exts = exts,
       forLoopOpt = o.unroll

@@ -24,6 +24,7 @@ object StaticTranspiler {
     maxStringSize: Z,
     maxArraySize: Z,
     customArraySizes: HashMap[AST.Typed, Z],
+    customConstants: HashMap[QName, AST.Exp],
     extMethodTranspilerPlugins: ISZ[ExtMethodTranspilerPlugin],
     exts: ISZ[ExtFile],
     forLoopOpt: B,
@@ -245,8 +246,12 @@ import StaticTranspiler._
             val t = stmt.tipeOpt.get.typedOpt.get
             val kind = typeKind(t)
             vs = vs :+ ((kind, id, typeDecl(t), transpileType(t), !stmt.isVal))
+            val init: AST.AssignExp = config.customConstants.get(oInfo.name :+ id) match {
+              case Some(e) => AST.Stmt.Expr(e, AST.TypedAttr(e.posOpt, e.typedOpt))
+              case _ => stmt.initOpt.get
+            }
             transpileAssignExp(
-              stmt.initOpt.get,
+              init,
               (rhs, rhsT) =>
                 if (isScalar(kind)) st"_${mangledName}_$id = $rhs;"
                 else st"Type_assign(&_${mangledName}_$id, $rhs, sizeof($rhsT));"

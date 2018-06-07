@@ -53,6 +53,7 @@ object Cli {
     maxStringSize: Z,
     maxArraySize: Z,
     customArraySizes: ISZ[String],
+    customConstants: ISZ[String],
     plugins: ISZ[String],
     exts: ISZ[String],
     forwarding: ISZ[String],
@@ -128,11 +129,15 @@ import Cli._
           |                           100)
           |    --sequence-size      Default maximum sequence size (expects an integer;
           |                           default is 100)
-          |-c, --sequence           Custom maximum sequence sizes, each in the form of
+          |-q, --sequence           Custom maximum sequence sizes, each in the form of
           |                           <type>=<size>, where <type> is either IS[,], MS[,],
           |                           ISZ[], MSZ[], or ZS with fully qualified index and
           |                           element types where applicable (expects a string
           |                           separated by ",")
+          |-c, --constants          Custom constant for object variables, each in the form
+          |                           of <name>=<lit>, where <name> is a qualified name of
+          |                           an object var and <lit> is a Slang literal
+          |                           expression (expects a string separated by ",")
           |-p, --plugins            Plugin fully qualified names (expects a string
           |                           separated by ",")
           |-e, --exts               Extension file paths (expects path strings)
@@ -157,6 +162,7 @@ import Cli._
     var maxStringSize: Z = 100
     var maxArraySize: Z = 100
     var customArraySizes: ISZ[String] = ISZ[String]()
+    var customConstants: ISZ[String] = ISZ[String]()
     var plugins: ISZ[String] = ISZ[String]()
     var exts: ISZ[String] = ISZ[String]()
     var forwarding: ISZ[String] = ISZ[String]()
@@ -236,10 +242,16 @@ import Cli._
              case Some(v) => maxArraySize = v
              case _ => return None()
            }
-         } else if (arg == "-c" || arg == "--sequence") {
+         } else if (arg == "-q" || arg == "--sequence") {
            val o: Option[ISZ[String]] = parseStrings(args, j + 1, ',')
            o match {
              case Some(v) => customArraySizes = v
+             case _ => return None()
+           }
+         } else if (arg == "-c" || arg == "--constants") {
+           val o: Option[ISZ[String]] = parseStrings(args, j + 1, ',')
+           o match {
+             case Some(v) => customConstants = v
              case _ => return None()
            }
          } else if (arg == "-p" || arg == "--plugins") {
@@ -281,7 +293,7 @@ import Cli._
         isOption = F
       }
     }
-    return Some(CTranspilerOption(help, parseArguments(args, j), sourcepath, output, verbose, projectName, apps, line, unroll, fingerprint, bitWidth, maxStringSize, maxArraySize, customArraySizes, plugins, exts, forwarding, save, load))
+    return Some(CTranspilerOption(help, parseArguments(args, j), sourcepath, output, verbose, projectName, apps, line, unroll, fingerprint, bitWidth, maxStringSize, maxArraySize, customArraySizes, customConstants, plugins, exts, forwarding, save, load))
   }
 
   def parseArguments(args: ISZ[String], i: Z): ISZ[String] = {

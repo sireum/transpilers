@@ -275,6 +275,7 @@ class StaticTranspilerTest extends TestSuite {
       maxStringSize = 256,
       maxArraySize = 256,
       customArraySizes = HashMap ++ ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 100),
+      customConstants = HashMap.empty,
       extMethodTranspilerPlugins = ISZ(NumberConversionsExtMethodTranspilerPlugin()),
       exts = ISZ(),
       forLoopOpt = F
