@@ -2033,10 +2033,20 @@ import StaticTranspiler._
       case Some(pos) => st"match_${pos.beginLine}"
       case _ => freshTempName()
     }
-    stmts = stmts :+ st"${transpileType(expType(stmt.exp))} $temp = $e;"
+    val t = expType(stmt.exp)
+    val tpe = transpileType(t)
+    val kind = typeKind(t)
+    val tmp: ST = if (isScalar(kind)) {
+      stmts = stmts :+ st"$tpe $temp = $e;"
+      temp
+    } else {
+      stmts = stmts :+ st"DeclNew$tpe($temp);"
+      stmts = stmts :+ st"Type_assign(&$temp, $e, sizeof(${typeDecl(t)}));"
+      st"&$temp"
+    }
     stmts = stmts :+ st"B $handled = F;"
     for (cas <- stmt.cases) {
-      transCase(handled, temp, cas)
+      transCase(handled, tmp, cas)
     }
     stmts = stmts :+ st"""sfAssert($handled, "Error when pattern matching.");"""
   }
