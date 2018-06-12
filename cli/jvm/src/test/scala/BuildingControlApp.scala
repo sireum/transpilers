@@ -20,6 +20,14 @@ object BuildingControlGenApp extends scala.App {
   }
 }
 
+object BuildingControlGenMixedApp extends scala.App {
+  if (args.length != 2) {
+    println("Usage: BuildingControlApp <slang-embedded-path> <output-path>")
+  } else {
+    BuildingControlApp.transpile(args, "building-control-gen-mixed")
+  }
+}
+
 object BuildingControlApp {
 
   def transpile(args: Array[Predef.String], example: Predef.String): Unit = {
