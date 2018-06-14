@@ -29,3 +29,19 @@ mill transpilers.cli.assembly
 ```
 
 The resulting executable script is at: `out/transpilers/cli/assembly/dest/out.jar`.
+
+For example, running the following in a terminal:
+
+```bash
+out/transpilers/cli/assembly/dest/out.jar t c
+```
+
+displays:
+
+```
+Sireum: A High-Assurance Software Development Platform                                                                                                                                                                                                                         
+(c) 2018, SAnToS Laboratory, Kansas State University                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                                               
+Available modes:                                                                                                                                                                                                                                                               
+transpiler               Slang transpilers                                                                                                                                                                                                                                     
+```
