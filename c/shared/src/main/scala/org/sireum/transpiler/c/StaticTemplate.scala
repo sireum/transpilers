@@ -408,6 +408,7 @@ object StaticTemplate {
       |    if (argSize > MaxString) {
       |      sfAbort("Argument too long.");
       |    }
+      |    ${iszStringType}_at(&t_args, i)->type = TString;
       |    ${iszStringType}_at(&t_args, i)->size = (Z) argSize;
       |    memcpy(${iszStringType}_at(&t_args, i)->value, arg, argSize + 1);
       |  }
@@ -1272,7 +1273,7 @@ object StaticTemplate {
     )
     var impl = ISZ(st"""$stringHeader {
     |  DeclNewStackFrame(caller, "$uri", "${dotName(name)}", "string", 0);
-    |  int nSize = sprintf(NULL, 0, ${mangledName}_F, this);
+    |  int nSize = snprintf(NULL, 0, ${mangledName}_F, this);
     |  Z size = result->size;
     |  Z newSize = size + nSize;
     |  sfAssert(newSize <= MaxString, "Insufficient maximum for String characters.");

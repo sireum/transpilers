@@ -86,15 +86,12 @@ object CTranspiler {
       startTime()
     }
 
-    var plugins = ISZ[StaticTranspiler.ExtMethodTranspilerPlugin]()
+    var plugins = ISZ[StaticTranspiler.Plugin]()
 
     for (p <- o.plugins) {
       try {
         val c = Class.forName(p.value)
-        plugins = plugins :+ c
-          .getDeclaredConstructor()
-          .newInstance()
-          .asInstanceOf[StaticTranspiler.ExtMethodTranspilerPlugin]
+        plugins = plugins :+ c.getDeclaredConstructor().newInstance().asInstanceOf[StaticTranspiler.Plugin]
       } catch {
         case _: Throwable =>
           eprintln(s"Could not load plugin: $p")
@@ -103,8 +100,8 @@ object CTranspiler {
     }
 
     plugins = plugins ++ ISZ(
-      StaticTranspiler.StringConversionsExtMethodTranspilerPlugin(),
-      StaticTranspiler.NumberConversionsExtMethodTranspilerPlugin()
+      StaticTranspiler.StringConversionsExtMethodPlugin(),
+      StaticTranspiler.NumberConversionsExtMethodPlugin()
     )
 
     if (o.verbose) {
@@ -481,7 +478,7 @@ object CTranspiler {
       maxArraySize = o.maxArraySize,
       customArraySizes = customArraySizes,
       customConstants = constants,
-      extMethodTranspilerPlugins = plugins,
+      plugins = plugins,
       exts = exts,
       forLoopOpt = o.unroll
     )

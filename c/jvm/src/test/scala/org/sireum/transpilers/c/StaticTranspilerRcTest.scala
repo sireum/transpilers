@@ -9,7 +9,7 @@ import org.sireum.lang.{FrontEnd, ast => AST}
 import org.sireum.message.Reporter
 import org.sireum.test.TestSuite
 import org.sireum.transpiler.c.StaticTranspiler
-import org.sireum.transpiler.c.StaticTranspiler.{NumberConversionsExtMethodTranspilerPlugin, StringConversionsExtMethodTranspilerPlugin}
+import org.sireum.transpiler.c.StaticTranspiler.{NumberConversionsExtMethodPlugin, StringConversionsExtMethodPlugin}
 import org.sireum.transpilers.common.TypeSpecializer
 
 class StaticTranspilerRcTest extends TestSuite {
@@ -66,11 +66,13 @@ class StaticTranspilerRcTest extends TestSuite {
       defaultBitWidth = 64,
       maxStringSize = 256,
       maxArraySize = 256,
-      customArraySizes = HashMap ++ ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 24),
+      customArraySizes = HashMap ++ ISZ(
+        AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 2
+      ),
       customConstants = HashMap.empty,
-      extMethodTranspilerPlugins = ISZ(
-        NumberConversionsExtMethodTranspilerPlugin(),
-        StringConversionsExtMethodTranspilerPlugin()
+      plugins = ISZ(
+        NumberConversionsExtMethodPlugin(),
+        StringConversionsExtMethodPlugin()
       ),
       exts = ISZ(extFile),
       forLoopOpt = forLoopOpt
@@ -113,13 +115,14 @@ class StaticTranspilerRcTest extends TestSuite {
     %('cmake, "-DCMAKE_BUILD_TYPE=Release", ".")(resultDir)
 
     val ldir = dir / s"L${line.value}"
-    rm ! ldir / 'CMakeFiles
-    rm ! ldir / "cmake_install.cmake"
-    rm ! ldir / "CMakeCache.txt"
 
     println()
     println("Running make ...")
     %('make)(resultDir)
+
+    rm ! ldir / 'CMakeFiles
+    rm ! ldir / "cmake_install.cmake"
+    rm ! ldir / "CMakeCache.txt"
 
     mv(ldir / 'sha3, dir / name.value)
   }

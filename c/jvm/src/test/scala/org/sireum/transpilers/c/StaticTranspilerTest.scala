@@ -9,7 +9,7 @@ import org.sireum.message.Reporter
 import org.sireum.test.TestSuite
 import org.sireum.transpiler.c.StaticTranspiler
 import ammonite.ops._
-import org.sireum.transpiler.c.StaticTranspiler.NumberConversionsExtMethodTranspilerPlugin
+import org.sireum.transpiler.c.StaticTranspiler.NumberConversionsExtMethodPlugin
 import org.sireum.transpilers.common.TypeSpecializer
 
 class StaticTranspilerTest extends TestSuite {
@@ -276,7 +276,7 @@ class StaticTranspilerTest extends TestSuite {
       maxArraySize = 256,
       customArraySizes = HashMap ++ ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 100),
       customConstants = HashMap.empty,
-      extMethodTranspilerPlugins = ISZ(NumberConversionsExtMethodTranspilerPlugin()),
+      plugins = ISZ(NumberConversionsExtMethodPlugin()),
       exts = ISZ(),
       forLoopOpt = F
     )

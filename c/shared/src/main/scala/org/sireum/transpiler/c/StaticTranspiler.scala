@@ -25,28 +25,122 @@ object StaticTranspiler {
     maxArraySize: Z,
     customArraySizes: HashMap[AST.Typed, Z],
     customConstants: HashMap[QName, AST.Exp],
-    extMethodTranspilerPlugins: ISZ[ExtMethodTranspilerPlugin],
+    plugins: ISZ[Plugin],
     exts: ISZ[ExtFile],
     forLoopOpt: B,
-  )
+  ) {
+
+    @memoize def expPlugins: ISZ[ExpPlugin] = {
+      var r = ISZ[ExpPlugin]()
+      for (plugin <- plugins) {
+        plugin match {
+          case plugin: ExpPlugin => r = r :+ plugin
+          case _ =>
+        }
+      }
+      return r
+    }
+
+    @memoize def stmtPlugins: ISZ[StmtPlugin] = {
+      var r = ISZ[StmtPlugin]()
+      for (plugin <- plugins) {
+        plugin match {
+          case plugin: StmtPlugin => r = r :+ plugin
+          case _ =>
+        }
+      }
+      if (forLoopOpt) {
+        r = r :+ ForLoopOptPlugin()
+      }
+      return r
+    }
+
+    @memoize def extMethodPlugins: ISZ[ExtMethodPlugin] = {
+      var r = ISZ[ExtMethodPlugin]()
+      for (plugin <- plugins) {
+        plugin match {
+          case plugin: ExtMethodPlugin => r = r :+ plugin
+          case _ =>
+        }
+      }
+      return r
+    }
+
+  }
 
   @datatype class Result(files: HashSMap[QName, ST])
 
-  @sig trait ExtMethodTranspilerPlugin {
+  @sig trait Plugin
 
-    @pure def canCompile(method: TypeSpecializer.SMethod): B
+  @sig trait ExpPlugin extends Plugin {
+    @pure def canTranspile(transpiler: StaticTranspiler, exp: AST.Exp): B
 
-    @pure def transpile(
-      transpiler: StaticTranspiler,
-      compiled: Compiled,
-      typeSpecializer: TypeSpecializer.Result,
-      method: TypeSpecializer.SMethod
-    ): Compiled
+    def transpile(transpiler: StaticTranspiler, exp: AST.Exp): ST
   }
 
-  @datatype class NumberConversionsExtMethodTranspilerPlugin extends ExtMethodTranspilerPlugin {
+  @sig trait StmtPlugin extends Plugin {
+    @pure def canTranspile(transpiler: StaticTranspiler, stmt: AST.Stmt): B
 
-    @pure def canCompile(method: TypeSpecializer.SMethod): B = {
+    def transpile(transpiler: StaticTranspiler, stmt: AST.Stmt): Unit
+  }
+
+  @datatype class ForLoopOptPlugin extends StmtPlugin {
+
+    @pure def canTranspile(transpiler: StaticTranspiler, stmt: AST.Stmt): B = {
+      stmt match {
+        case stmt: AST.Stmt.For =>
+          val eg = stmt.enumGens(0)
+          eg.range match {
+            case range: AST.EnumGen.Range.Step =>
+              val rOptOpt = range.byOpt.map((e: AST.Exp) => transpiler.getIntConst(e))
+              return (rOptOpt.isEmpty || rOptOpt.get.nonEmpty) &&
+                transpiler.getIntConst(range.start).nonEmpty && transpiler.getIntConst(range.end).nonEmpty
+            case _ =>
+          }
+        case _ =>
+      }
+      return F
+    }
+
+    def transpile(transpiler: StaticTranspiler, stmt: AST.Stmt): Unit = {
+      val forStmt = stmt.asInstanceOf[AST.Stmt.For]
+      val eg = forStmt.enumGens(0)
+      val range = eg.range.asInstanceOf[AST.EnumGen.Range.Step]
+      val start = transpiler.getIntConst(range.start).get
+      val end = transpiler.getIntConst(range.end).get
+      val byN = range.byOpt.map((e: AST.Exp) => transpiler.getIntConst(e)).getOrElse(Some(1)).get
+      val posOpt = range.attr.posOpt
+      val idOpt = eg.idOpt
+      val body = forStmt.body
+      for (i <- start to (if (range.isInclusive) end else if (start <= end) end.decrease else end.increase) by byN) {
+        transpiler.stmts = transpiler.stmts ++ transpiler.transpileLoc(posOpt)
+        val oldStmts = transpiler.stmts
+        transpiler.stmts = ISZ()
+        val bodyStmts: ISZ[AST.Stmt] = idOpt match {
+          case Some(id) => val bOpt = IdConstSub(id.value, i).transformBody(body); bOpt.get.stmts
+          case _ => body.stmts
+        }
+        for (s <- bodyStmts) {
+          transpiler.transpileStmt(s)
+        }
+        transpiler.stmts = oldStmts :+
+          st"""{
+              |  ${(transpiler.stmts, "\n")}
+              |}"""
+      }
+    }
+  }
+
+  @sig trait ExtMethodPlugin extends Plugin {
+
+    @pure def canTranspile(transpiler: StaticTranspiler, method: TypeSpecializer.SMethod): B
+
+    def transpile(transpiler: StaticTranspiler, compiled: Compiled, method: TypeSpecializer.SMethod): Compiled
+  }
+
+  @datatype class NumberConversionsExtMethodPlugin extends ExtMethodPlugin {
+
+    @pure def canTranspile(transpiler: StaticTranspiler, method: TypeSpecializer.SMethod): B = {
       if (method.owner.size < 4) {
         return F
       }
@@ -58,12 +152,7 @@ object StaticTranspiler {
       return F
     }
 
-    @pure def transpile(
-      transpiler: StaticTranspiler,
-      compiled: Compiled,
-      typeSpecializer: TypeSpecializer.Result,
-      method: TypeSpecializer.SMethod
-    ): Compiled = {
+    def transpile(transpiler: StaticTranspiler, compiled: Compiled, method: TypeSpecializer.SMethod): Compiled = {
       val from = ops.ISZOps(method.owner).takeRight(1)
       val id = method.id
       val sops = ops.StringOps(id)
@@ -81,9 +170,9 @@ object StaticTranspiler {
     }
   }
 
-  @datatype class StringConversionsExtMethodTranspilerPlugin extends ExtMethodTranspilerPlugin {
+  @datatype class StringConversionsExtMethodPlugin extends ExtMethodPlugin {
 
-    @pure def canCompile(method: TypeSpecializer.SMethod): B = {
+    @pure def canTranspile(transpiler: StaticTranspiler, method: TypeSpecializer.SMethod): B = {
       if (method.owner.size < 4) {
         return F
       }
@@ -93,12 +182,7 @@ object StaticTranspiler {
       return F
     }
 
-    @pure def transpile(
-      transpiler: StaticTranspiler,
-      compiled: Compiled,
-      typeSpecializer: TypeSpecializer.Result,
-      method: TypeSpecializer.SMethod
-    ): Compiled = {
+    def transpile(transpiler: StaticTranspiler, compiled: Compiled, method: TypeSpecializer.SMethod): Compiled = {
       val (header, impl): (ST, ST) = method.id.native match {
         case "toU8is" =>
           val t = transpiler.transpileType(iszU8Type)
@@ -303,7 +387,7 @@ import StaticTranspiler._
       val typeQNames = compiledMap.keys
       r = r + ISZ[String](runtimeDir, "type-composite.h") ~> typeCompositeH(
         config.maxStringSize,
-        minIndexMaxElementSize(AST.Typed.z, AST.Typed.string)._2,
+        minIndexMaxElementSize(iszStringType)._2,
         typeNames
       )
       r = r + ISZ[String](runtimeDir, "types.h") ~> typesH(typeQNames, typeNames)
@@ -335,10 +419,10 @@ import StaticTranspiler._
         var found = F
         val name = m.owner
         val value = getCompiled(name)
-        for (p <- config.extMethodTranspilerPlugins) {
-          if (p.canCompile(m)) {
+        for (p <- config.extMethodPlugins) {
+          if (p.canTranspile(this, m)) {
             found = T
-            val newValue = p.transpile(this, value, ts, m)
+            val newValue = p.transpile(this, value, m)
             compiledMap = compiledMap + name ~> newValue
           }
         }
@@ -447,8 +531,10 @@ import StaticTranspiler._
     return (types, cps, vs)
   }
 
-  @pure def minIndexMaxElementSize(indexType: AST.Typed, elementType: AST.Typed): (Z, Z) = {
-    val size: Z = config.customArraySizes.get(elementType) match {
+  @pure def minIndexMaxElementSize(t: AST.Typed.Name): (Z, Z) = {
+    val indexType = t.args(0)
+    val elementType = t.args(1)
+    val size: Z = config.customArraySizes.get(t) match {
       case Some(n) => n
       case _ => config.maxArraySize
     }
@@ -544,7 +630,7 @@ import StaticTranspiler._
       val elementType = typeDecl(et)
       genType(et)
       val value = getCompiled(key)
-      val (minIndex, maxElementSize) = minIndexMaxElementSize(it, et)
+      val (minIndex, maxElementSize) = minIndexMaxElementSize(t)
       val otherType: AST.Typed.Name =
         if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, ISZ(it, et))
         else AST.Typed.Name(AST.Typed.isName, ISZ(it, et))
@@ -770,7 +856,7 @@ import StaticTranspiler._
         m.owner,
         m.ast.sig.id.value,
         transpileType(iszStringType),
-        arraySizeType(minIndexMaxElementSize(iszStringType.args(0), iszStringType.args(1))._2),
+        arraySizeType(minIndexMaxElementSize(iszStringType)._2),
         atExit
       )
     )
@@ -1035,6 +1121,13 @@ import StaticTranspiler._
   }
 
   def transpileExp(exp: AST.Exp): ST = {
+
+    if (config.expPlugins.nonEmpty) {
+      for (p <- config.expPlugins if p.canTranspile(this, exp)) {
+        val r = p.transpile(this, exp)
+        return r
+      }
+    }
 
     def transSubZLit(exp: AST.Exp.StringInterpolate): ST = {
       val r = transpileSubZLit(exp.posOpt, expType(exp), exp.lits(0).value)
@@ -1345,7 +1438,7 @@ import StaticTranspiler._
         val tpe = transpileType(t)
         val temp = freshTempName()
         val size = invoke.args.size
-        val sizeType = arraySizeType(minIndexMaxElementSize(t.args(0), t.args(1))._2)
+        val sizeType = arraySizeType(minIndexMaxElementSize(t)._2)
         stmts = stmts :+ st"""STATIC_ASSERT($size <= Max$tpe, "Insufficient maximum for $t elements.");"""
         stmts = stmts :+ st"DeclNew$tpe($temp);"
         stmts = stmts :+ st"$temp.size = ($sizeType) $size;"
@@ -1605,12 +1698,11 @@ import StaticTranspiler._
     def transForYield(exp: AST.Exp.ForYield): ST = {
       val temp = freshTempName()
       val t = expType(exp).asInstanceOf[AST.Typed.Name]
-      val it = t.args(0)
       val et = t.args(1)
       val index = freshTempName()
       val tpe = transpileType(t)
       stmts = stmts :+ st"DeclNew$tpe($temp);"
-      val indexType = arraySizeType(minIndexMaxElementSize(it, et)._2)
+      val indexType = arraySizeType(minIndexMaxElementSize(t)._2)
       stmts = stmts :+ st"$indexType $index = 0;"
       val oldStmts = stmts
       stmts = ISZ()
@@ -1870,7 +1962,7 @@ import StaticTranspiler._
           case _: AST.Exp.LitF32 => stmts = stmts :+ st"$handledVar = $handledVar && F32__eq($exp, $e);"
           case _: AST.Exp.LitF64 => stmts = stmts :+ st"$handledVar = $handledVar && F64__eq($exp, $e);"
           case _: AST.Exp.LitR => stmts = stmts :+ st"$handledVar = $handledVar && R__eq($exp, $e);"
-          case _: AST.Exp.LitString => stmts = stmts :+ st"$handledVar = $handledVar && String__eq($exp, $e);"
+          case _: AST.Exp.LitString => stmts = stmts :+ st"$handledVar = $handledVar && String__eq((String) $exp, (String) $e);"
         }
       case pat: AST.Pattern.LitInterpolate =>
         pat.prefix.native match {
@@ -1892,7 +1984,7 @@ import StaticTranspiler._
             stmts = stmts :+ st"$handledVar = $handledVar && R__eq($exp, $e);"
           case "string" =>
             val e = transpileLitString(pat.posOpt, pat.value)
-            stmts = stmts :+ st"$handledVar = $handledVar && String__eq($exp, $e);"
+            stmts = stmts :+ st"$handledVar = $handledVar && String__eq((String) $exp, (String) $e);"
           case _ =>
             val t = pat.attr.typedOpt.get
             val e = transpileSubZLit(pat.posOpt, t, pat.value)
@@ -2139,7 +2231,7 @@ import StaticTranspiler._
         stmts = stmts :+ st"$tpe $temp = $e;"
         val size = freshTempName()
         val index = freshTempName()
-        val (minIndex, maxElements) = minIndexMaxElementSize(it, et)
+        val (minIndex, maxElements) = minIndexMaxElementSize(t)
         val indexType = arraySizeType(maxElements)
         stmts = stmts :+ st"$indexType $size = ($e)->size;"
         (range.isIndices, range.isReverse) match {
@@ -2228,6 +2320,13 @@ import StaticTranspiler._
   }
 
   def transpileStmt(stmt: AST.Stmt): Unit = {
+
+    if (config.stmtPlugins.nonEmpty) {
+      for (p <- config.stmtPlugins if p.canTranspile(this, stmt)) {
+        p.transpile(this, stmt)
+        return
+      }
+    }
 
     def transVar(stmt: AST.Stmt.Var): Unit = {
       stmts = stmts ++ transpileLoc(stmt.posOpt)
@@ -2519,75 +2618,7 @@ import StaticTranspiler._
         |} while($cond);"""
     }
 
-    @pure def getIntConst(e: AST.Exp): Option[Z] = {
-      @pure def fromRes(res: AST.ResolvedInfo): Option[Z] = {
-        res match {
-          case res: AST.ResolvedInfo.Var if res.isInObject =>
-            val info = ts.typeHierarchy.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
-            info.ast.initOpt.get match {
-              case init: AST.Stmt.Expr if info.ast.isVal => return getIntConst(init.exp)
-              case _ => return None()
-            }
-          case _ => return None()
-        }
-      }
-      e match {
-        case e: AST.Exp.LitZ => return Some(e.value)
-        case e: AST.Exp.StringInterpolate =>
-          e.typedOpt.get match {
-            case t: AST.Typed.Name =>
-              ts.typeHierarchy.typeMap.get(t.ids).get match {
-                case _: TypeInfo.SubZ => return Z(e.lits(0).value)
-                case _ => return None()
-              }
-            case _ => return None()
-          }
-        case e: AST.Exp.Ident => return fromRes(e.attr.resOpt.get)
-        case e: AST.Exp.Select => return fromRes(e.attr.resOpt.get)
-        case _ => return None()
-      }
-    }
-
     def transpileFor(stmt: AST.Stmt.For): Unit = {
-      def transEnumGenOpt(
-        posOpt: Option[Position],
-        idOpt: Option[AST.Id],
-        start: Z,
-        end: Z,
-        byN: Z,
-        isInclusive: B,
-        body: AST.Body
-      ): Unit = {
-        for (i <- start to (if (isInclusive) end else if (start <= end) end.decrease else end.increase) by byN) {
-          stmts = stmts ++ transpileLoc(posOpt)
-          val oldStmts = stmts
-          stmts = ISZ()
-          val bodyStmts: ISZ[AST.Stmt] = idOpt match {
-            case Some(id) => val bOpt = IdConstSub(id.value, i).transformBody(body); bOpt.get.stmts
-            case _ => body.stmts
-          }
-          for (s <- bodyStmts) {
-            transpileStmt(s)
-          }
-          stmts = oldStmts :+
-            st"""{
-            |  ${(stmts, "\n")}
-            |}"""
-        }
-      }
-      if (config.forLoopOpt && stmt.enumGens.size == z"1") {
-        val eg = stmt.enumGens(0)
-        eg.range match {
-          case range: AST.EnumGen.Range.Step =>
-            (getIntConst(range.start), getIntConst(range.end), range.byOpt.map(getIntConst).getOrElse(Some(1))) match {
-              case (Some(startNum), Some(endNum), Some(byNum)) if eg.condOpt.isEmpty =>
-                transEnumGenOpt(range.attr.posOpt, eg.idOpt, startNum, endNum, byNum, range.isInclusive, stmt.body)
-                return
-              case _ =>
-            }
-          case _ =>
-        }
-      }
       stmts = stmts ++ transpileLoc(stmt.posOpt)
       val oldStmts = stmts
       stmts = ISZ()
@@ -2675,6 +2706,35 @@ import StaticTranspiler._
       case _: AST.Stmt.TypeAlias => // skip
       case _: AST.Stmt.LStmt => // skip
       case _: AST.Stmt.SubZ => // skip
+    }
+  }
+
+  @memoize def getIntConst(e: AST.Exp): Option[Z] = {
+    @pure def fromRes(res: AST.ResolvedInfo): Option[Z] = {
+      res match {
+        case res: AST.ResolvedInfo.Var if res.isInObject =>
+          val info = ts.typeHierarchy.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
+          info.ast.initOpt.get match {
+            case init: AST.Stmt.Expr if info.ast.isVal => return getIntConst(init.exp)
+            case _ => return None()
+          }
+        case _ => return None()
+      }
+    }
+    e match {
+      case e: AST.Exp.LitZ => return Some(e.value)
+      case e: AST.Exp.StringInterpolate =>
+        e.typedOpt.get match {
+          case t: AST.Typed.Name =>
+            ts.typeHierarchy.typeMap.get(t.ids).get match {
+              case _: TypeInfo.SubZ => return Z(e.lits(0).value)
+              case _ => return None()
+            }
+          case _ => return None()
+        }
+      case e: AST.Exp.Ident => return fromRes(e.attr.resOpt.get)
+      case e: AST.Exp.Select => return fromRes(e.attr.resOpt.get)
+      case _ => return None()
     }
   }
 
