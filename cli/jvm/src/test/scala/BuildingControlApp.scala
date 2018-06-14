@@ -43,7 +43,6 @@ object BuildingControlApp {
     mkdir ! out / 'src
     cp(slangPath / example / 'src / 'aadl, out / 'src / 'aadl)
     cp(slangPath / example / 'src / 'main, out / 'src / 'scala)
-    cp(slangPath / 'art / 'src / 'main / 'scala / 'art, out / 'src / 'scala / 'art)
     cp(readme, out / "readme.md")
 
     write(out / 'bin / "compile-mac.sh", """#!/usr/bin/env bash

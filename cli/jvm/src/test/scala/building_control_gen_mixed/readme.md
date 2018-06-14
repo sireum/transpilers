@@ -35,7 +35,7 @@ Below is a depiction of the architecture:
 * The AADL model is located at [src/aadl](src/aadl)
 
 * The [AIR](http://github.com/sireum/air) JSON representation of the AADL model is located at 
-  [src/aadl/building-control-demo/.slang/BuildingControl_BuildingControlDemo_i_Instance.json](src/aadl/building-control-demo/.slang/BuildingControl_BuildingControlDemo_i_Instance.json)
+  [src/aadl/.slang/BuildingControl_BuildingControlDemo_i_Instance.json](src/aadl/.slang/BuildingControl_BuildingControlDemo_i_Instance.json)
 
 * The AADL Runtime (ART) provides a platform-independent runtime services; 
   the Slang implementation, which can be used for simulation using the Java Virtual Machine (JVM), 
