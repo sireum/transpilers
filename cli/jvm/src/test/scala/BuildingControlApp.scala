@@ -35,7 +35,7 @@ object BuildingControlApp {
     val out = Path(new File(args(1)).getCanonicalFile.getAbsoluteFile) / example
     val dir = Path(new File(implicitly[sourcecode.File].value).getParentFile)
     val pkg = example.replaceAllLiterally("-", "_")
-    val extFile = dir / up / 'c / pkg / "ext.c"
+    val extFile = slangPath / example / 'src / 'c / 'ext / "ext.c"
     val readme = dir / pkg / "readme.md"
 
     rm ! out
@@ -127,7 +127,15 @@ object BuildingControlApp {
                                     |ME=`whoami`
                                     |IPCS_Q=`ipcs -q | egrep "[0-9a-f]+[0-9]+" | grep $ME | cut -f2 -d" "`
                                     |for id in $IPCS_Q; do
-                                    |  ipcrm -q $id;
+                                    |  ipcrm -q $id
+                                    |done
+                                    |IPCS_Q=`ipcs -m | egrep "[0-9a-f]+[0-9]+" | grep $ME | grep 666 | cut -f2 -d" "`
+                                    |for id in $IPCS_Q; do
+                                    |  ipcrm -m $id
+                                    |done
+                                    |IPCS_Q=`ipcs -s | egrep "[0-9a-f]+[0-9]+" | grep $ME | grep 666 | cut -f2 -d" "`
+                                    |for id in $IPCS_Q; do
+                                    |  ipcrm -s $id
                                     |done
                                     |ipcs""".stripMargin)
 
