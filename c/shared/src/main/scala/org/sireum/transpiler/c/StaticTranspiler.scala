@@ -897,7 +897,7 @@ import StaticTranspiler._
       case inf: TypeInfo.AbstractDatatype => inf.methods.get(method.id).get
       case _ => halt("Infeasible")
     }
-    val key = receiver.ids
+    val key = compiledKeyName(receiver)
     val value = getCompiled(key)
     val res = info.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
     val header = methodHeaderRes(method.receiverOpt, res(tpeOpt = Some(method.tpe)))
@@ -944,15 +944,6 @@ import StaticTranspiler._
   }
 
   def transpileMethod(method: TypeSpecializer.Method): Unit = {
-    @pure def compName(name: QName): QName = {
-      var infoOpt = ts.typeHierarchy.nameMap.get(name)
-      var currName = name
-      while (infoOpt.isEmpty) {
-        currName = ops.ISZOps(name).dropRight(1)
-        infoOpt = ts.typeHierarchy.nameMap.get(currName)
-      }
-      return currName
-    }
     val oldNextTempNum = nextTempNum
     val oldStmts = stmts
     val oldCurrReceiverOpt = currReceiverOpt
@@ -974,7 +965,7 @@ import StaticTranspiler._
 
     val key: QName = currReceiverOpt match {
       case Some(rcv) => compiledKeyName(rcv)
-      case _ => compName(res.owner)
+      case _ => res.owner
     }
 
     val value = getCompiled(key)
