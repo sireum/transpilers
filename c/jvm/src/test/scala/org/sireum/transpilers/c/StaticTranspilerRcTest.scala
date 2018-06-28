@@ -116,13 +116,15 @@ class StaticTranspilerRcTest extends TestSuite {
 
     val ldir = dir / s"L${line.value}"
 
-    println()
-    println("Running make ...")
-    %('make)(resultDir)
-
-    rm ! ldir / 'CMakeFiles
-    rm ! ldir / "cmake_install.cmake"
-    rm ! ldir / "CMakeCache.txt"
+    try {
+      println()
+      println("Running make ...")
+      %('make)(resultDir)
+    } finally {
+      rm ! ldir / 'CMakeFiles
+      rm ! ldir / "cmake_install.cmake"
+      rm ! ldir / "CMakeCache.txt"
+    }
 
     mv(ldir / 'sha3, dir / name.value)
   }
