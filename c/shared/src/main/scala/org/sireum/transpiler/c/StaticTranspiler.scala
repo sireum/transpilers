@@ -125,8 +125,8 @@ object StaticTranspiler {
         }
         transpiler.stmts = oldStmts :+
           st"""{
-              |  ${(transpiler.stmts, "\n")}
-              |}"""
+          |  ${(transpiler.stmts, "\n")}
+          |}"""
       }
     }
   }
@@ -208,6 +208,55 @@ object StaticTranspiler {
     }
   }
 
+  @datatype class ClosureVar(context: QName, isVal: B, id: String, t: AST.Typed)
+
+  @record class LocalClosureCollector(noTypeParam: B,
+                                      var r: HashMap[QName, (B, AST.Stmt.Method, ISZ[ClosureVar])])
+    extends AST.MTransformer {
+    var stack: Stack[QName] = Stack.empty
+    var context: QName = ISZ()
+    var closureVars: ISZ[ClosureVar] = ISZ()
+
+    override def preStmtMethod(o: AST.Stmt.Method): AST.MTransformer.PreResult[AST.Stmt] = {
+      val res = o.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
+      stack = stack.push(context)
+      context = res.owner :+ res.id
+      return AST.MTransformer.PreResultStmtMethod
+    }
+
+    override def postStmtMethod(o: AST.Stmt.Method): MOption[AST.Stmt] = {
+      val res = o.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
+      r = r + (res.owner :+ res.id) ~> ((noTypeParam, o, closureVars))
+
+      val Some((c, s)) = stack.pop()
+      context = c
+      stack = s
+      var cvs = ISZ[ClosureVar]()
+      for (cv <- closureVars) {
+        if (cv.context != c) {
+          cvs = cvs :+ cv
+        }
+      }
+      closureVars = cvs
+      return AST.MTransformer.PostResultStmtMethod
+    }
+
+    override def postResolvedAttr(o: AST.ResolvedAttr): MOption[AST.ResolvedAttr] = {
+      o.resOpt.get match {
+        case res: AST.ResolvedInfo.LocalVar if res.scope == AST.ResolvedInfo.LocalVar.Scope.Closure =>
+          var found = F
+          for (cv2 <- closureVars if cv2.id == res.id) {
+            found = T
+          }
+          if (!found) {
+            closureVars = closureVars :+ ClosureVar(res.context, res.isVal, res.id, o.typedOpt.get)
+          }
+        case _ =>
+      }
+      return AST.MTransformer.PostResultResolvedAttr
+    }
+  }
+
   val transKind: String = "Static C Transpiler"
 
   val builtInTypes: HashSet[AST.Typed] = HashSet ++ ISZ(
@@ -278,10 +327,12 @@ import StaticTranspiler._
   var f64Constructor: B = F
   var rConstructor: B = F
 
+  var context: QName = ISZ()
   var currReceiverOpt: Option[AST.Typed.Name] = None()
   var stmts: ISZ[ST] = ISZ()
   var nextTempNum: Z = 0
   var localRename: HashMap[String, ST] = HashMap.empty
+  var nestedMethods: HashMap[QName, (B, AST.Stmt.Method, ISZ[ClosureVar])] = HashMap.empty
 
   def transpile(rep: Reporter): Result = {
 
@@ -436,7 +487,8 @@ import StaticTranspiler._
             info.ast.sig.id.value,
             info.ast.sig.typeParams.isEmpty,
             m.tpe,
-            info.ast.sig.params.map((p: AST.Param) => p.id.value)
+            info.ast.sig.params.map((p: AST.Param) => p.id.value),
+            ISZ()
           )
           compiledMap = compiledMap + name ~> value(header = value.header :+ st"$mh;")
         }
@@ -533,7 +585,6 @@ import StaticTranspiler._
 
   @pure def minIndexMaxElementSize(t: AST.Typed.Name): (Z, Z) = {
     val indexType = t.args(0)
-    val elementType = t.args(1)
     val size: Z = config.customArraySizes.get(t) match {
       case Some(n) => n
       case _ => config.maxArraySize
@@ -843,7 +894,8 @@ import StaticTranspiler._
     val atExit: ISZ[ST] = atExitOpt match {
       case Some(atexit) =>
         val oldStmts = stmts
-        val e = transObjectMethodInvoke(ISZ(), AST.Typed.unit, methodNameRes(None(), atexit.methodRes), ISZ())
+        val e =
+          transObjectMethodInvoke(ISZ(), AST.Typed.unit, methodNameRes(None(), atexit.methodRes), ISZ(), ISZ())
         val r = ISZ(st"StackFrame sf = NULL;", st"$e;")
         stmts = oldStmts
         r
@@ -943,16 +995,68 @@ import StaticTranspiler._
     compiledMap = compiledMap + key ~> newValue
   }
 
+  def buildNestedMethodInfo(
+    noTypeParam: B,
+    method: TypeSpecializer.Method
+  ): HashMap[QName, (B, AST.Stmt.Method, ISZ[ClosureVar])] = {
+    val collector = LocalClosureCollector(noTypeParam, HashMap.empty)
+    for (stmt <- method.info.ast.bodyOpt.get.stmts) {
+      collector.transformStmt(stmt)
+    }
+    return collector.r
+  }
+
   def transpileMethod(method: TypeSpecializer.Method): Unit = {
+    val res = method.info.methodRes
+    val key: QName = currReceiverOpt match {
+      case Some(rcv) => compiledKeyName(rcv)
+      case _ => res.owner
+    }
+
+    val oldContext = context
     val oldNextTempNum = nextTempNum
     val oldStmts = stmts
     val oldCurrReceiverOpt = currReceiverOpt
 
+    nestedMethods = buildNestedMethodInfo(method.info.ast.sig.typeParams.isEmpty, method)
+    for (p <- nestedMethods.entries) {
+      val (c, (noTypeParam, m, cls)) = p
+      context = c
+      val res = m.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
+      val header = methodHeader(
+        method.receiverOpt,
+        F,
+        res.owner,
+        res.id,
+        noTypeParam,
+        m.sig.funType,
+        m.sig.params.map(p => p.id.value),
+        cls
+      )
+
+      currReceiverOpt = method.receiverOpt
+      nextTempNum = 0
+      stmts = ISZ()
+
+      for (stmt <- m.bodyOpt.get.stmts) {
+        transpileStmt(stmt)
+      }
+
+      val impl =
+        st"""$header {
+        |  DeclNewStackFrame(caller, "${filenameOfPosOpt(m.posOpt, "")}", "${dotName(res.owner)}", "${res.id}", 0);
+        |  ${(stmts, "\n")}
+        |}"""
+
+      val value = getCompiled(key)
+      compiledMap = compiledMap + key ~> value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
+    }
+
+    context = res.owner :+ res.id
     currReceiverOpt = method.receiverOpt
     nextTempNum = 0
     stmts = ISZ()
 
-    val res = method.info.methodRes
     val header = methodHeaderRes(method.receiverOpt, res)
     for (stmt <- method.info.ast.bodyOpt.get.stmts) {
       transpileStmt(stmt)
@@ -963,17 +1067,14 @@ import StaticTranspiler._
       |  ${(stmts, "\n")}
       |}"""
 
-    val key: QName = currReceiverOpt match {
-      case Some(rcv) => compiledKeyName(rcv)
-      case _ => res.owner
-    }
-
     val value = getCompiled(key)
     compiledMap = compiledMap + key ~> value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
 
     currReceiverOpt = oldCurrReceiverOpt
     nextTempNum = oldNextTempNum
     stmts = oldStmts
+    nestedMethods = HashMap.empty
+    context = oldContext
   }
 
   def checkBitWidth(posOpt: Option[Position], n: Z, bitWidth: Z, isUnsigned: B): Unit = {
@@ -1089,7 +1190,13 @@ import StaticTranspiler._
     return st"${mangleName(tname)}_C($n)"
   }
 
-  def transObjectMethodInvoke(targs: ISZ[AST.Typed], retType: AST.Typed, name: ST, invokeArgs: ISZ[AST.Exp]): ST = {
+  def transObjectMethodInvoke(
+    targs: ISZ[AST.Typed],
+    retType: AST.Typed,
+    name: ST,
+    invokeArgs: ISZ[AST.Exp],
+    closureVars: ISZ[ClosureVar]
+  ): ST = {
     var args = ISZ[ST]()
     for (p <- ops.ISZOps(invokeArgs).zip(targs)) {
       val (arg, t) = p
@@ -1098,6 +1205,21 @@ import StaticTranspiler._
         args = args :+ a
       } else {
         args = args :+ st"(${transpileType(t)}) $a"
+      }
+    }
+    for (cv <- closureVars) {
+      if (isScalar(typeKind(cv.t))) {
+        if (cv.context == context) {
+          args = args :+ st"&${localId(cv.id)}"
+        } else {
+          args = args :+ localId(cv.id)
+        }
+      } else {
+        val id = localId(cv.id)
+        if (cv.context == context && !cv.isVal) {
+          stmts = stmts :+ st"if (&_$id != $id) { Type_assign(&_$id, $id, sizeof(${typeDecl(cv.t)})); $id = &_$id; }"
+        }
+        args = args :+ st"(${transpileType(cv.t)}) $id"
       }
     }
     if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
@@ -1133,7 +1255,9 @@ import StaticTranspiler._
             case Some(otherId) => return otherId
             case _ =>
               res.scope match {
-                case AST.ResolvedInfo.LocalVar.Scope.Closure => halt(s"TODO: $exp") // TODO
+                case AST.ResolvedInfo.LocalVar.Scope.Closure =>
+                  val t = expType(exp)
+                  return if (isScalar(typeKind(t))) st"(*${localId(exp.id.value)})" else localId(exp.id.value)
                 case _ => return localId(exp.id.value)
               }
           }
@@ -1151,11 +1275,43 @@ import StaticTranspiler._
         case res: AST.ResolvedInfo.Method =>
           val t = res.tpeOpt.get.ret
           if (res.isInObject) {
-            val r = transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ())
+            val r = transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ(), ISZ())
             return r
           } else {
-            val r = transInstanceMethodInvoke(t, methodNameRes(Some(currReceiverOpt.get), res), st"this", ISZ(), ISZ())
-            return r
+            nestedMethods.get(res.owner :+ res.id) match {
+              case Some((noTypeParam, m, cls)) =>
+                currReceiverOpt match {
+                  case Some(_) =>
+                    val r = transInstanceMethodInvoke(
+                      t,
+                      methodName(currReceiverOpt, F, res.owner, res.id, noTypeParam, m.sig.funType),
+                      st"this",
+                      ISZ(),
+                      ISZ(),
+                      cls
+                    )
+                    return r
+                  case _ =>
+                    val r = transObjectMethodInvoke(
+                      res.tpeOpt.get.args,
+                      t,
+                      methodName(None(), F, res.owner, res.id, noTypeParam, m.sig.funType),
+                      ISZ(),
+                      cls
+                    )
+                    return r
+                }
+              case _ =>
+                val r = transInstanceMethodInvoke(
+                  t,
+                  methodNameRes(Some(currReceiverOpt.get), res),
+                  st"this",
+                  ISZ(),
+                  ISZ(),
+                  ISZ()
+                )
+                return r
+            }
           }
         case res: AST.ResolvedInfo.EnumElement => return st"${mangleName(res.owner)}_${enumId(res.name)}"
         case res => halt(s"Infeasible: $res")
@@ -1234,7 +1390,8 @@ import StaticTranspiler._
             methodNameRes(Some(receiverType), res),
             receiver,
             res.tpeOpt.get.args,
-            ISZ(exp.right)
+            ISZ(exp.right),
+            ISZ()
           )
           return r
         case _ => halt("Infeasible")
@@ -1262,7 +1419,8 @@ import StaticTranspiler._
           val receiver = transpileExp(exp.exp)
           val receiverType = expType(exp.exp).asInstanceOf[AST.Typed.Name]
           val t = expType(exp)
-          val r = transInstanceMethodInvoke(t, methodNameRes(Some(receiverType), res), receiver, ISZ(), ISZ())
+          val r =
+            transInstanceMethodInvoke(t, methodNameRes(Some(receiverType), res), receiver, ISZ(), ISZ(), ISZ())
           return r
         case _ => halt("Infeasible")
       }
@@ -1330,13 +1488,21 @@ import StaticTranspiler._
             case AST.MethodMode.Method =>
               val t = expType(select)
               if (res.isInObject) {
-                val r = transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ())
+                val r =
+                  transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ(), ISZ())
                 return r
               } else {
                 val receiver = select.receiverOpt.get
                 val receiverType = expType(receiver).asInstanceOf[AST.Typed.Name]
                 val rcv = transpileExp(receiver)
-                val r = transInstanceMethodInvoke(t, methodNameRes(Some(receiverType), res), rcv, ISZ(), ISZ())
+                val r = transInstanceMethodInvoke(
+                  t,
+                  methodNameRes(Some(receiverType), res),
+                  rcv,
+                  ISZ(),
+                  ISZ(),
+                  ISZ()
+                )
                 return r
               }
             case _ => halt("Infeasible")
@@ -1358,7 +1524,8 @@ import StaticTranspiler._
       name: ST,
       receiver: ST,
       argTypes: ISZ[AST.Typed],
-      invokeArgs: ISZ[AST.Exp]
+      invokeArgs: ISZ[AST.Exp],
+      closureVars: ISZ[ClosureVar]
     ): ST = {
       var args = ISZ[ST]()
       for (p <- ops.ISZOps(invokeArgs).zip(argTypes)) {
@@ -1368,6 +1535,21 @@ import StaticTranspiler._
           args = args :+ a
         } else {
           args = args :+ st"(${transpileType(t)}) $a"
+        }
+      }
+      for (cv <- closureVars) {
+        if (isScalar(typeKind(cv.t))) {
+          if (cv.context == context) {
+            args = args :+ st"&${localId(cv.id)}"
+          } else {
+            args = args :+ localId(cv.id)
+          }
+        } else {
+          val id = localId(cv.id)
+          if (cv.context == context && !cv.isVal) {
+            stmts = stmts :+ st"if (&_$id != $id) { Type_assign(&_$id, $id, sizeof(${typeDecl(cv.t)})); $id = &_$id; }"
+          }
+          args = args :+ st"(${transpileType(cv.t)}) $id"
         }
       }
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
@@ -1502,25 +1684,61 @@ import StaticTranspiler._
             case AST.MethodMode.Method =>
               if (res.isInObject) {
                 val r =
-                  transObjectMethodInvoke(res.tpeOpt.get.args, expType(invoke), methodNameRes(None(), res), invoke.args)
+                  transObjectMethodInvoke(
+                    res.tpeOpt.get.args,
+                    expType(invoke),
+                    methodNameRes(None(), res),
+                    invoke.args,
+                    ISZ()
+                  )
                 return r
               } else {
-                val receiverType: AST.Typed.Name = invoke.receiverOpt match {
-                  case Some(rcv) => expType(rcv).asInstanceOf[AST.Typed.Name]
-                  case _ => currReceiverOpt.get
+                val rtRcvOpt: Option[(AST.Typed.Name, ST)] = invoke.receiverOpt match {
+                  case Some(rcv) =>
+                    val r = transpileExp(rcv)
+                    Some((expType(rcv).asInstanceOf[AST.Typed.Name], r))
+                  case _ =>
+                    currReceiverOpt match {
+                      case Some(rcv) => Some((rcv, st"this"))
+                      case _ => None()
+                    }
                 }
-                val receiver: ST = invoke.receiverOpt match {
-                  case Some(rcv) => val r = transpileExp(rcv); r
-                  case _ => st"this"
+                nestedMethods.get(res.owner :+ res.id) match {
+                  case Some((noTypeParam, m, cls)) =>
+                    rtRcvOpt match {
+                      case Some((rcv, receiver)) =>
+                        val r = transInstanceMethodInvoke(
+                          expType(invoke),
+                          methodName(Some(rcv), F, res.owner, res.id, noTypeParam, m.sig.funType),
+                          receiver,
+                          res.tpeOpt.get.args,
+                          invoke.args,
+                          cls
+                        )
+                        return r
+                      case _ =>
+                        val r =
+                          transObjectMethodInvoke(
+                            res.tpeOpt.get.args,
+                            expType(invoke),
+                            methodName(None(), F, res.owner, res.id, noTypeParam, m.sig.funType),
+                            invoke.args,
+                            cls
+                          )
+                        return r
+                    }
+                  case _ =>
+                    val (rcv, receiver) = rtRcvOpt.get
+                    val r = transInstanceMethodInvoke(
+                      expType(invoke),
+                      methodNameRes(Some(rcv), res),
+                      receiver,
+                      res.tpeOpt.get.args,
+                      invoke.args,
+                      ISZ()
+                    )
+                    return r
                 }
-                val r = transInstanceMethodInvoke(
-                  expType(invoke),
-                  methodNameRes(Some(receiverType), res),
-                  receiver,
-                  res.tpeOpt.get.args,
-                  invoke.args
-                )
-                return r
               }
             case AST.MethodMode.Spec => halt(s"TODO: $res") // TODO
             case AST.MethodMode.Ext => val r = transExt(res, expType(invoke), invoke.args); return r
@@ -1615,7 +1833,8 @@ import StaticTranspiler._
               invoke.args.map(e => e.typedOpt.get),
               expType(invoke),
               methodNameTyped(None(), invoke.ident.attr.typedOpt.get.asInstanceOf[AST.Typed.Method]),
-              invoke.args
+              invoke.args,
+              ISZ()
             )
             return r
           }
@@ -1953,7 +2172,8 @@ import StaticTranspiler._
           case _: AST.Exp.LitF32 => stmts = stmts :+ st"$handledVar = $handledVar && F32__eq($exp, $e);"
           case _: AST.Exp.LitF64 => stmts = stmts :+ st"$handledVar = $handledVar && F64__eq($exp, $e);"
           case _: AST.Exp.LitR => stmts = stmts :+ st"$handledVar = $handledVar && R__eq($exp, $e);"
-          case _: AST.Exp.LitString => stmts = stmts :+ st"$handledVar = $handledVar && String__eq((String) $exp, (String) $e);"
+          case _: AST.Exp.LitString =>
+            stmts = stmts :+ st"$handledVar = $handledVar && String__eq((String) $exp, (String) $e);"
         }
       case pat: AST.Pattern.LitInterpolate =>
         pat.prefix.native match {
@@ -2385,7 +2605,15 @@ import StaticTranspiler._
           lhs.attr.resOpt.get match {
             case res: AST.ResolvedInfo.LocalVar =>
               res.scope match {
-                case AST.ResolvedInfo.LocalVar.Scope.Closure => halt("TODO") // TODO
+                case AST.ResolvedInfo.LocalVar.Scope.Closure =>
+                  val t = expType(stmt.lhs)
+                  val kind = typeKind(t)
+                  if (isScalar(kind)) {
+                    transpileAssignExp(stmt.rhs, (rhs, _) => st"*${localId(lhs.id.value)} = $rhs;")
+                  } else {
+                    val id = localId(lhs.id.value)
+                    transpileAssignExp(stmt.rhs, (rhs, _) => st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));")
+                  }
                 case scope =>
                   val t = expType(stmt.lhs)
                   val kind = typeKind(t)
@@ -2685,7 +2913,7 @@ import StaticTranspiler._
         transpileMatch(stmt, None())
       case stmt: AST.Stmt.For => transpileFor(stmt)
       case stmt: AST.Stmt.Return => transpileReturn(stmt)
-      case _: AST.Stmt.Method => halt("TODO") // TODO
+      case _: AST.Stmt.Method => // skip
       case _: AST.Stmt.Import => // skip
       case _: AST.Stmt.AbstractDatatype => // skip
       case _: AST.Stmt.Sig => // skip
@@ -2860,10 +3088,17 @@ import StaticTranspiler._
           case "unary_-" => st"${transpileType(receiverTypeOpt.get)}__minus"
           case "unary_!" => st"${transpileType(receiverTypeOpt.get)}__not"
           case "unary_~" => st"${transpileType(receiverTypeOpt.get)}__complement"
-          case _ => st"${transpileType(receiverTypeOpt.get)}_${methodId(id)}_"
+          case _ =>
+            receiverTypeOpt match {
+              case Some(receiverType) => st"${transpileType(receiverType)}_${methodId(id)}_"
+              case _ => st"${mangleName(owner)}_${methodId(id)}"
+            }
         }
       } else {
-        st"${transpileType(receiverTypeOpt.get)}_${methodId(id)}_${fprint(t)}_"
+        receiverTypeOpt match {
+          case Some(receiverType) => st"${transpileType(receiverType)}_${methodId(id)}_${fprint(t)}_"
+          case _ => st"${mangleName(owner)}_${methodId(id)}_${fprint(t)}"
+        }
       }
     return r
   }
@@ -2876,7 +3111,8 @@ import StaticTranspiler._
       res.id,
       res.typeParams.isEmpty,
       res.tpeOpt.get,
-      res.paramNames
+      res.paramNames,
+      ISZ()
     )
   }
 
@@ -2887,7 +3123,8 @@ import StaticTranspiler._
     id: String,
     noTypeParams: B,
     t: AST.Typed.Fun,
-    paramNames: ISZ[String]
+    paramNames: ISZ[String],
+    closureVars: ISZ[ClosureVar]
   ): ST = {
     val name = methodName(receiverOpt, isInObject, owner, id, noTypeParams, t)
     val tpe = transpileType(t.ret)
@@ -2906,7 +3143,22 @@ import StaticTranspiler._
             yield st"${transpileType(p._1)} ${localId(p._2)}",
           ", "
         )}"
-    return st"$retTypeDecl $name($params)"
+    val cls: ST =
+      if (closureVars.isEmpty) {
+        st""
+      } else {
+        var cl = ISZ[ST]()
+        for (cv <- closureVars) {
+          val ptpe = transpileType(cv.t)
+          if (isScalar(typeKind(cv.t))) {
+            cl = cl :+ st"$ptpe *${localId(cv.id)}"
+          } else {
+            cl = cl :+ st"$ptpe ${localId(cv.id)}"
+          }
+        }
+        st", ${(cl, ", ")}"
+      }
+    return st"$retTypeDecl $name($params$cls)"
   }
 
   def declString(): ST = {

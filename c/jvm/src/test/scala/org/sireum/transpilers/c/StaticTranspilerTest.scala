@@ -244,8 +244,52 @@ class StaticTranspilerTest extends TestSuite {
                         |println(R("1.0"))
                         |println(R("a"))
                         |println(N("0"))
-                        |println(N("-1"))
-      """.stripMargin)
+                        |println(N("-1"))""".stripMargin)
+
+    * - testWorksheet("""object Foo {
+                        |  @pure def foo(x: Z): Z = {
+                        |    var r = x
+                        |    def foo1(): Unit = {
+                        |      def foo2(): Unit = {
+                        |        r = r + 1
+                        |      }
+                        |      foo2()
+                        |    }
+                        |    foo1()
+                        |    return r
+                        |  }
+                        |  @pure def fooP[T](x: T, y: T): T = {
+                        |    var r: Option[T] = Some(x)
+                        |    def foo1(): Unit = {
+                        |      var r2 = y
+                        |      def foo2(): Unit = {
+                        |        r = Some(r2)
+                        |      }
+                        |      foo2()
+                        |    }
+                        |    foo1()
+                        |    return r.get
+                        |  }
+                        |}
+                        |
+                        |@datatype class Bar[T](x: T) {
+                        |  @pure def bar(y: T): T = {
+                        |    var r: Option[T] = Some(x)
+                        |    def bar1(): Unit = {
+                        |      var r2 = y
+                        |      def bar2(): Unit = {
+                        |        r = Some(r2)
+                        |      }
+                        |      bar2()
+                        |    }
+                        |    bar1()
+                        |    return r.get
+                        |  }
+                        |}
+                        |
+                        |println(Foo.foo(4))
+                        |println(Foo.fooP(4, 5))
+                        |println(Bar(4).bar(5))""".stripMargin)
 
   }
 
@@ -319,16 +363,18 @@ class StaticTranspilerTest extends TestSuite {
 
     val ldir = dir / s"L${line.value}"
 
-    println()
-    println("Running make ...")
-    %('make)(resultDir)
+    try {
+      println()
+      println("Running make ...")
+      %('make)(resultDir)
 
-    rm ! ldir / 'CMakeFiles
-    rm ! ldir / "cmake_install.cmake"
-    rm ! ldir / "CMakeCache.txt"
-
-    println()
-    println(s"Running ${config.projectName} ...")
-    %(s"./${config.projectName}")(resultDir)
+      println()
+      println(s"Running ${config.projectName} ...")
+      %(s"./${config.projectName}")(resultDir)
+    } finally {
+      rm ! ldir / 'CMakeFiles
+      rm ! ldir / "cmake_install.cmake"
+      rm ! ldir / "CMakeCache.txt"
+    }
   }
 }
