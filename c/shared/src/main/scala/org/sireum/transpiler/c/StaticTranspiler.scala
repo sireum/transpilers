@@ -1285,7 +1285,9 @@ import StaticTranspiler._
                     val r = transInstanceMethodInvoke(
                       t,
                       methodName(currReceiverOpt, F, res.owner, res.id, noTypeParam, m.sig.funType),
+                      currReceiverOpt.get,
                       st"this",
+                      res.id,
                       ISZ(),
                       ISZ(),
                       cls
@@ -1305,7 +1307,9 @@ import StaticTranspiler._
                 val r = transInstanceMethodInvoke(
                   t,
                   methodNameRes(Some(currReceiverOpt.get), res),
+                  currReceiverOpt.get,
                   st"this",
+                  res.id,
                   ISZ(),
                   ISZ(),
                   ISZ()
@@ -1388,7 +1392,9 @@ import StaticTranspiler._
           val r = transInstanceMethodInvoke(
             expType(exp),
             methodNameRes(Some(receiverType), res),
+            receiverType,
             receiver,
+            res.id,
             res.tpeOpt.get.args,
             ISZ(exp.right),
             ISZ()
@@ -1420,7 +1426,7 @@ import StaticTranspiler._
           val receiverType = expType(exp.exp).asInstanceOf[AST.Typed.Name]
           val t = expType(exp)
           val r =
-            transInstanceMethodInvoke(t, methodNameRes(Some(receiverType), res), receiver, ISZ(), ISZ(), ISZ())
+            transInstanceMethodInvoke(t, methodNameRes(Some(receiverType), res), receiverType, receiver, res.id, ISZ(), ISZ(), ISZ())
           return r
         case _ => halt("Infeasible")
       }
@@ -1498,7 +1504,9 @@ import StaticTranspiler._
                 val r = transInstanceMethodInvoke(
                   t,
                   methodNameRes(Some(receiverType), res),
+                  receiverType,
                   rcv,
+                  res.id,
                   ISZ(),
                   ISZ(),
                   ISZ()
@@ -1522,11 +1530,20 @@ import StaticTranspiler._
     def transInstanceMethodInvoke(
       retType: AST.Typed,
       name: ST,
+      receiverType: AST.Typed.Name,
       receiver: ST,
+      id: String,
       argTypes: ISZ[AST.Typed],
       invokeArgs: ISZ[AST.Exp],
       closureVars: ISZ[ClosureVar]
     ): ST = {
+      val isVar: B = ts.typeHierarchy.typeMap.get(receiverType.ids).get match {
+        case info: TypeInfo.AbstractDatatype => info.vars.contains(id)
+        case _ => F
+      }
+      if (isVar) {
+        return st"${transpileType(receiverType)}_${fieldId(id)}_($receiver)"
+      }
       var args = ISZ[ST]()
       for (p <- ops.ISZOps(invokeArgs).zip(argTypes)) {
         val (arg, t) = p
@@ -1710,7 +1727,9 @@ import StaticTranspiler._
                         val r = transInstanceMethodInvoke(
                           expType(invoke),
                           methodName(Some(rcv), F, res.owner, res.id, noTypeParam, m.sig.funType),
+                          rcv,
                           receiver,
+                          res.id,
                           res.tpeOpt.get.args,
                           invoke.args,
                           cls
@@ -1732,7 +1751,9 @@ import StaticTranspiler._
                     val r = transInstanceMethodInvoke(
                       expType(invoke),
                       methodNameRes(Some(rcv), res),
+                      rcv,
                       receiver,
+                      res.id,
                       res.tpeOpt.get.args,
                       invoke.args,
                       ISZ()

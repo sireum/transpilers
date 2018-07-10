@@ -493,14 +493,17 @@ import TypeSpecializer._
     method.receiverOpt match {
       case Some(receiver) =>
         th.typeMap.get(receiver.ids).get match {
-          case info: TypeInfo.AbstractDatatype if info.ast.isRoot => traitMethods = traitMethods + method
+          case info: TypeInfo.AbstractDatatype =>
+            if (info.ast.isRoot) {
+              traitMethods = traitMethods + method
+            } else if (info.methods.contains(method.id)) {
+              val mInfo = classMethodImpl(posOpt, method)
+              workList = workList :+ Method(method.receiverOpt, mInfo)
+            }
           case info: TypeInfo.Sig =>
             if (!info.ast.isExt) {
               traitMethods = traitMethods + method
             }
-          case _: TypeInfo.AbstractDatatype =>
-            val mInfo = classMethodImpl(posOpt, method)
-            workList = workList :+ Method(method.receiverOpt, mInfo)
           case _ => halt("Infeasible")
         }
       case _ =>
@@ -864,6 +867,7 @@ import TypeSpecializer._
           case _: AST.Typed.Package => return None()
           case _: AST.Typed.Object => return None()
           case t: AST.Typed.Name => return Some(t)
+          case t: AST.Typed.Method if t.tpe.isByName => Some(t.tpe.ret.asInstanceOf[AST.Typed.Name])
           case _ => halt(s"Infeasible: $e")
         }
       case _ => return None()
