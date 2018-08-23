@@ -112,6 +112,9 @@ Below is a depiction of the architecture:
   Linux, and Windows/Cygwin. The generated CMake build definition is suitable for using the easy-to-use 
   [CLion](https://www.jetbrains.com/clion/) IDE for C/C++; for example, it was used to develop [ext.c](src/c/ext/ext.c).
 
+  The [src/c](src/c) directory can be
+  opened in CLion providing full IDE support for ease of code exploration, editing, testing, and debugging.
+
 
 ## Natively Running The Simulation on Unix-like Host
 

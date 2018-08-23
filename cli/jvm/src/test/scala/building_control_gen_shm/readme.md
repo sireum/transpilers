@@ -112,6 +112,9 @@ Below is a depiction of the architecture:
   Linux, and Windows/Cygwin. The generated CMake build definition is suitable for using the easy-to-use 
   [CLion](https://www.jetbrains.com/clion/) IDE for C/C++; for example, it was used to develop [ext.c](src/c/ext/ext.c).
 
+  The [src/c](src/c) directory can be
+  opened in CLion providing full IDE support for ease of code exploration, editing, testing, and debugging.
+
 
 ## Natively Running The Simulation on Unix-like Host
 
@@ -145,11 +148,7 @@ This will open new terminal windows for the three component apps; press the ente
 bin/mac/Main
 ```
 
-that cleanly terminate all apps; or by killing the apps by:
-
-```bash
-bin/stop.sh
-```
+that cleanly terminate all apps.
 
 ### Linux
 
@@ -179,11 +178,7 @@ This will open new terminal windows for the three component apps; press the ente
 bin/linux/Main
 ```
 
-that cleanly terminate all apps; or by killing the apps by:
-
-```bash
-bin/stop.sh
-```
+that cleanly terminate all apps.
 
 ### Windows (Cygwin)
 
@@ -217,8 +212,4 @@ This will open new terminal windows for the three component apps; press the ente
 bin/win/Main
 ```
 
-that cleanly terminate all apps; or by killing the apps by:
-
-```bash
-bin/stop.sh
-```
+that cleanly terminate all apps.
