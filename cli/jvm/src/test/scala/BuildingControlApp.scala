@@ -203,6 +203,8 @@ object BuildingControlApp {
       ISZ(
         "transpiler",
         "c",
+        "-n",
+        example,
         "--verbose",
         "--sourcepath",
         s"${out / 'src / 'scala}",
