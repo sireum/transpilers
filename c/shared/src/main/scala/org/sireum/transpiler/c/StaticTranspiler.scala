@@ -337,7 +337,7 @@ import StaticTranspiler._
   def transpile(rep: Reporter): Result = {
 
     var r = HashSMap.empty[QName, ST]
-    var cFilenames: ISZ[String] = ISZ()
+    var cFilenames: ISZ[ISZ[String]] = ISZ()
 
     def transEntryPoints(): Unit = {
       var i = 0
@@ -347,7 +347,7 @@ import StaticTranspiler._
             val (exeName, main) = transpileWorksheet(ep.program, i)
             val cFilename = s"$exeName.c"
             r = r + ISZ[String](cFilename) ~> main
-            cFilenames = cFilenames :+ cFilename
+            cFilenames = cFilenames :+ ISZ(cFilename)
             i = i + 1
           case ep: TypeSpecializer.EntryPoint.App =>
             val m = ts.typeHierarchy.nameMap.get(ep.name :+ "main").get.asInstanceOf[Info.Method]
@@ -357,8 +357,9 @@ import StaticTranspiler._
             }
             val (exeName, main) = transpileMain(m, atExitOpt, i)
             val cFilename = s"$exeName.c"
-            r = r + ISZ[String](cFilename) ~> main
-            cFilenames = cFilenames :+ cFilename
+            val cPath = ISZ[String](s"app-$exeName", cFilename)
+            r = r + cPath ~> main
+            cFilenames = cFilenames :+ cPath
             i = i + 1
         }
       }

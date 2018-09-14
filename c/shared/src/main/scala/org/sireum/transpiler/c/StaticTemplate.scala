@@ -249,12 +249,12 @@ object StaticTemplate {
     return r
   }
 
-  @pure def cmake(project: String, mainFilenames: ISZ[String], filess: ISZ[QName]): ST = {
+  @pure def cmake(project: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName]): ST = {
     val mainFs = HashSet ++ mainFilenames
 
     @pure def files(filess: ISZ[QName]): ISZ[ST] = {
-      return for (f <- filess if !(f.size == z"1" && mainFs.contains(f(0))))
-        yield if (f.size == z"1") st"${f(0)}" else st"${(ops.ISZOps(f).dropRight(1), "/")}/${f(f.size - 1)}"
+      return for (f <- filess if !mainFs.contains(f)) yield st"${(f, "/")}"
+//        yield if (f.size == z"1") st"${f(0)}" else st"${(ops.ISZOps(f).dropRight(1), "/")}/${f(f.size - 1)}"
     }
 
     @pure def includeDirs(filess: ISZ[QName]): ISZ[ST] = {
@@ -269,16 +269,15 @@ object StaticTemplate {
       return for (f <- r.elements) yield st"PUBLIC ${(f, "/")}"
     }
 
-    @pure def target(filename: String): ST = {
-      val name = removeExt(filename)
+    @pure def target(filepath: ISZ[String]): ST = {
+      val name = removeExt(filepath(filepath.size - 1))
       val r =
         st"""
-        |add_executable($name
-        |        $filename
-        |        ${(files(filess), "\n")})
+        |add_executable($name-bin ${(filepath, "/")})
         |
-        |target_include_directories($name
-        |        ${(includeDirs(filess), "\n")})"""
+        |target_link_libraries($name-bin LINK_PUBLIC $project)
+        |
+        |set_target_properties($name-bin PROPERTIES OUTPUT_NAME $name)"""
       return r
     }
 
@@ -297,6 +296,12 @@ object StaticTemplate {
       |add_compile_options(-Werror)
       |
       |add_compile_options("$$<$$<CONFIG:Release>:-O2>")
+      |
+      |add_library($project STATIC
+      |        ${(files(filess), "\n")})
+      |
+      |target_include_directories($project
+      |        ${(for (d <- includeDirs(filess)) yield st"PUBLIC $d", "\n")})
       |
       |${(mains, "\n\n")}"""
     return r
@@ -349,9 +354,11 @@ object StaticTemplate {
       |${(comp.header, "\n\n")}
       |
       |#endif"""))
-      r = r :+ ((dir :+ implFilename, st"""#include <all.h>
-      |
-      |${(comp.impl, "\n\n")}"""))
+      if (comp.impl.nonEmpty) {
+        r = r :+ ((dir :+ implFilename, st"""#include <all.h>
+        |
+        |${(comp.impl, "\n\n")}"""))
+      }
     }
     return r
   }
@@ -378,7 +385,7 @@ object StaticTemplate {
     iszSizeType: String,
     atExit: ISZ[ST]
   ): ST = {
-    val r =
+    val r: ST = if (atExit.nonEmpty) {
       st"""#include <all.h>
       |#include <signal.h>
       |
@@ -417,6 +424,36 @@ object StaticTemplate {
       |
       |  return (int) ${mangleName(owner)}_$id(sf, &t_args);
       |}"""
+    } else {
+      st"""#include <all.h>
+      |#include <string.h>
+      |
+      |int main(int argc, char *argv[]) {
+      |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<App>", 0);
+      |
+      |  DeclNew$iszStringType(t_args);
+      |
+      |  int size = argc - 1;
+      |  if (size > Max$iszStringType) {
+      |    sfAbort("Argument list too long.");
+      |  }
+      |
+      |  for (int i = 0; i < size; i++) {
+      |    char *arg = argv[i + 1];
+      |    size_t argSize = strlen(arg);
+      |    if (argSize > MaxString) {
+      |      sfAbort("Argument too long.");
+      |    }
+      |    ${iszStringType}_at(&t_args, i)->type = TString;
+      |    ${iszStringType}_at(&t_args, i)->size = (Z) argSize;
+      |    memcpy(${iszStringType}_at(&t_args, i)->value, arg, argSize + 1);
+      |  }
+      |
+      |  t_args.size = ($iszSizeType) size;
+      |
+      |  return (int) ${mangleName(owner)}_$id(sf, &t_args);
+      |}"""
+    }
     return r
   }
 
