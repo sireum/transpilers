@@ -115,6 +115,45 @@ Below is a depiction of the architecture:
   The [src/c](src/c) directory can be
   opened in CLion providing full IDE support for ease of code exploration, editing, testing, and debugging.
 
+## Running The Simulation on JVM 1.8+
+
+**Requirements**
+
+* JDK 8 or above
+
+**Compiling**
+
+```bash
+bin/assembly.sh
+```
+
+**Running**
+
+```bash
+bin/building-control-demo
+```
+
+Press `Enter` twice to terminate the simulation.
+
+**IDE**
+
+[OSATE with Sireum plugin](https://github.com/sireum/osate-plugin-update-site)
+can be used to inspect and edit the AADL model.
+To do so, open [src/aadl/building-control-demo](src/aadl/building-control-demo) as a project.
+
+[Sireum IVE](http://logika.sireum.org/doc/01-getting-started/index.html)
+can be used to inspect, edit, test, and debug the Slang app.
+
+First generate project files:
+
+```bash
+../bin/mill-idea.sh
+```
+
+Then open the top-level (parent) directory in Sireum IVE.
+
+The main class is [src/scala/architecture/building_control_gen_shm/Demo.scala](src/scala/architecture/building_control_gen_shm/Demo.scala).
+
 
 ## Natively Running The Simulation on Unix-like Host
 
@@ -190,7 +229,8 @@ Install the following packages
 <path-cygwin-setup>/setup-x86_64.exe -q --packages=cygrunsrv,make,cmake,clang,procps-ng
 ```
 
-Then run [cygserver](https://www.cygwin.com/cygwin-ug-net/using-cygserver.html) (needed for System V MessageQueue).
+Then run [cygserver](https://www.cygwin.com/cygwin-ug-net/using-cygserver.html)
+(needed for System V Shared Memory and Semaphore).
 
 [**Compiling**](bin/compile-cygwin.sh)
 
