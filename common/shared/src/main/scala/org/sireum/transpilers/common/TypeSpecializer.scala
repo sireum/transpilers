@@ -129,7 +129,7 @@ object TypeSpecializer {
     if (substMap.nonEmpty) {
       val astOpt = TypeSubstitutor(substMap).transformAssignExp(ast)
       astOpt match {
-        case MSome(newAst: AST.AssignExp) => return newAst
+        case MSome(newAst) => return newAst
         case _ => return ast
       }
     } else {
@@ -383,7 +383,7 @@ import TypeSpecializer._
 
   def classMethodImpl(posOpt: Option[Position], method: SMethod): Info.Method = {
 
-    def combine(sm1: HashMap[String, AST.Typed], sm2: HashMap[String, AST.Typed]): HashMap[String, AST.Typed] = {
+    def combineSm(sm1: HashMap[String, AST.Typed], sm2: HashMap[String, AST.Typed]): HashMap[String, AST.Typed] = {
       if (sm1.isEmpty) {
         return sm2
       }
@@ -452,7 +452,7 @@ import TypeSpecializer._
     val aSubstMapOpt = TypeChecker.buildTypeSubstMap(info.name, posOpt, info.ast.typeParams, receiver.args, reporter)
     val mFun = m.methodRes.tpeOpt.get
     val mSubstMapOpt = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.tpe, mFun, reporter)
-    val substMap = combine(aSubstMapOpt.get, mSubstMapOpt.get)
+    val substMap = combineSm(aSubstMapOpt.get, mSubstMapOpt.get)
     return substMethod(m, substMap)
   }
 
@@ -675,7 +675,7 @@ import TypeSpecializer._
   def specializeObjectVar(info: Info.Var): Unit = {
     th.nameMap.get(info.owner).get match {
       case ownerInfo: Info.Object =>
-        val constructorInfo = ownerInfo.asInstanceOf[Info.Object].constructorRes
+        val constructorInfo = ownerInfo.constructorRes
         val oldRcvOpt = currReceiverOpt
         val oldSMethodOpt = currSMethodOpt
         currReceiverOpt = None()

@@ -259,7 +259,7 @@ object StaticTranspiler {
 
   val transKind: String = "Static C Transpiler"
 
-  val builtInTypes: HashSet[AST.Typed] = HashSet ++ ISZ(
+  val builtInTypes: HashSet[AST.Typed] = HashSet ++ ISZ[AST.Typed](
     AST.Typed.unit,
     AST.Typed.b,
     AST.Typed.c,
@@ -280,7 +280,7 @@ object StaticTranspiler {
   val moptionName: QName = AST.Typed.sireumName :+ "MOption"
   val meitherName: QName = AST.Typed.sireumName :+ "MEither"
 
-  val sNameSet: HashSet[QName] = HashSet.empty ++ ISZ(
+  val sNameSet: HashSet[QName] = HashSet ++ ISZ[QName](
     AST.Typed.isName,
     AST.Typed.iszName,
     AST.Typed.msName,
@@ -809,16 +809,16 @@ import StaticTranspiler._
       var leafTypes = ISZ[ST]()
       val tImpls = ts.typeImpl.childrenOf(t).elements
       for (tImpl <- tImpls) {
-        val t = genType(tImpl)
-        leafTypes = leafTypes :+ t
+        val tST = genType(tImpl)
+        leafTypes = leafTypes :+ tST
       }
       val key = compiledKeyName(t)
       val value = getCompiled(key)
       val newValue = traitz(value, fingerprint(t)._1, t.string, includes(tImpls.map(t => t)), leafTypes)
       compiledMap = compiledMap + key ~> newValue
     }
-    def genFun(t: AST.Typed.Fun): Unit = {
-      halt(s"TODO: $t") // TODO
+    def genFun(tf: AST.Typed.Fun): Unit = {
+      halt(s"TODO: $tf") // TODO
     }
     def genType(t: AST.Typed): ST = {
       typeNameMap.get(t) match {
@@ -969,13 +969,13 @@ import StaticTranspiler._
             cases = cases :+ st"case T$tpe: Type_assign(result, ${tpe}_${id}_(($tpe) this), sizeof($rTpe)); return;"
           }
         case _ =>
-          val info = findMethod(t)
-          val res = info.methodRes
-          val mName = methodNameRes(Some(t), res)
+          val minfo = findMethod(t)
+          val mres = minfo.methodRes
+          val mName = methodNameRes(Some(t), mres)
           val args: ST =
-            if (res.paramNames.isEmpty) st""
+            if (mres.paramNames.isEmpty) st""
             else
-              st", ${(for (p <- ops.ISZOps(res.paramNames).zip(info.methodType.tpe.args)) yield st"(${transpileType(p._2)}) ${localId(p._1)}", ", ")}"
+              st", ${(for (p <- ops.ISZOps(mres.paramNames).zip(minfo.methodType.tpe.args)) yield st"(${transpileType(p._2)}) ${localId(p._1)}", ", ")}"
           if (rt == AST.Typed.unit) {
             cases = cases :+ st"case T$tpe: $mName(caller, ($tpe) this$args); return;"
           } else if (scalar) {
@@ -1023,12 +1023,12 @@ import StaticTranspiler._
     for (p <- nestedMethods.entries) {
       val (c, (noTypeParam, m, cls)) = p
       context = c
-      val res = m.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
+      val mres = m.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
       val header = methodHeader(
         method.receiverOpt,
         F,
-        res.owner,
-        res.id,
+        mres.owner,
+        mres.id,
         noTypeParam,
         m.sig.funType,
         m.sig.params.map(p => p.id.value),
@@ -1045,7 +1045,7 @@ import StaticTranspiler._
 
       val impl =
         st"""$header {
-        |  DeclNewStackFrame(caller, "${filenameOfPosOpt(m.posOpt, "")}", "${dotName(res.owner)}", "${res.id}", 0);
+        |  DeclNewStackFrame(caller, "${filenameOfPosOpt(m.posOpt, "")}", "${dotName(mres.owner)}", "${ mres.id}", 0);
         |  ${(stmts, "\n")}
         |}"""
 
@@ -1234,11 +1234,11 @@ import StaticTranspiler._
     }
   }
 
-  def transpileExp(exp: AST.Exp): ST = {
+  def transpileExp(expression: AST.Exp): ST = {
 
     if (config.expPlugins.nonEmpty) {
-      for (p <- config.expPlugins if p.canTranspile(this, exp)) {
-        val r = p.transpile(this, exp)
+      for (p <- config.expPlugins if p.canTranspile(this, expression)) {
+        val r = p.transpile(this, expression)
         return r
       }
     }
@@ -1563,11 +1563,11 @@ import StaticTranspiler._
             args = args :+ localId(cv.id)
           }
         } else {
-          val id = localId(cv.id)
+          val lid = localId(cv.id)
           if (cv.context == context && !cv.isVal) {
-            stmts = stmts :+ st"if (&_$id != $id) { Type_assign(&_$id, $id, sizeof(${typeDecl(cv.t)})); $id = &_$id; }"
+            stmts = stmts :+ st"if (&_$lid != $lid) { Type_assign(&_$lid, $lid, sizeof(${typeDecl(cv.t)})); $lid = &_$lid; }"
           }
-          args = args :+ st"(${transpileType(cv.t)}) $id"
+          args = args :+ st"(${transpileType(cv.t)}) $lid"
         }
       }
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
@@ -1959,7 +1959,7 @@ import StaticTranspiler._
       return st"(&$temp)"
     }
 
-    exp match {
+    expression match {
       case exp: AST.Lit => val r = transpileLit(exp); return r
       case exp: AST.Exp.StringInterpolate =>
         exp.prefix.native match {
@@ -2101,7 +2101,7 @@ import StaticTranspiler._
     }
   }
 
-  def transpilePattern(immutableParent: B, allowShadow: B, handledVar: ST, exp: ST, pat: AST.Pattern): Unit = {
+  def transpilePattern(immutableParent: B, allowShadow: B, handledVar: ST, exp: ST, pattern: AST.Pattern): Unit = {
     def transTuplePattern(pat: AST.Pattern.Structure): Unit = {
       val oldStmts = stmts
       stmts = ISZ()
@@ -2118,7 +2118,7 @@ import StaticTranspiler._
         case _ =>
       }
       val immutable = isImmutable(kind)
-      for (pi <- ops.ISZOps(pat.patterns).zip(pat.patterns.indices.map(n => n + 1))) {
+      for (pi <- ops.ISZOps(pat.patterns).zip(pat.patterns.indices.map((n: Z) => n + 1))) {
         val (p, i) = pi
         transpilePattern(immutable, allowShadow, handledVar, st"${tpe}_$i($exp)", p)
       }
@@ -2149,7 +2149,7 @@ import StaticTranspiler._
         case _ =>
       }
       val immutable = isImmutable(typeKind(t))
-      for (pi <- ops.ISZOps(pat.patterns).zip(pat.patterns.indices.map(n => n + 1))) {
+      for (pi <- ops.ISZOps(pat.patterns).zip(pat.patterns.indices.map((n: Z) => n + 1))) {
         val (p, i) = pi
         transpilePattern(immutable, allowShadow, handledVar, st"${tpe}_at($exp, ${iTpe}_C($i))", p)
       }
@@ -2184,7 +2184,7 @@ import StaticTranspiler._
         |  ${(stmts, "\n")}
         |}"""
     }
-    pat match {
+    pattern match {
       case pat: AST.Pattern.Literal =>
         val e = transpileLit(pat.lit)
         pat.lit match {
@@ -2552,11 +2552,11 @@ import StaticTranspiler._
     }
   }
 
-  def transpileStmt(stmt: AST.Stmt): Unit = {
+  def transpileStmt(statement: AST.Stmt): Unit = {
 
     if (config.stmtPlugins.nonEmpty) {
-      for (p <- config.stmtPlugins if p.canTranspile(this, stmt)) {
-        p.transpile(this, stmt)
+      for (p <- config.stmtPlugins if p.canTranspile(this, statement)) {
+        p.transpile(this, statement)
         return
       }
     }
@@ -2694,7 +2694,7 @@ import StaticTranspiler._
     }
 
     def transAssert(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
         case AST.ResolvedInfo.BuiltIn(k) => k
         case _ => halt("Infeasible")
@@ -2717,7 +2717,7 @@ import StaticTranspiler._
     }
 
     def transAssume(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
         case AST.ResolvedInfo.BuiltIn(k) => k
         case _ => halt("Infeasible")
@@ -2740,7 +2740,7 @@ import StaticTranspiler._
     }
 
     def transCprint(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       val t = transpileExp(exp.args(0))
       for (i <- z"1" until exp.args.size) {
         transPrintH(t, exp.args(i))
@@ -2748,7 +2748,7 @@ import StaticTranspiler._
     }
 
     def transCprintln(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       val t = transpileExp(exp.args(0))
       val t2 = freshTempName()
       stmts = stmts :+ st"B $t2 = $t;"
@@ -2760,14 +2760,14 @@ import StaticTranspiler._
     }
 
     def transEprint(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(falseLit, exp.args(i))
       }
     }
 
     def transEprintln(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(falseLit, exp.args(i))
       }
@@ -2776,14 +2776,14 @@ import StaticTranspiler._
     }
 
     def transPrint(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(trueLit, exp.args(i))
       }
     }
 
     def transPrintln(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       for (i <- z"0" until exp.args.size) {
         transPrintH(trueLit, exp.args(i))
       }
@@ -2792,7 +2792,7 @@ import StaticTranspiler._
     }
 
     def transHalt(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts ++ transpileLoc(statement.posOpt)
       val tmp = declString()
       transToString(tmp, exp.args(0))
       stmts = stmts :+ st"sfAbort($tmp->value);"
@@ -2891,7 +2891,7 @@ import StaticTranspiler._
       }
     }
 
-    stmt match {
+    statement match {
       case stmt: AST.Stmt.Var => transVar(stmt)
       case stmt: AST.Stmt.Assign => transAssign(stmt)
       case stmt: AST.Stmt.Expr =>

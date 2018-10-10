@@ -95,7 +95,7 @@ object StaticTemplate {
       |typedef enum {
       |  T${typeNames(0)._2} = 0, // ${typeNames(0)._1}
       |  ${(
-        for (tn <- ops.ISZOps(ops.ISZOps(typeNames).zip(typeNames.indices.map(n => n))).drop(1))
+        for (tn <- ops.ISZOps(ops.ISZOps(typeNames).zip(typeNames.indices.map((n: Z) => n))).drop(1))
           yield st"T${tn._1._2} = ${tn._2}, // ${tn._1._1}",
         "\n"
       )}
@@ -146,7 +146,7 @@ object StaticTemplate {
       |#define SIREUM_GEN_H
       |
       |#include <misc.h>
-      |${(for (name <- ops.ISZOps(names).sortWith(qnameLt)) yield st"#include <type-${(name, "_")}.h>", "\n")}
+      |${(for (name <- ops.ISZOps(names).sortWith(qnameLt _)) yield st"#include <type-${(name, "_")}.h>", "\n")}
       |
       |#if defined(static_assert)
       |#define STATIC_ASSERT static_assert
@@ -201,7 +201,7 @@ object StaticTemplate {
       |#define SIREUM_ALL_H
       |
       |#include <types.h>
-      |${(for (name <- ops.ISZOps(names).sortWith(qnameLt)) yield st"#include <${(name, "_")}.h>", "\n")}
+      |${(for (name <- ops.ISZOps(names).sortWith(qnameLt _)) yield st"#include <${(name, "_")}.h>", "\n")}
       |
       |B Type__eq(void *t1, void *t2);
       |void Type_cprint(void *this, B isOut);
@@ -252,14 +252,13 @@ object StaticTemplate {
   @pure def cmake(project: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName]): ST = {
     val mainFs = HashSet ++ mainFilenames
 
-    @pure def files(filess: ISZ[QName]): ISZ[ST] = {
-      return for (f <- filess if !mainFs.contains(f)) yield st"${(f, "/")}"
-//        yield if (f.size == z"1") st"${f(0)}" else st"${(ops.ISZOps(f).dropRight(1), "/")}/${f(f.size - 1)}"
+    @pure def files(fss: ISZ[QName]): ISZ[ST] = {
+      return for (f <- fss if !mainFs.contains(f)) yield st"${(f, "/")}"
     }
 
-    @pure def includeDirs(filess: ISZ[QName]): ISZ[ST] = {
+    @pure def includeDirs(fss: ISZ[QName]): ISZ[ST] = {
       var r = HashSSet.empty[QName]
-      for (f <- filess) {
+      for (f <- fss) {
         if (f.size == z"1") {
           r = r + ISZ(".")
         } else {
@@ -1007,7 +1006,7 @@ object StaticTemplate {
       return r
     }
 
-    @pure def elementName(id: String): ST = {
+    @pure def elemName(id: String): ST = {
       return st"${mangledName}_${enumId(id)}"
     }
 
@@ -1019,8 +1018,8 @@ object StaticTemplate {
       st"""// $tpe
       |typedef enum {
       |  ${(
-        for (e <- ops.ISZOps(elements).zip(elements.indices.map(n => n)))
-          yield st"${elementName(e._1)} = ${e._2}",
+        for (e <- ops.ISZOps(elements).zip(elements.indices.map((n: Z) => n)))
+          yield st"${ elemName(e._1)} = ${e._2}",
         ",\n"
       )}
       |} $mangledName;
@@ -1055,7 +1054,7 @@ object StaticTemplate {
           |  ${(
             for (e <- elements)
               yield
-                st"""if (String__eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
+                st"""if (String__eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elemName(
                   e
                 )} }), sizeof(union $optElementType));""",
             "\nelse "
@@ -1071,7 +1070,7 @@ object StaticTemplate {
           |    ${(
             for (e <- elements)
               yield
-                st"""case ${elementName(e)}: Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elementName(
+                st"""case ${elemName(e)}: Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elemName(
                   e
                 )} }), sizeof(union $optElementType)); return;""",
             "\n"
@@ -1090,7 +1089,7 @@ object StaticTemplate {
           st"""$elementsHeader {
           |  result->size = Z_C(${elements.size});
           |  ${(
-            for (p <- ops.ISZOps(elements).zip(indices)) yield st"result->value[${p._2}] = ${elementName(p._1)};",
+            for (p <- ops.ISZOps(elements).zip(indices)) yield st"result->value[${p._2}] = ${elemName(p._1)};",
             "\n"
           )}
           |}"""
@@ -1110,7 +1109,7 @@ object StaticTemplate {
       st"""$cprintHeader {
       |  switch (this) {
       |    ${(
-        for (e <- elements) yield st"""case ${elementName(e)}: String_cprint(string("$e"), isOut); return;""",
+        for (e <- elements) yield st"""case ${elemName(e)}: String_cprint(string("$e"), isOut); return;""",
         "\n"
       )}
       |  }
@@ -1123,7 +1122,7 @@ object StaticTemplate {
       |  DeclNewStackFrame(caller, "$uri", "$mangledName", "string", 0);
       |  switch (this) {
       |    ${(
-        for (e <- elements) yield st"""case ${elementName(e)}: String_string(result, sf, string("$e")); return;""",
+        for (e <- elements) yield st"""case ${elemName(e)}: String_string(result, sf, string("$e")); return;""",
         "\n"
       )}
       |  }
@@ -1635,7 +1634,7 @@ object StaticTemplate {
   @pure def mangleName(ids: QName): ST = {
     val r: ST =
       if (ids.size == z"1") st"top_${ids(0)}"
-      else st"${(AST.Typed.short(ids).map(encodeName), "_")}"
+      else st"${(AST.Typed.short(ids).map(encodeName _), "_")}"
     return r
   }
 
