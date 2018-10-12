@@ -341,7 +341,7 @@ object StaticTemplate {
       val implFilename = st"$filename.c".render
       r = r :+ ((dir :+ tHeaderFilename, st"""#ifndef SIREUM_TYPE_H_$filename
       |#define SIREUM_TYPE_H_$filename
-      |#include <type.h>
+      |#include <misc.h>
       |
       |${(comp.typeHeader, "\n\n")}
       |
