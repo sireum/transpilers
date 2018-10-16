@@ -30,7 +30,7 @@ object Module {
 
     final override def deps = Seq(alirObject)
 
-    def alirObject: CrossJvmJs
+    def alirObject: CrossJvmJsPublish
 
     final override def ivyDeps = Agg.empty
   }
