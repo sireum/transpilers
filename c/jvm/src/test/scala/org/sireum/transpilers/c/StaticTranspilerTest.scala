@@ -313,7 +313,6 @@ class StaticTranspilerTest extends TestSuite {
 
     val config = StaticTranspiler.Config(
       projectName = "main",
-      lineNumber = T,
       fprintWidth = 3,
       defaultBitWidth = 64,
       maxStringSize = 256,

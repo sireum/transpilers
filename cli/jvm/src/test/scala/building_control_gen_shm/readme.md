@@ -172,6 +172,7 @@ MAKE_ARGS=-j8 bin/compile-mac.sh
 ```
 
 Note: the `MAKE_ARGS` above sets the compilation to use 8 cores (adjust accordingly).
+You can add `CMAKE_OPTS="-DNO_PRINT=ON -DNO_LOC=ON"` to disable printing to console or Slang source location tracking.
 
 [**Running**](bin/run-mac.sh)
 
@@ -202,6 +203,9 @@ that cleanly terminate all apps.
 ```bash
 MAKE_ARGS=-j8 bin/compile-linux.sh
 ```
+
+Note: the `MAKE_ARGS` above sets the compilation to use 8 cores (adjust accordingly).
+You can add `CMAKE_OPTS="-DNO_PRINT=ON -DNO_LOC=ON"` to disable printing to console or Slang source location tracking.
 
 [**Running**](bin/run-linux.sh)
 
@@ -237,6 +241,9 @@ Then run [cygserver](https://www.cygwin.com/cygwin-ug-net/using-cygserver.html)
 ```bash
 MAKE_ARGS=-j8 bin/compile-cygwin.sh
 ```
+
+Note: the `MAKE_ARGS` above sets the compilation to use 8 cores (adjust accordingly).
+You can add `CMAKE_OPTS="-DNO_PRINT=ON -DNO_LOC=ON"` to disable printing to console or Slang source location tracking.
 
 [**Running**](bin/run-cygwin.sh)
 

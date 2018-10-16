@@ -18,7 +18,6 @@ object StaticTranspiler {
 
   @datatype class Config(
     projectName: String,
-    lineNumber: B,
     fprintWidth: Z,
     defaultBitWidth: Z,
     maxStringSize: Z,
@@ -2379,18 +2378,8 @@ import StaticTranspiler._
   @pure def transpileLoc(posOpt: Option[Position]): ISZ[ST] = {
     var r = ISZ(empty)
     posOpt match {
-      case Some(pos) =>
-        if (config.lineNumber) {
-          r = r :+ st"sfUpdateLoc(${pos.beginLine});"
-        } else {
-          r = r :+ st"// L${pos.beginLine}"
-        }
-      case _ =>
-        if (config.lineNumber) {
-          r = r :+ st"sfUpdateLoc(0);"
-        } else {
-          r = r :+ st"// L?"
-        }
+      case Some(pos) => r = r :+ st"sfUpdateLoc(${pos.beginLine});"
+      case _ => r = r :+ st"sfUpdateLoc(0);"
     }
     return r
   }
@@ -2901,14 +2890,21 @@ import StaticTranspiler._
               exp.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.BuiltIn].kind match {
                 case AST.ResolvedInfo.BuiltIn.Kind.Assert => transAssert(exp)
                 case AST.ResolvedInfo.BuiltIn.Kind.Assume => transAssume(exp)
-                case AST.ResolvedInfo.BuiltIn.Kind.Cprint => transCprint(exp)
-                case AST.ResolvedInfo.BuiltIn.Kind.Cprintln => transCprintln(exp)
-                case AST.ResolvedInfo.BuiltIn.Kind.Eprint => transEprint(exp)
-                case AST.ResolvedInfo.BuiltIn.Kind.Eprintln => transEprintln(exp)
-                case AST.ResolvedInfo.BuiltIn.Kind.Print => transPrint(exp)
-                case AST.ResolvedInfo.BuiltIn.Kind.Println => transPrintln(exp)
                 case AST.ResolvedInfo.BuiltIn.Kind.Halt => transHalt(exp)
-                case _ => halt("Infeasible")
+                case kind =>
+                  stmts = stmts :+ empty
+                  stmts = stmts :+ st"#ifndef SIREUM_NO_PRINT"
+                  kind match {
+                    case AST.ResolvedInfo.BuiltIn.Kind.Cprint => transCprint(exp)
+                    case AST.ResolvedInfo.BuiltIn.Kind.Cprintln => transCprintln(exp)
+                    case AST.ResolvedInfo.BuiltIn.Kind.Eprint => transEprint(exp)
+                    case AST.ResolvedInfo.BuiltIn.Kind.Eprintln => transEprintln(exp)
+                    case AST.ResolvedInfo.BuiltIn.Kind.Print => transPrint(exp)
+                    case AST.ResolvedInfo.BuiltIn.Kind.Println => transPrintln(exp)
+                    case _ => halt("Infeasible")
+                  }
+                  stmts = stmts :+ empty
+                  stmts = stmts :+ st"#endif"
               }
             } else {
               stmts = stmts ++ transpileLoc(stmt.posOpt)

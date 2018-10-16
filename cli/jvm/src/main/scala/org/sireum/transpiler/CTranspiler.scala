@@ -471,7 +471,6 @@ object CTranspiler {
 
     val config = StaticTranspiler.Config(
       projectName = o.projectName.getOrElse("main"),
-      lineNumber = o.line,
       fprintWidth = o.fingerprint,
       defaultBitWidth = o.bitWidth,
       maxStringSize = o.maxStringSize,

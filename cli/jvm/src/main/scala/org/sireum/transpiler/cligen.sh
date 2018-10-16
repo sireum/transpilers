@@ -1,4 +1,4 @@
-#!/usr/bin/env bash -e
+#!/bin/bash -e
 export SCRIPT_HOME=$( cd "$( dirname "$0" )" &> /dev/null && pwd )
 if [[ -z $SIREUM_HOME ]]; then
   echo "Please specify SIREUM_HOME env var to point to Sireum Kekinian"

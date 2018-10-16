@@ -296,6 +296,22 @@ object StaticTemplate {
       |
       |add_compile_options("$$<$$<CONFIG:Release>:-O2>")
       |
+      |option(NO_PRINT
+      |  "Build the program without console output."
+      |  OFF)
+      |
+      |if(NO_PRINT)
+      |  add_definitions(-DSIREUM_NO_PRINT)
+      |endif(NO_PRINT)
+      |
+      |option(NO_LOC
+      |  "Build the program without location update."
+      |  OFF)
+      |
+      |if(NO_LOC)
+      |  add_definitions(-DSIREUM_NO_LOC)
+      |endif(NO_LOC)
+      |
       |add_library($project STATIC
       |        ${(files(filess), "\n")})
       |

@@ -30,13 +30,13 @@ class StaticTranspilerRcTest extends TestSuite {
 
   val tests = Tests {
 
-    * - testApp("sha3", "sha3.scala", T, F)
+    * - testApp("sha3", "sha3.scala", F)
 
-    * - testApp("sha3-unrolled", "sha3.scala", F, T)
+    * - testApp("sha3-unrolled", "sha3.scala", T)
 
   }
 
-  def testApp(name: String, uri: Predef.String, lineNumber: B, forLoopOpt: B)(implicit line: sourcecode.Line): Unit = {
+  def testApp(name: String, uri: Predef.String, forLoopOpt: B)(implicit line: sourcecode.Line): Unit = {
     rm! dir / name.value
 
     val reporter = Reporter.create
@@ -61,7 +61,6 @@ class StaticTranspilerRcTest extends TestSuite {
 
     val config = StaticTranspiler.Config(
       projectName = "sha3",
-      lineNumber = lineNumber,
       fprintWidth = 3,
       defaultBitWidth = 64,
       maxStringSize = 256,

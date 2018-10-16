@@ -34,9 +34,9 @@ import org.sireum._
 
 object Cli {
 
-  @datatype trait SireumOption
+  @datatype trait SireumTopOption
 
-  @datatype class HelpOption extends SireumOption
+  @datatype class HelpOption extends SireumTopOption
 
   @datatype class CTranspilerOption(
     help: String,
@@ -46,7 +46,6 @@ object Cli {
     verbose: B,
     projectName: Option[String],
     apps: ISZ[String],
-    line: B,
     unroll: B,
     fingerprint: Z,
     bitWidth: Z,
@@ -59,14 +58,14 @@ object Cli {
     forwarding: ISZ[String],
     save: Option[String],
     load: Option[String]
-  ) extends SireumOption
+  ) extends SireumTopOption
 }
 
 import Cli._
 
 @record class Cli(pathSep: C) {
 
-  def parseSireum(args: ISZ[String], i: Z): Option[SireumOption] = {
+  def parseSireum(args: ISZ[String], i: Z): Option[SireumTopOption] = {
     if (i >= args.size) {
       println(
         st"""Sireum: A High-Assurance Software Development Platform
@@ -84,7 +83,7 @@ import Cli._
     }
   }
 
-  def parseTranspiler(args: ISZ[String], i: Z): Option[SireumOption] = {
+  def parseTranspiler(args: ISZ[String], i: Z): Option[SireumTopOption] = {
     if (i >= args.size) {
       println(
         st"""The Sireum Language (Slang) Transpilers
@@ -101,7 +100,7 @@ import Cli._
     }
   }
 
-  def parseCTranspiler(args: ISZ[String], i: Z): Option[SireumOption] = {
+  def parseCTranspiler(args: ISZ[String], i: Z): Option[SireumTopOption] = {
     val help =
       st"""Slang To C Transpiler
           |
@@ -119,7 +118,6 @@ import Cli._
           |-n, --name               Project name (expects a string)
           |-a, --apps               @app fully qualified names (expects a string separated
           |                           by ",")
-          |-l, --line               Disable runtime source line number
           |-u, --unroll             Enable for-loop unrolling
           |-f, --fingerprint        Default bit-width for unbounded integer types (e.g.,
           |                           Z) (expects an integer; default is 3)
@@ -155,7 +153,6 @@ import Cli._
     var verbose: B = false
     var projectName: Option[String] = Some("main")
     var apps: ISZ[String] = ISZ[String]()
-    var line: B = true
     var unroll: B = false
     var fingerprint: Z = 3
     var bitWidth: Z = 64
@@ -204,12 +201,6 @@ import Cli._
            val o: Option[ISZ[String]] = parseStrings(args, j + 1, ',')
            o match {
              case Some(v) => apps = v
-             case _ => return None()
-           }
-         } else if (arg == "-l" || arg == "--line") {
-           val o: Option[B] = { j = j - 1; Some(!line) }
-           o match {
-             case Some(v) => line = v
              case _ => return None()
            }
          } else if (arg == "-u" || arg == "--unroll") {
@@ -293,7 +284,7 @@ import Cli._
         isOption = F
       }
     }
-    return Some(CTranspilerOption(help, parseArguments(args, j), sourcepath, output, verbose, projectName, apps, line, unroll, fingerprint, bitWidth, maxStringSize, maxArraySize, customArraySizes, customConstants, plugins, exts, forwarding, save, load))
+    return Some(CTranspilerOption(help, parseArguments(args, j), sourcepath, output, verbose, projectName, apps, unroll, fingerprint, bitWidth, maxStringSize, maxArraySize, customArraySizes, customConstants, plugins, exts, forwarding, save, load))
   }
 
   def parseArguments(args: ISZ[String], i: Z): ISZ[String] = {

@@ -64,7 +64,7 @@ object BuildingControlApp {
                                             |mkdir -p mac
                                             |mkdir -p $$SCRIPT_HOME/../src/c/mac
                                             |cd $$SCRIPT_HOME/../src/c/mac
-                                            |cmake -DCMAKE_BUILD_TYPE=Release ..
+                                            |cmake $$CMAKE_OPTS -DCMAKE_BUILD_TYPE=Release ..
                                             |make $$MAKE_ARGS
                                             |mv *_App $$SCRIPT_HOME/mac/
                                             |${if (hasAEP) "mv *_AEP $SCRIPT_HOME/mac/" else ""}
@@ -77,22 +77,22 @@ object BuildingControlApp {
                                               |mkdir -p linux
                                               |mkdir -p $$SCRIPT_HOME/../src/c/linux
                                               |cd $$SCRIPT_HOME/../src/c/linux
-                                              |cmake -DCMAKE_BUILD_TYPE=Release ..
+                                              |cmake $$CMAKE_OPTS -DCMAKE_BUILD_TYPE=Release ..
                                               |make $$MAKE_ARGS
                                               |mv *_App $$SCRIPT_HOME/linux/
                                               |${if (hasAEP) "mv *_AEP $SCRIPT_HOME/linux/" else ""}
                                               |mv Main $$SCRIPT_HOME/linux/""".stripMargin)
 
-    write(out / 'bin / "compile-cygwin.sh", """#!/usr/bin/env bash
-                                              |set -e
-                                              |export SCRIPT_HOME=$( cd "$( dirname "$0" )" &> /dev/null && pwd )
-                                              |cd $$SCRIPT_HOME
-                                              |mkdir -p win
-                                              |mkdir -p $$SCRIPT_HOME/../src/c/win
-                                              |cd $$SCRIPT_HOME/../src/c/win
-                                              |cmake -DCMAKE_BUILD_TYPE=Release ..
-                                              |make $$MAKE_ARGS
-                                              |mv *.exe $$SCRIPT_HOME/win/""".stripMargin)
+    write(out / 'bin / "compile-cygwin.sh", s"""#!/usr/bin/env bash
+                                               |set -e
+                                               |export SCRIPT_HOME=$$( cd "$$( dirname "$$0" )" &> /dev/null && pwd )
+                                               |cd $$SCRIPT_HOME
+                                               |mkdir -p win
+                                               |mkdir -p $$SCRIPT_HOME/../src/c/win
+                                               |cd $$SCRIPT_HOME/../src/c/win
+                                               |cmake $$CMAKE_OPTS -DCMAKE_BUILD_TYPE=Release ..
+                                               |make $$MAKE_ARGS
+                                               |mv *.exe $$SCRIPT_HOME/win/""".stripMargin)
 
     write(
       out / 'bin / "run-mac.sh",
