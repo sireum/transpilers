@@ -227,11 +227,13 @@ object StaticTemplate {
       |}
       |
       |void Type_cprint(void *this, B isOut) {
+      |  #ifndef SIREUM_NO_PRINT
       |  TYPE type = ((Type) this)->type;
       |  switch (type) {
       |    ${(for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_cprint((${tn._2}) this, isOut); return;", "\n")}
       |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
       |  }
+      |  #endif
       |}
       |
       |void Type_string(String result, StackFrame caller, void *this) {
@@ -606,7 +608,9 @@ object StaticTemplate {
       |}
       |
       |$cprintHeader {
+      |  #ifndef SIREUM_NO_PRINT
       |  ${(cprintStmts, "\n")}
+      |  #endif
       |}"""
 
     return compiled(
@@ -840,6 +844,7 @@ object StaticTemplate {
         |}
         |
         |$cprintHeader {
+        |  #ifndef SIREUM_NO_PRINT
         |  String_cprint(string("["), isOut);
         |  $sizeType size = this->size;
         |  if (size > 0) {
@@ -854,6 +859,7 @@ object StaticTemplate {
         |    String_cprint(space, isOut);
         |  }
         |  String_cprint(string("]"), isOut);
+        |  #endif
         |}
         |
         |$stringHeader {
@@ -963,6 +969,7 @@ object StaticTemplate {
         |}
         |
         |$cprintHeader {
+        |  #ifndef SIREUM_NO_PRINT
         |  String_cprint(string("["), isOut);
         |  $sizeType size = this->size;
         |  if (size > 0) {
@@ -977,6 +984,7 @@ object StaticTemplate {
         |    String_cprint(space, isOut);
         |  }
         |  String_cprint(string("]"), isOut);
+        |  #endif
         |}
         |
         |$stringHeader {
@@ -1123,12 +1131,14 @@ object StaticTemplate {
     header = header :+ cprintHeader
     impl = impl :+
       st"""$cprintHeader {
+      |  #ifndef SIREUM_NO_PRINT
       |  switch (this) {
       |    ${(
         for (e <- elements) yield st"""case ${elemName(e)}: String_cprint(string("$e"), isOut); return;""",
         "\n"
       )}
       |  }
+      |  #endif
       |}"""
 
     val stringHeader = st"void ${mangledName}_string(String result, StackFrame caller, $mangledName this)"
@@ -1320,8 +1330,12 @@ object StaticTemplate {
     val stringHeader = st"void ${mangledName}_string(String result, StackFrame caller, $mangledName this)"
 
     var header = ISZ(
-      st"#define ${mangledName}_cprint(this, isOut) { if (isOut) printf(${mangledName}_F, this); else fprintf(stderr, ${mangledName}_F, this); }",
-      stringHeader
+      st"""#ifdef SIREUM_NO_PRINT
+          |#define ${mangledName}_cprint(this, isOut)
+          |#else
+          |#define ${mangledName}_cprint(this, isOut) { if (isOut) printf(${mangledName}_F, this); else fprintf(stderr, ${mangledName}_F, this); }
+          |#endif
+          |$stringHeader"""
     )
     var impl = ISZ(st"""$stringHeader {
     |  DeclNewStackFrame(caller, "$uri", "${dotName(name)}", "string", 0);
@@ -1501,6 +1515,7 @@ object StaticTemplate {
       |}
       |
       |$cprintHeader {
+      |  #ifndef SIREUM_NO_PRINT
       |  String sep = string(", ");
       |  String_cprint(string("("), isOut);
       |  ${cParamTypes(0)}_cprint(${if (isScalar(constructorParamTypes(0)._1)) "" else "&"}this->_1, isOut);
@@ -1510,6 +1525,7 @@ object StaticTemplate {
         "\n"
       )}
       |  String_cprint(string(")"), isOut);
+      |  #endif
       |}
       |
       |$stringHeader {
