@@ -256,9 +256,9 @@ object BuildingControlApp {
       case _ => sys.exit(-1)
     }
 
-    val zipFilename = s"${out.segments.last}.zip"
+    val zipFilename = s"${out.segments.toSeq.last}.zip"
     rm ! out / up / zipFilename
-    %('zip, "-qro", zipFilename, out.segments.last)(out / up)
+    %('zip, "-qro", zipFilename, out.segments.toSeq.last)(out / up)
   }
 
 }
