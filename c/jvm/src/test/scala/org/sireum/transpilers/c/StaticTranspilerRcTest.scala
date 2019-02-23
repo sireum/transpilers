@@ -1,6 +1,5 @@
 package org.sireum.transpilers.c
 
-import ammonite.ops._
 import org.sireum.$internal.RC
 import org.sireum._
 import org.sireum.lang.parser.Parser
@@ -15,7 +14,7 @@ import org.sireum.transpilers.common.TypeSpecializer
 class StaticTranspilerRcTest extends TestSuite {
 
   lazy val typeChecker: TypeChecker = FrontEnd.checkedLibraryReporter._1
-  val dir: Path = Path(implicitly[sourcecode.File].value) / up / up / up / up / up / up / up / up / up / 'app
+  val dir: Os.Path = Os.path(implicitly[sourcecode.File].value).up.up.up.up.up.up.up.up.up / "app"
 
   def map: scala.collection.Map[scala.Seq[Predef.String], Predef.String] =
     RC.text(Seq("../../../..")) { (p, f) =>
@@ -37,7 +36,7 @@ class StaticTranspilerRcTest extends TestSuite {
   }
 
   def testApp(name: String, uri: Predef.String, forLoopOpt: B)(implicit line: sourcecode.Line): Unit = {
-    rm! dir / name.value
+    (dir / name.value).removeAll()
 
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
@@ -95,8 +94,8 @@ class StaticTranspilerRcTest extends TestSuite {
     }
 
     val resultDir = dir / s"L${line.value}"
-    rm ! resultDir
-    mkdir ! resultDir
+    resultDir.removeAll()
+    resultDir.mkdirAll()
 
     for (e <- r.files.entries) {
       val path = e._1
@@ -104,27 +103,27 @@ class StaticTranspilerRcTest extends TestSuite {
       for (segment <- path) {
         f = f / segment.value
       }
-      mkdir ! f / up
-      write.over(f, e._2.render.value)
+      f.up.mkdirAll()
+      f.writeOver(e._2.render.value)
       println(s"Wrote $f")
     }
 
     println()
     println("Running CMake ...")
-    %('cmake, "-DCMAKE_BUILD_TYPE=Release", ".")(resultDir)
+    Os.proc(ISZ("cmake","-DCMAKE_BUILD_TYPE=Release", ".")).at(resultDir).console.runCheck()
 
     val ldir = dir / s"L${line.value}"
 
     try {
       println()
       println("Running make ...")
-      %('make)(resultDir)
+      Os.proc(ISZ("make")).at(resultDir).console.runCheck()
     } finally {
-      rm ! ldir / 'CMakeFiles
-      rm ! ldir / "cmake_install.cmake"
-      rm ! ldir / "CMakeCache.txt"
+      (ldir / "CMakeFiles").removeAll()
+      (ldir / "cmake_install.cmake").removeAll()
+      (ldir / "CMakeCache.txt").removeAll()
     }
 
-    mv(ldir / 'sha3, dir / name.value)
+    (ldir / "sha3").moveOverTo(dir / name.value)
   }
 }

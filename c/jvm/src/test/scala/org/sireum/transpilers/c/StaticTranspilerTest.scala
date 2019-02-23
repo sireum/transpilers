@@ -8,14 +8,13 @@ import org.sireum.lang.tipe.{PostTipeAttrChecker, TypeChecker, TypeHierarchy}
 import org.sireum.message.Reporter
 import org.sireum.test.TestSuite
 import org.sireum.transpiler.c.StaticTranspiler
-import ammonite.ops._
 import org.sireum.transpiler.c.StaticTranspiler.NumberConversionsExtMethodPlugin
 import org.sireum.transpilers.common.TypeSpecializer
 
 class StaticTranspilerTest extends TestSuite {
 
   lazy val typeChecker: TypeChecker = FrontEnd.checkedLibraryReporter._1
-  val dir: Path = Path(implicitly[sourcecode.File].value) / up / up / up / up / up / up / up / up / up / 'result
+  val dir: Os.Path = Os.path(implicitly[sourcecode.File].value).up.up.up.up.up.up.up.up.up / "result"
 
   val tests = Tests {
 
@@ -342,8 +341,8 @@ class StaticTranspilerTest extends TestSuite {
     }
 
     val resultDir = dir / s"L${line.value}"
-    rm ! resultDir
-    mkdir ! resultDir
+    resultDir.removeAll()
+    resultDir.mkdirAll()
 
     for (e <- r.files.entries) {
       val path = e._1
@@ -351,29 +350,29 @@ class StaticTranspilerTest extends TestSuite {
       for (segment <- path) {
         f = f / segment.value
       }
-      mkdir ! f / up
-      write.over(f, e._2.render.value)
+      f.up.mkdirAll()
+      f.writeOver(e._2.render.value)
       println(s"Wrote $f")
     }
 
     println()
     println("Running CMake ...")
-    %('cmake, "-DCMAKE_BUILD_TYPE=Release", ".")(resultDir)
+    Os.proc(ISZ("cmake", "-DCMAKE_BUILD_TYPE=Release", ".")).at(resultDir).console.runCheck()
 
     val ldir = dir / s"L${line.value}"
 
     try {
       println()
       println("Running make ...")
-      %('make)(resultDir)
+      Os.proc(ISZ("make")).at(resultDir).console.runCheck()
 
       println()
       println(s"Running ${config.projectName} ...")
-      %(s"./${config.projectName}")(resultDir)
+      Os.proc(ISZ((resultDir / config.projectName).string)).at(resultDir).console.runCheck()
     } finally {
-      rm ! ldir / 'CMakeFiles
-      rm ! ldir / "cmake_install.cmake"
-      rm ! ldir / "CMakeCache.txt"
+      (ldir / "CMakeFiles").removeAll()
+      (ldir / "cmake_install.cmake").removeAll()
+      (ldir / "CMakeCache.txt").removeAll()
     }
   }
 }

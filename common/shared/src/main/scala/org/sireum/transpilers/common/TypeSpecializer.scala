@@ -213,7 +213,7 @@ import TypeSpecializer._
           case _: AST.Stmt.Object => F
           case _: AST.Stmt.Enum => F
           case _: AST.Stmt.Sig => F
-          case _: AST.Stmt.AbstractDatatype => F
+          case _: AST.Stmt.Adt => F
           case _: AST.Stmt.ExtMethod => F
           case _: AST.Stmt.Import => F
           case _: AST.Stmt.Method => F
@@ -277,7 +277,7 @@ import TypeSpecializer._
           for (i <- p._1.elements) {
             val name = ni(i)
             th.typeMap.get(name).get match {
-              case info: TypeInfo.AbstractDatatype if !info.ast.isRoot =>
+              case info: TypeInfo.Adt if !info.ast.isRoot =>
                 val posOpt = info.ast.posOpt
                 nameTypes.get(name) match {
                   case Some(nts) =>
@@ -321,7 +321,7 @@ import TypeSpecializer._
 
     def buildLeaves(info: TypeInfo): Unit = {
       val traits: ISZ[NamedType] = info match {
-        case info: TypeInfo.AbstractDatatype if info.ast.isRoot =>
+        case info: TypeInfo.Adt if info.ast.isRoot =>
           nameTypes.get(info.name) match {
             case Some(nts) => nts.elements
             case _ => return
@@ -346,7 +346,7 @@ import TypeSpecializer._
                   for (sub <- subs.elements) {
                     val subTpe = sub.tpe
                     th.typeMap.get(subTpe.ids).get match {
-                      case subInfo: TypeInfo.AbstractDatatype if !subInfo.ast.isRoot =>
+                      case subInfo: TypeInfo.Adt if !subInfo.ast.isRoot =>
                         if (th.isSubType(subTpe, tpe)) {
                           subClasses = subClasses :+ subTpe
                         }
@@ -399,7 +399,7 @@ import TypeSpecializer._
     }
 
     val receiver = method.receiverOpt.get
-    val info = th.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+    val info = th.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.Adt]
     assert(!info.ast.isRoot)
     val m: Info.Method = {
       val cm = info.methods.get(method.id).get
@@ -420,7 +420,7 @@ import TypeSpecializer._
           owners = ISZ()
           for (owner <- curr if found.isEmpty) {
             th.typeMap.get(owner).get match {
-              case tInfo: TypeInfo.AbstractDatatype =>
+              case tInfo: TypeInfo.Adt =>
                 val m = tInfo.methods.get(method.id).get
                 if (m.ast.bodyOpt.isEmpty) {
                   for (p <- tInfo.ast.parents) {
@@ -462,7 +462,7 @@ import TypeSpecializer._
     receiver: AST.Typed.Name,
     v: AST.ResolvedInfo.Var
   ): Unit = {
-    val info = th.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+    val info = th.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.Adt]
     val aSubstMapOpt = TypeChecker.buildTypeSubstMap(receiver.ids, posOpt, info.ast.typeParams, receiver.args, reporter)
     val vInfo = info.vars.get(v.id).get
     val target = SVar(Some(receiver), v.owner, v.id, vInfo.ast.tipeOpt.get.typedOpt.get.subst(aSubstMapOpt.get))
@@ -493,7 +493,7 @@ import TypeSpecializer._
     method.receiverOpt match {
       case Some(receiver) =>
         th.typeMap.get(receiver.ids).get match {
-          case info: TypeInfo.AbstractDatatype =>
+          case info: TypeInfo.Adt =>
             if (info.ast.isRoot) {
               traitMethods = traitMethods + method
             } else if (info.methods.contains(method.id)) {
@@ -569,7 +569,7 @@ import TypeSpecializer._
     addSMethod(posOpt, target)
   }
 
-  def specializeClass(t: AST.Typed.Name, info: TypeInfo.AbstractDatatype): NamedType = {
+  def specializeClass(t: AST.Typed.Name, info: TypeInfo.Adt): NamedType = {
     val oldRcvOpt = currReceiverOpt
     val oldSMethodOpt = currSMethodOpt
     val constructorInfo = info.constructorResOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
@@ -618,7 +618,7 @@ import TypeSpecializer._
         }
         val key = NamedType(o, emptyCVars, emptyVars)
         val newSet: HashSSet[NamedType] = th.typeMap.get(o.ids).get match {
-          case info: TypeInfo.AbstractDatatype if !info.ast.isRoot =>
+          case info: TypeInfo.Adt if !info.ast.isRoot =>
             if (set.contains(NamedType(o, emptyCVars, emptyVars))) {
               set
             } else {

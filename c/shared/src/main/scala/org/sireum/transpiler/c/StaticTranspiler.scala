@@ -449,7 +449,7 @@ import StaticTranspiler._
       for (ext <- config.exts) {
         r = r + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> st"${ext.content}"
       }
-      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys.elements)
+      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, cFilenames, r.keys)
       r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
       )
@@ -534,7 +534,7 @@ import StaticTranspiler._
     }
 
     val uri =
-      filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
+      filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt].posOpt, "")
     val newValue = claszConstructor(value, uri, key, fingerprint(t)._1, cps, stmts)
     compiledMap = compiledMap + key ~> newValue
 
@@ -799,7 +799,7 @@ import StaticTranspiler._
           vs = vs :+ Vard(kind, fieldId(id).render, typeDecl(ct), tpe, !isVal, F)
         }
         val uri =
-          filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype].posOpt, "")
+          filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt].posOpt, "")
         val newValue = clasz(value, uri, t.ids, includes(types), t.string, fingerprint(t)._1, cps, vs)
         compiledMap = compiledMap + key ~> newValue
       }
@@ -867,7 +867,7 @@ import StaticTranspiler._
 
     for (nts <- ts.nameTypes.values; nt <- nts.elements) {
       ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
-        case _: TypeInfo.AbstractDatatype => genType(nt.tpe)
+        case _: TypeInfo.Adt => genType(nt.tpe)
         case _: TypeInfo.Sig => genType(nt.tpe)
         case _: TypeInfo.Enum => genType(nt.tpe)
         case _: TypeInfo.SubZ => genType(nt.tpe)
@@ -879,7 +879,7 @@ import StaticTranspiler._
     }
     for (nts <- ts.nameTypes.values; nt <- nts.elements) {
       ts.typeHierarchy.typeMap.get(nt.tpe.ids).get match {
-        case info: TypeInfo.AbstractDatatype if !info.ast.isRoot => genClassConstructor(nt)
+        case info: TypeInfo.Adt if !info.ast.isRoot => genClassConstructor(nt)
         case _ =>
       }
     }
@@ -929,7 +929,7 @@ import StaticTranspiler._
   def transpileTraitMethod(method: TypeSpecializer.SMethod): Unit = {
     val id = method.id
     def findMethod(receiver: AST.Typed.Name): Info.Method = {
-      val adtInfo = ts.typeHierarchy.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+      val adtInfo = ts.typeHierarchy.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.Adt]
       val adtSm =
         TypeChecker.buildTypeSubstMap(receiver.ids, None(), adtInfo.ast.typeParams, receiver.args, reporter).get
       val mt = adtInfo.methods.get(id).get.methodType.tpe.subst(adtSm)
@@ -946,7 +946,7 @@ import StaticTranspiler._
     val receiver = method.receiverOpt.get
     val info: Info.Method = ts.typeHierarchy.typeMap.get(receiver.ids).get match {
       case inf: TypeInfo.Sig => inf.methods.get(method.id).get
-      case inf: TypeInfo.AbstractDatatype => inf.methods.get(method.id).get
+      case inf: TypeInfo.Adt => inf.methods.get(method.id).get
       case _ => halt("Infeasible")
     }
     val key = compiledKeyName(receiver)
@@ -958,7 +958,7 @@ import StaticTranspiler._
     val rTpe = typeDecl(rt)
     val scalar = isScalar(typeKind(rt))
     for (t <- ts.typeImpl.childrenOf(receiver).elements) {
-      val adt = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+      val adt = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt]
       val tpe = transpileType(t)
       adt.vars.get(id) match {
         case Some(_) =>
@@ -1538,7 +1538,7 @@ import StaticTranspiler._
       closureVars: ISZ[ClosureVar]
     ): ST = {
       val isVar: B = ts.typeHierarchy.typeMap.get(receiverType.ids).get match {
-        case info: TypeInfo.AbstractDatatype => info.vars.contains(id)
+        case info: TypeInfo.Adt => info.vars.contains(id)
         case _ => F
       }
       if (isVar) {
@@ -2173,7 +2173,7 @@ import StaticTranspiler._
       }
       val immutable = isImmutable(typeKind(t))
       val e = st"${tpe}__as(sf, $exp)"
-      val adtInfo = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.AbstractDatatype]
+      val adtInfo = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt]
       for (idPattern <- ops.ISZOps(adtInfo.extractorTypeMap.keys).zip(pat.patterns)) {
         val (id, p) = idPattern
         transpilePattern(immutable, allowShadow, handledVar, st"${tpe}_${id}_($e)", p)
@@ -2933,7 +2933,7 @@ import StaticTranspiler._
       case stmt: AST.Stmt.Return => transpileReturn(stmt)
       case _: AST.Stmt.Method => // skip
       case _: AST.Stmt.Import => // skip
-      case _: AST.Stmt.AbstractDatatype => // skip
+      case _: AST.Stmt.Adt => // skip
       case _: AST.Stmt.Sig => // skip
       case _: AST.Stmt.Enum => // skip
       case _: AST.Stmt.Object => // skip
@@ -3049,7 +3049,7 @@ import StaticTranspiler._
               val bw = info.ast.bitWidth
               return bitWidthKind(if (bw == z"0") config.defaultBitWidth else bw)
             case _: TypeInfo.Enum => return TypeKind.Enum
-            case info: TypeInfo.AbstractDatatype =>
+            case info: TypeInfo.Adt =>
               return if (info.ast.isDatatype) if (info.ast.isRoot) TypeKind.ImmutableTrait else TypeKind.Immutable
               else if (info.ast.isRoot) TypeKind.MutableTrait
               else TypeKind.Mutable

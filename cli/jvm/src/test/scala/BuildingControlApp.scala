@@ -2,8 +2,6 @@ import org.sireum._
 import org.sireum.transpiler.{CTranspiler, Cli}
 import java.io._
 
-import ammonite.ops._
-
 object BuildingControlGenApp extends scala.App {
   if (args.length != 2) {
     println("Usage: BuildingControlApp <slang-embedded-path> <output-path>")
@@ -39,25 +37,25 @@ object BuildingControlGenMixedApp extends scala.App {
 object BuildingControlApp {
 
   def transpile(hasAEP: B, args: Array[Predef.String], example: Predef.String): Unit = {
-    val slangPath = Path(new File(args(0)).getCanonicalFile.getAbsoluteFile)
-    val out = Path(new File(args(1)).getCanonicalFile.getAbsoluteFile) / example
-    val dir = Path(new File(implicitly[sourcecode.File].value).getParentFile)
+    val slangPath = Os.path(args(0))
+    val out = Os.path(args(1)) / example
+    val dir = Os.path(implicitly[sourcecode.File].value).up
     val pkg = example.replaceAllLiterally("-", "_")
-    val extPath = slangPath / example / 'src / 'c / 'ext
-    var extFiles = Vector[Path]()
-    for (f <- extPath.toIO.listFiles() if f.getName.endsWith(".c") || f.getName.endsWith(".h")) {
-      extFiles = extFiles :+ Path(f.getAbsoluteFile)
+    val extPath = slangPath / example / "src" / "c" / "ext"
+    var extFiles = Vector[Os.Path]()
+    for (f <- extPath.list if f.name.value.endsWith(".c") || f.name.value.endsWith(".h")) {
+      extFiles = extFiles :+ f
     }
     val readme = dir / pkg / "readme.md"
 
-    rm ! out
+    out.removeAll()
 
-    mkdir ! out / 'src
-    cp(slangPath / example / 'src / 'aadl, out / 'src / 'aadl)
-    cp(slangPath / example / 'src / 'main, out / 'src / 'scala)
-    cp(readme, out / "readme.md")
+    (out / "src").mkdirAll()
+    (slangPath / example / "src" / "aadl").copyOverTo(out / "src" / "aadl")
+    (slangPath / example / "src" / "main").copyOverTo(out / "src" / "scala")
+    readme.copyOverTo(out / "readme.md")
 
-    write(out / 'bin / "compile-mac.sh", s"""#!/usr/bin/env bash
+    (out / "bin" / "compile-mac.sh").writeOver(s"""#!/usr/bin/env bash
                                             |set -e
                                             |export SCRIPT_HOME=$$( cd "$$( dirname "$$0" )" &> /dev/null && pwd )
                                             |cd $$SCRIPT_HOME
@@ -70,7 +68,7 @@ object BuildingControlApp {
                                             |${if (hasAEP) "mv *_AEP $SCRIPT_HOME/mac/" else ""}
                                             |mv Main $$SCRIPT_HOME/mac/""".stripMargin)
 
-    write(out / 'bin / "compile-linux.sh", s"""#!/usr/bin/env bash
+    (out / "bin" / "compile-linux.sh").writeOver(s"""#!/usr/bin/env bash
                                               |set -e
                                               |export SCRIPT_HOME=$$( cd "$$( dirname "$$0" )" &> /dev/null && pwd )
                                               |cd $$SCRIPT_HOME
@@ -83,7 +81,7 @@ object BuildingControlApp {
                                               |${if (hasAEP) "mv *_AEP $SCRIPT_HOME/linux/" else ""}
                                               |mv Main $$SCRIPT_HOME/linux/""".stripMargin)
 
-    write(out / 'bin / "compile-cygwin.sh", s"""#!/usr/bin/env bash
+    (out / "bin" / "compile-cygwin.sh").writeOver(s"""#!/usr/bin/env bash
                                                |set -e
                                                |export SCRIPT_HOME=$$( cd "$$( dirname "$$0" )" &> /dev/null && pwd )
                                                |cd $$SCRIPT_HOME
@@ -94,8 +92,7 @@ object BuildingControlApp {
                                                |make $$MAKE_ARGS
                                                |mv *.exe $$SCRIPT_HOME/win/""".stripMargin)
 
-    write(
-      out / 'bin / "run-mac.sh",
+    (out / "bin" / "run-mac.sh").writeOver(
       if (hasAEP)
         """#!/usr/bin/env bash
           |set -e
@@ -120,8 +117,7 @@ object BuildingControlApp {
           |mac/Main""".stripMargin
     )
 
-    write(
-      out / 'bin / "run-linux.sh",
+    (out / "bin" / "run-linux.sh").writeOver(
       if (hasAEP)
         """#!/usr/bin/env bash
           |set -e
@@ -146,8 +142,7 @@ object BuildingControlApp {
           |linux/Main""".stripMargin
     )
 
-    write(
-      out / 'bin / "run-cygwin.sh",
+    (out / "bin" / "run-cygwin.sh").writeOver(
       if (hasAEP)
         """#!/usr/bin/env bash
           |set -e
@@ -174,7 +169,7 @@ object BuildingControlApp {
           |win/Main.exe""".stripMargin
     )
 
-    write(out / 'bin / "stop.sh", """#!/usr/bin/env bash
+    (out / "bin" / "stop.sh").write("""#!/usr/bin/env bash
                                     |APPS="TempControl TempSensor Fan"
                                     |for APP in ${APPS}; do
                                     |  pkill $APP
@@ -195,8 +190,8 @@ object BuildingControlApp {
                                     |done
                                     |ipcs""".stripMargin)
 
-    for (f <- (out / 'bin).toIO.listFiles((_, name) => name.endsWith(".sh"))) {
-      %('chmod, "+x", 'bin / f.getName)(out)
+    for (f <- (out / "bin").list if f.name.value.endsWith(".sh")) {
+      f.chmod("+x")
     }
 
     Cli(File.pathSeparatorChar).parseSireum(
@@ -207,7 +202,7 @@ object BuildingControlApp {
         example,
         "--verbose",
         "--sourcepath",
-        s"${out / 'src / 'scala}",
+        s"${out / "src" / "scala"}",
         "--bits",
         "32",
         "--string-size",
@@ -227,7 +222,7 @@ object BuildingControlApp {
         "--exts",
         extFiles.mkString(":"),
         "--output-dir",
-        (out / 'src / 'c).toString
+        (out / "src" / "c").string
       ),
       0
     ) match {
@@ -251,14 +246,14 @@ object BuildingControlApp {
         System.setErr(new PrintStream(errs))
         CTranspiler.run(o)
         val s = new java.lang.String(baos.toByteArray)
-        write(out / "transpiler.log", s)
+        (out / "transpiler.log").writeOver(s)
       case Some(_: Cli.HelpOption) => sys.exit(0)
       case _ => sys.exit(-1)
     }
 
-    val zipFilename = s"${out.segments.toSeq.last}.zip"
-    rm ! out / up / zipFilename
-    %('zip, "-qro", zipFilename, out.segments.toSeq.last)(out / up)
+    val zipFilename = s"${out.name}.zip"
+    (out.up / zipFilename).removeAll()
+    Os.proc(ISZ("zip", "-qro", zipFilename, out.name)).at(out.up).console.runCheck()
   }
 
 }

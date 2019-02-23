@@ -1,10 +1,8 @@
 package org.sireum.transpiler
 
 import _root_.java.io._
-import _root_.java.nio.charset._
 import _root_.java.util.zip._
 
-import ammonite.ops._
 import org.sireum._
 import org.sireum.lang.FrontEnd
 import org.sireum.lang.{ast => AST}
@@ -12,7 +10,6 @@ import org.sireum.lang.parser.Parser
 import org.sireum.lang.tipe._
 import org.sireum.message._
 
-import scala.collection.JavaConverters._
 import Cli._
 import org.sireum.transpiler.c.StaticTranspiler
 import org.sireum.transpilers.common.TypeSpecializer
@@ -33,9 +30,8 @@ object CTranspiler {
   val TranspilingError: Int = -12
 
   def run(o: CTranspilerOption): Int = {
-    def readFile(f: File): (Option[String], String) = {
-      val file = f.getCanonicalFile.getAbsoluteFile
-      (Some(file.toURI.toASCIIString), read ! ammonite.ops.Path(file))
+    def readFile(f: Os.Path): (Option[String], String) = {
+      (Some(f.toUri), f.read)
     }
     if (o.args.isEmpty && o.sourcepath.isEmpty) {
       println(o.help)
@@ -118,14 +114,14 @@ object CTranspiler {
 
     var slangFiles: ISZ[(String, (Option[String], String))] = ISZ()
     for (arg <- o.args) {
-      val f = new File(arg.value)
+      val f = Os.path(arg.value)
       if (!f.exists) {
         eprintln(s"File $arg does not exist.")
         return InvalidFile
       } else if (!f.isFile) {
         eprintln(s"Path $arg is not a file.")
         return InvalidFile
-      } else if (!f.getName.endsWith(".slang")) {
+      } else if (!ops.StringOps(f.name).endsWith(".slang")) {
         eprintln(s"Can only accept .slang files as arguments")
         return InvalidFile
       }
@@ -146,14 +142,15 @@ object CTranspiler {
 
     var exts: ISZ[StaticTranspiler.ExtFile] = ISZ()
     for (ext <- o.exts) {
-      val f = new File(ext.value)
+      val f = Os.path(ext.value)
+      val nameOps = ops.StringOps(f.name)
       if (!f.exists) {
         eprintln(s"File $ext does not exist.")
         return InvalidFile
       } else if (!f.isFile) {
         eprintln(s"Path $ext is not a file.")
         return InvalidFile
-      } else if (!f.getName.endsWith(".c") && !f.getName.endsWith(".h")) {
+      } else if (!nameOps.endsWith(".c") && !nameOps.endsWith(".h")) {
         eprintln(s"Can only accept .h or .c files as extension files")
         return InvalidFile
       }
@@ -171,36 +168,31 @@ object CTranspiler {
     }
 
     var sources = ISZ[(Option[String], String)]()
-    def collectFiles(f: File): Unit = {
-      if (f.isDirectory) {
-        for (file <- f.listFiles()) {
-          collectFiles(file)
-        }
-      } else if (f.isFile) {
-        if (f.getName.endsWith(".scala")) {
-          var isSlang = F
-          for (firstLine <- java.nio.file.Files.lines(f.toPath, StandardCharsets.UTF_8).limit(1).iterator.asScala) {
-            isSlang = firstLine
-              .replaceAllLiterally(" ", "")
-              .replaceAllLiterally("\t", "")
-              .replaceAllLiterally("\r", "")
-              .contains("#Sireum")
-          }
-          if (isSlang) {
-            sources = sources :+ readFile(f)
-            if (o.verbose) println(s"Read ${f.getCanonicalPath}")
-          }
-        }
-      }
-    }
 
     for (p <- o.sourcepath) {
-      val f = new File(p.value)
+      val f = Os.path(p.value)
       if (!f.exists) {
         eprintln(s"Source path '$p' does not exist.")
         return InvalidPath
       } else {
-        collectFiles(f)
+        for (p <- Os.Path.walk(f, F, T, { f =>
+          var isSlang = f.string.value.endsWith(".slang")
+          if (f.string.value.endsWith(".scala") || isSlang) {
+            if (!isSlang) {
+              for (firstLine <- f.readLineStream.take(1).toISZ.elements) {
+                isSlang = firstLine.value
+                  .replaceAllLiterally(" ", "")
+                  .replaceAllLiterally("\t", "")
+                  .replaceAllLiterally("\r", "")
+                  .contains("#Sireum")
+              }
+            }
+          }
+          isSlang
+        })) {
+          sources = sources :+ readFile(p)
+          if (o.verbose) println(s"Read $p")
+        }
       }
     }
 
@@ -497,9 +489,9 @@ object CTranspiler {
       startTime()
     }
 
-    val resultDir = Path(new File(o.output.get.value).getCanonicalFile.getAbsolutePath)
-    rm ! resultDir
-    mkdir ! resultDir
+    val resultDir = Os.path(o.output.get)
+    resultDir.removeAll()
+    resultDir.mkdirAll()
 
     for (e <- r.files.entries) {
       val path = e._1
@@ -507,8 +499,8 @@ object CTranspiler {
       for (segment <- path) {
         f = f / segment.value
       }
-      mkdir ! f / up
-      write.over(f, e._2.render.value)
+      f.up.mkdirAll()
+      f.writeOver(e._2.render)
       println(s"Wrote $f")
     }
     stopTime()
