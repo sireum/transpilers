@@ -209,18 +209,6 @@ class StaticTranspilerTest extends TestSuite {
                         |  println(n)
                         |}""".stripMargin)
 
-    * - testWorksheet("""for (n <- ISZ("a", "b", "c").reverse) {
-                        |  println(n)
-                        |}""".stripMargin)
-
-    * - testWorksheet("""for (n <- ISZ("a", "b", "c").indices) {
-                        |  println(n)
-                        |}""".stripMargin)
-
-    * - testWorksheet("""for (n <- ISZ("a", "b", "c").indices.reverse) {
-                        |  println(n)
-                        |}""".stripMargin)
-
     * - testWorksheet("""println(for (ss <- ISZ(ISZ("a", "b"), ISZ("c")); s <- ss) yield s"${s}1")""")
 
     * - testWorksheet("""import org.sireum.N._

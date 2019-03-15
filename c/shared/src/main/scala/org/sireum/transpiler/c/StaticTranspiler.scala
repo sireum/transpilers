@@ -227,7 +227,7 @@ object StaticTranspiler {
       val res = o.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
       r = r + (res.owner :+ res.id) ~> ((noTypeParam, o, closureVars))
 
-      val Some((c, s)) = stack.pop()
+      val Some((c, s)) = stack.pop
       context = c
       stack = s
       var cvs = ISZ[ClosureVar]()
@@ -2456,8 +2456,8 @@ import StaticTranspiler._
         val (minIndex, maxElements) = minIndexMaxElementSize(t)
         val indexType = arraySizeType(maxElements)
         stmts = stmts :+ st"$indexType $size = ($e)->size;"
-        (range.isIndices, range.isReverse) match {
-          case (F, F) =>
+        //(range.isIndices, range.isReverse) match {
+        //  case (F, F) =>
             eg.idOpt match {
               case Some(id) =>
                 val eTpe = transpileType(et)
@@ -2476,7 +2476,7 @@ import StaticTranspiler._
                 |  ${(b, "\n")}
                 |}"""
             }
-          case (F, T) =>
+        /*  case (F, T) =>
             eg.idOpt match {
               case Some(id) =>
                 val eTpe = transpileType(et)
@@ -2537,7 +2537,7 @@ import StaticTranspiler._
                 |}"""
             }
           case _ => halt("Infeasible")
-        }
+        }*/
     }
   }
 
