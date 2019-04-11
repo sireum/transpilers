@@ -119,10 +119,10 @@ import Cli._
           |-a, --apps               @app fully qualified names (expects a string separated
           |                           by ",")
           |-u, --unroll             Enable for-loop unrolling
-          |-f, --fingerprint        Generic entity fingerprinting size (expects one of {
-          |                           64, 32, 16, 8 })
+          |-f, --fingerprint        Generic entity fingerprinting size (expects an integer;
+          |                           default is 3)
           |-b, --bits               Default bit-width for unbounded integer types (e.g.,
-          |                           Z) (expects an integer; default is 3)
+          |                           Z) (expects one of { 64, 32, 16, 8 })
           |    --string-size        Maximum string size (expects an integer; default is
           |                           100)
           |    --sequence-size      Default maximum sequence size (expects an integer;
