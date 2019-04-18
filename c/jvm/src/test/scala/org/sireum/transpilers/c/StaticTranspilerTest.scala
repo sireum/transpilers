@@ -194,6 +194,11 @@ class StaticTranspilerTest extends TestSuite {
                         |val Some(Some(x)) = opt
                         |println(x)""".stripMargin)
 
+    * - testWorksheet("""val x: Z = if (F) 1 else 2
+                        |println(x)
+                        |val opt: Option[Z] = if (T) Some(5) else None()
+                        |println(opt.get)""".stripMargin)
+
     * - testWorksheet("""val opt: Option[Option[Z]] = Some(Some(1))
                         |val y = 1
                         |opt match {

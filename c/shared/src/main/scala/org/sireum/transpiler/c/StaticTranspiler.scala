@@ -1899,15 +1899,20 @@ import StaticTranspiler._
       val t = expType(exp)
       val scalar = isScalar(typeKind(t))
       val tpe = transpileType(t)
+      val tDecl = typeDecl(t)
       val temp = freshTempName()
-      stmts = stmts :+ st"$tpe $temp;"
+      if (scalar) {
+        stmts = stmts :+ st"$tpe $temp;"
+      } else {
+        stmts = stmts :+ st"DeclNew$tpe($temp);"
+      }
       val oldStmts = stmts
       stmts = ISZ()
       val thenExp = transpileExp(exp.thenExp)
       if (scalar) {
         stmts = stmts :+ st"$temp = $thenExp;"
       } else {
-        stmts = stmts :+ st"$temp = ($tpe) $thenExp;"
+        stmts = stmts :+ st"Type_assign(&$temp, $thenExp, sizeof($tDecl));"
       }
       val thenStmts = stmts
       stmts = ISZ()
@@ -1915,7 +1920,7 @@ import StaticTranspiler._
       if (scalar) {
         stmts = stmts :+ st"$temp = $elseExp;"
       } else {
-        stmts = stmts :+ st"$temp = ($tpe) $elseExp;"
+        stmts = stmts :+ st"Type_assign(&$temp, $elseExp, sizeof($tDecl));"
       }
       stmts = oldStmts :+
         st"""if ($cond) {
@@ -1923,7 +1928,7 @@ import StaticTranspiler._
         |} else {
         |  ${(stmts, "\n")}
         |}"""
-      return st"$temp"
+      return if (scalar) st"$temp" else st"&$temp"
     }
 
     def transForYield(exp: AST.Exp.ForYield): ST = {
