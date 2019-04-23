@@ -1665,8 +1665,11 @@ object StaticTemplate {
 
   @pure def mangleName(ids: QName): ST = {
     val r: ST =
-      if (ids.size == z"1") st"top_${ids(0)}"
-      else st"${(AST.Typed.short(ids).map(encodeName _), "_")}"
+      ids.size match {
+        case z"0" => st"top"
+        case z"1" => st"top_${ids(0)}"
+        case _ => st"${(AST.Typed.short(ids).map(encodeName _), "_")}"
+      }
     return r
   }
 

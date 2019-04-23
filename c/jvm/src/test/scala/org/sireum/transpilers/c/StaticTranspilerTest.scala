@@ -99,6 +99,11 @@ class StaticTranspilerTest extends TestSuite {
                         |println(s3)
                         |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin)
 
+    * - testWorksheet("""def foo(x: Z): Z = {
+                        |  return x + 1
+                        |}
+                        |assert(foo(4) == 5)""".stripMargin)
+
     * - testWorksheet("""import org.sireum.U8._
                         |val hash = crypto.SHA3.sum256(ISZ())
                         |println(hash)

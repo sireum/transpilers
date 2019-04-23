@@ -531,7 +531,7 @@ import TypeSpecializer._
     receiverOpt: Option[AST.Typed.Name],
     expType: AST.Typed
   ): Unit = {
-    val rOpt: Option[AST.Typed.Name] = if (m.isInObject) {
+    val rOpt: Option[AST.Typed.Name] = if (m.isInObject || m.owner.isEmpty) {
       None()
     } else if (th.typeMap.get(m.owner).nonEmpty) {
       m.mode match {

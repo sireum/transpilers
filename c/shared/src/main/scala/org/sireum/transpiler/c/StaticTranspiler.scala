@@ -1010,7 +1010,13 @@ import StaticTranspiler._
     val res = method.info.methodRes
     val key: QName = currReceiverOpt match {
       case Some(rcv) => compiledKeyName(rcv)
-      case _ => res.owner
+      case _ =>
+        val owner = res.owner
+        if (owner.isEmpty) {
+          ISZ("top")
+        } else {
+          owner
+        }
     }
 
     val oldContext = context
@@ -1747,18 +1753,29 @@ import StaticTranspiler._
                         return r
                     }
                   case _ =>
-                    val (rcv, receiver) = rtRcvOpt.get
-                    val r = transInstanceMethodInvoke(
-                      expType(invoke),
-                      methodNameRes(Some(rcv), res),
-                      rcv,
-                      receiver,
-                      res.id,
-                      res.tpeOpt.get.args,
-                      invoke.args,
-                      ISZ()
-                    )
-                    return r
+                    rtRcvOpt match {
+                      case Some((rcv, receiver)) =>
+                        val r = transInstanceMethodInvoke(
+                          expType(invoke),
+                          methodNameRes(Some(rcv), res),
+                          rcv,
+                          receiver,
+                          res.id,
+                          res.tpeOpt.get.args,
+                          invoke.args,
+                          ISZ()
+                        )
+                        return r
+                      case _ =>
+                        val r = transObjectMethodInvoke(
+                          res.tpeOpt.get.args,
+                          expType(invoke),
+                          methodNameRes(None(), res),
+                          invoke.args,
+                          ISZ(),
+                        )
+                        return r
+                    }
                 }
               }
             case AST.MethodMode.Spec => halt(s"TODO: $res") // TODO
