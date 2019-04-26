@@ -932,7 +932,8 @@ import StaticTranspiler._
       val adtInfo = ts.typeHierarchy.typeMap.get(receiver.ids).get.asInstanceOf[TypeInfo.Adt]
       val adtSm =
         TypeChecker.buildTypeSubstMap(receiver.ids, None(), adtInfo.ast.typeParams, receiver.args, reporter).get
-      val mt = adtInfo.methods.get(id).get.methodType.tpe.subst(adtSm)
+      val mInfo = adtInfo.methods.get(id).get
+      val mt = mInfo.methodType.tpe.subst(adtSm)
       val rep = Reporter.create
       val th = ts.typeHierarchy
       for (m <- ts.methods.get(receiver.ids).get.elements if m.info.ast.sig.id.value == id) {
@@ -941,7 +942,8 @@ import StaticTranspiler._
           return m.info
         }
       }
-      halt("Infeasible")
+      //return mInfo
+      halt(s"Infeasible: $method of $receiver}")
     }
     val receiver = method.receiverOpt.get
     val info: Info.Method = ts.typeHierarchy.typeMap.get(receiver.ids).get match {
@@ -1519,7 +1521,7 @@ import StaticTranspiler._
                 )
                 return r
               }
-            case _ => halt("Infeasible")
+            case _ => halt(s"Infeasible: $res")
           }
         case res: AST.ResolvedInfo.Var =>
           if (res.isInObject) {
@@ -2815,7 +2817,9 @@ import StaticTranspiler._
         case Some(AST.ResolvedInfo.BuiltIn(kind)) =>
           kind match {
             case AST.ResolvedInfo.BuiltIn.Kind.Assert => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.AssertMsg => return T
             case AST.ResolvedInfo.BuiltIn.Kind.Assume => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg => return T
             case AST.ResolvedInfo.BuiltIn.Kind.Cprint => return T
             case AST.ResolvedInfo.BuiltIn.Kind.Cprintln => return T
             case AST.ResolvedInfo.BuiltIn.Kind.Eprint => return T
@@ -2911,7 +2915,9 @@ import StaticTranspiler._
             if (isBuiltInStmt(exp)) {
               exp.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.BuiltIn].kind match {
                 case AST.ResolvedInfo.BuiltIn.Kind.Assert => transAssert(exp)
+                case AST.ResolvedInfo.BuiltIn.Kind.AssertMsg => transAssert(exp)
                 case AST.ResolvedInfo.BuiltIn.Kind.Assume => transAssume(exp)
+                case AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg => transAssume(exp)
                 case AST.ResolvedInfo.BuiltIn.Kind.Halt => transHalt(exp)
                 case kind =>
                   stmts = stmts :+ empty
