@@ -121,8 +121,8 @@ object CTranspiler {
       } else if (!f.isFile) {
         eprintln(s"Path $arg is not a file.")
         return InvalidFile
-      } else if (!ops.StringOps(f.name).endsWith(".slang")) {
-        eprintln(s"Can only accept .slang files as arguments")
+      } else if (!(ops.StringOps(f.name).endsWith(".sc") || ops.StringOps(f.name).endsWith(".slang"))) {
+        eprintln(s"Can only accept .sc/.slang files as arguments")
         return InvalidFile
       }
       slangFiles = slangFiles :+ ((arg, readFile(f)))
