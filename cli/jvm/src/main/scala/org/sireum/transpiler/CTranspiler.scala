@@ -150,9 +150,6 @@ object CTranspiler {
       } else if (!f.isFile) {
         eprintln(s"Path $ext is not a file.")
         return InvalidFile
-      } else if (!nameOps.endsWith(".c") && !nameOps.endsWith(".h")) {
-        eprintln(s"Can only accept .h or .c files as extension files")
-        return InvalidFile
       }
       val p = readFile(f)
       exts = exts :+ StaticTranspiler.ExtFile(p._1.get, p._2)

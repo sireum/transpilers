@@ -254,8 +254,13 @@ object StaticTemplate {
   @pure def cmake(project: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName]): ST = {
     val mainFs = HashSet ++ mainFilenames
 
+    @pure def cSource(fs: QName): B = {
+      val sops = ops.StringOps(fs(fs.size - 1))
+      return sops.endsWith(".c") || sops.endsWith(".h")
+    }
+
     @pure def files(fss: ISZ[QName]): ISZ[ST] = {
-      return for (f <- fss if !mainFs.contains(f)) yield st"${(f, "/")}"
+      return for (f <- fss if !mainFs.contains(f) && cSource(f)) yield st"${(f, "/")}"
     }
 
     @pure def includeDirs(fss: ISZ[QName]): ISZ[ST] = {
