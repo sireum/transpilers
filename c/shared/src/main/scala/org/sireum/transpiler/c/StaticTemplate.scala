@@ -335,7 +335,7 @@ object StaticTemplate {
   }
 
   @pure def qnameLt(qn1: QName, qn2: QName): B = {
-    return if (qn1.size < qn2.size) T else if (qn1.size > qn1.size) F else st"$qn1".render <= st"$qn2".render
+    return st"$qn1".render < st"$qn2".render
   }
 
   @pure def dirOf(name: QName): QName = {
