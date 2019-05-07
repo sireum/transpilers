@@ -2720,12 +2720,11 @@ import StaticTranspiler._
         val oldStmts = stmts
         stmts = ISZ()
         val s = transpileExp(exp.args(1))
-        stmts = stmts :+
+        stmts = oldStmts :+
           st"""if (!($cond)) {
           |  ${(stmts, "\n")}
           |  sfAbort(($s)->value);
           |}"""
-        stmts = oldStmts
       }
     }
 
@@ -2743,12 +2742,11 @@ import StaticTranspiler._
         val oldStmts = stmts
         stmts = ISZ()
         val s = transpileExp(exp.args(1))
-        stmts = stmts :+
+        stmts = oldStmts :+
           st"""if (!($cond)) {
           |  ${(stmts, "\n")}
           |  sfAbort(($s)->value);
           |}"""
-        stmts = oldStmts
       }
     }
 
