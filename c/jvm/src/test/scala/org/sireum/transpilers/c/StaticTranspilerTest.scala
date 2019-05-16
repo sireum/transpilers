@@ -18,6 +18,12 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
+    * - testWorksheet("""@datatype class Foo(a: ISZ[Z])
+                        |
+                        |val foo = Foo(ISZ(1, 2, 3))
+                        |val first = foo.a(0)
+                        |assert(first == 1)""".stripMargin)
+
     * - testWorksheet("""println("Hello World!")""".stripMargin)
 
     * - testWorksheet("""val x = 5 * 5 + 1
@@ -242,6 +248,13 @@ class StaticTranspilerTest extends TestSuite {
                         |println(R("a"))
                         |println(N("0"))
                         |println(N("-1"))""".stripMargin)
+
+    * - testWorksheet("""@datatype class Foo(a: ISZ[Z])
+                        |
+                        |val foo = Foo(ISZ(1, 2, 3))
+                        |val first = foo.a(0)
+                        |assert(first == 1)""".stripMargin)
+
 
     * - testWorksheet("""object Foo {
                         |  @pure def foo(x: Z): Z = {

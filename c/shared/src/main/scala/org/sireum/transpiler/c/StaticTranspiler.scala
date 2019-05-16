@@ -1453,6 +1453,11 @@ import StaticTranspiler._
       return st"(&$temp)"
     }
 
+    def transSelectVar(receiver: AST.Exp, res: AST.ResolvedInfo.Var): ST = {
+      val e = transpileExp(receiver)
+      return st"${transpileType(expType(receiver))}_${fieldId(res.id)}_($e)"
+    }
+
     def transSelect(select: AST.Exp.Select): ST = {
       select.attr.resOpt.get match {
         case res: AST.ResolvedInfo.Tuple =>
@@ -1528,8 +1533,7 @@ import StaticTranspiler._
             return st"${mangleName(res.owner)}_${res.id}(sf)"
           } else {
             val receiver = select.receiverOpt.get
-            val e = transpileExp(receiver)
-            return st"${transpileType(expType(receiver))}_${fieldId(res.id)}_($e)"
+            return transSelectVar(receiver, res)
           }
         case _ => halt(s"Infeasible")
       }
@@ -1662,7 +1666,11 @@ import StaticTranspiler._
 
       def transReceiver(): ST = {
         invoke.receiverOpt match {
-          case Some(receiver) => val r = transpileExp(receiver); return r
+          case Some(receiver) =>
+            invoke.ident.attr.resOpt.get match {
+              case res: AST.ResolvedInfo.Var => val r = transSelectVar(receiver, res); return r
+              case _ => val r = transpileExp(receiver); return r
+            }
           case _ => val r = transpileExp(invoke.ident); return r
         }
       }
