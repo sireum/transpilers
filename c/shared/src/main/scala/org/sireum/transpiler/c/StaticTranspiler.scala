@@ -1955,7 +1955,7 @@ import StaticTranspiler._
         |} else {
         |  ${(stmts, "\n")}
         |}"""
-      return if (scalar) st"$temp" else st"&$temp"
+      return if (scalar) st"$temp" else if (t == AST.Typed.string) st"((String) &$temp)" else st"&$temp"
     }
 
     def transForYield(exp: AST.Exp.ForYield): ST = {
@@ -1987,7 +1987,7 @@ import StaticTranspiler._
       }
       stmts = oldStmts ++ body
       stmts = stmts :+ st"$temp.size = $index;"
-      return st"(&$temp)"
+      return st"&$temp"
     }
 
     expression match {
