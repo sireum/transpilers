@@ -1,0 +1,12 @@
+cmake-build*
+.idea
+main
+main-naive
+CMakeCache.txt
+CmakeFiles
+Makefile
+cmake_install.cmake
+*.exe
+runtime-refcount-naive
+runtime-refcount
+runtime-static

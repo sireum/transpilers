@@ -1,3 +1,27 @@
+/*
+ Copyright (c) 2019, Robby, Kansas State University
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice, this
+    list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+ ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 package org.sireum.transpilers.c
 
 import org.sireum.$internal.RC
@@ -7,8 +31,7 @@ import org.sireum.lang.tipe.{PostTipeAttrChecker, TypeChecker, TypeHierarchy}
 import org.sireum.lang.{FrontEnd, ast => AST}
 import org.sireum.message.Reporter
 import org.sireum.test.TestSuite
-import org.sireum.transpiler.c.StaticTranspiler
-import org.sireum.transpiler.c.StaticTranspiler.{NumberConversionsExtMethodPlugin, StringConversionsExtMethodPlugin}
+import org.sireum.transpilers.c.StaticTranspiler.{NumberConversionsExtMethodPlugin, StringConversionsExtMethodPlugin}
 import org.sireum.transpilers.common.TypeSpecializer
 
 class StaticTranspilerRcTest extends TestSuite {
@@ -73,7 +96,8 @@ class StaticTranspilerRcTest extends TestSuite {
         StringConversionsExtMethodPlugin()
       ),
       exts = ISZ(extFile),
-      forLoopOpt = forLoopOpt
+      forLoopOpt = forLoopOpt,
+      stackSize = "16 * 1024 * 1024"
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)
@@ -124,6 +148,10 @@ class StaticTranspilerRcTest extends TestSuite {
       (ldir / "CMakeCache.txt").removeAll()
     }
 
-    (ldir / "sha3").moveOverTo(dir / name.value)
+    if (Os.isWin) {
+      (ldir / "sha3.exe").moveOverTo(dir / s"${name.value}.exe")
+    } else {
+      (ldir / "sha3").moveOverTo(dir / name.value)
+    }
   }
 }

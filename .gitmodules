@@ -1,3 +1,0 @@
-[submodule "c/shared/src/main/scala/org/sireum/transpiler/c/runtime"]
-	path = c/shared/src/main/scala/org/sireum/transpiler/c/runtime
-	url = git@github.com:santoslab/sireum-runtime-c
