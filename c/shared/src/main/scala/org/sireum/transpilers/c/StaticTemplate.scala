@@ -378,7 +378,9 @@ object StaticTemplate {
       |if ("$${CMAKE_CXX_COMPILER_ID}" MATCHES "(C|c?)lang")
       |  set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size -Wl,$${stack_size}")
       |elseif ("$${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-      |  set(CMAKE_EXE_LINKER_FLAGS "-Wl,--stack,$${stack_size}")
+      |  if (NOT "$${CMAKE_SYSTEM_NAME}" STREQUAL "Linux")
+      |    set(CMAKE_EXE_LINKER_FLAGS "-Wl,--stack,$${stack_size}")
+      |  endif()
       |endif()"""
     return r
   }
