@@ -87,7 +87,7 @@ object cli {
           description = "Object forwarding, each in form of <name>=<name>, where <name> is a fully qualified name of an object"),
         Opt(name = "stackSize", longKey = "stack-size", shortKey = Some('z'),
           tpe = Type.Str(None(), Some("16 * 1024 * 1024")),
-          description = "Maximum stack size in bytes for non-Linux target"),
+          description = "Maximum stack size in bytes"),
       )),
       OptGroup(name = "Persistence", opts = ISZ(
         Opt(name = "save", longKey = "save", shortKey = None(), tpe = Type.Path(F, None()),
