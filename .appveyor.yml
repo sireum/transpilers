@@ -1,0 +1,23 @@
+version: 1.0.{build}
+
+image: Visual Studio 2017
+
+environment:
+  JAVA_OPTS: '-Xmx2G'
+  CYG_ROOT: C:\cygwin64
+  CYG_MIRROR: http://cygwin.osuosl.org
+  CYG_CACHE: C:\cygwin64\var\cache\setup
+  CYG_BASH: C:\cygwin64\bin\bash
+
+cache:
+  - bin\scala
+  - bin\win\java
+  - bin\win\z3
+  - '%CYG_CACHE%'
+
+install:
+  - '%CYG_ROOT%\setup-x86_64.exe --quiet-mode --no-shortcuts --upgrade-also --packages cmake,make,gcc-core,gcc-g++'
+  - '%CYG_ROOT%\bin\cygcheck -dc cygwin'
+
+build_script:
+  - '%CYG_BASH% -lc "cd $APPVEYOR_BUILD_FOLDER && bin/build.cmd test"'
