@@ -50,6 +50,7 @@ object StaticTranspiler {
     customConstants: HashMap[QName, AST.Exp],
     plugins: ISZ[Plugin],
     exts: ISZ[ExtFile],
+    excludedNames: HashSet[QName],
     forLoopOpt: B,
     stackSize: String
   ) {
@@ -221,7 +222,10 @@ object StaticTranspiler {
           (st"$h;", i)
         case _ => halt(s"TODO: $method") // TODO
       }
-      return compiled(header = compiled.header :+ header, impl = compiled.impl :+ impl)
+
+      return if (transpiler.isExcluded(method.owner, method.id))
+        compiled(header = compiled.header :+ st"extern $header", excludedImpl = compiled.excludedImpl :+ impl)
+      else compiled(header = compiled.header :+ header, impl = compiled.impl :+ impl)
     }
   }
 
@@ -639,7 +643,7 @@ import StaticTranspiler._
   def getCompiled(key: QName): Compiled = {
     compiledMap.get(key) match {
       case Some(r) => return r
-      case _ => return Compiled(ISZ(), ISZ(), ISZ())
+      case _ => return Compiled.empty
     }
   }
 
@@ -1022,7 +1026,11 @@ import StaticTranspiler._
       |    default: fprintf(stderr, "Infeasible TYPE: %s.\n", TYPE_string(this)); exit(1);
       |  }
       |}"""
-    val newValue = value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
+    val newValue: Compiled =
+      if (isExcluded(method.owner, method.id))
+        value(header = value.header :+ st"extern $header;", excludedImpl = value.excludedImpl :+ impl)
+      else
+        value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
     compiledMap = compiledMap + key ~> newValue
   }
 
@@ -1086,7 +1094,10 @@ import StaticTranspiler._
         |}"""
 
       val value = getCompiled(key)
-      compiledMap = compiledMap + key ~> value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
+      compiledMap = compiledMap + key ~>
+        (if (isExcluded(mres.owner, mres.id))
+          value(header = value.header :+ st"extern $header;", excludedImpl = value.excludedImpl :+ impl)
+        else value(header = value.header :+ st"$header;", impl = value.impl :+ impl))
     }
 
     context = res.owner :+ res.id
@@ -1105,7 +1116,10 @@ import StaticTranspiler._
       |}"""
 
     val value = getCompiled(key)
-    compiledMap = compiledMap + key ~> value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
+    compiledMap = compiledMap + key ~>
+      (if (isExcluded(res.owner, res.id))
+        value(header = value.header :+ st"extern $header;", excludedImpl = value.excludedImpl :+ impl)
+      else value(header = value.header :+ st"$header;", impl = value.impl :+ impl))
 
     currReceiverOpt = oldCurrReceiverOpt
     nextTempNum = oldNextTempNum
@@ -2511,14 +2525,13 @@ import StaticTranspiler._
       case range: AST.EnumGen.Range.Expr =>
         val e = transpileExp(range.exp)
         val t = expType(range.exp).asInstanceOf[AST.Typed.Name]
-        val it = t.args(0)
         val et = t.args(1)
         val tpe = transpileType(t)
         val temp = freshTempName()
         stmts = stmts :+ st"$tpe $temp = $e;"
         val size = freshTempName()
         val index = freshTempName()
-        val (minIndex, maxElements) = minIndexMaxElementSize(t)
+        val (_, maxElements) = minIndexMaxElementSize(t)
         val indexType = arraySizeType(maxElements)
         stmts = stmts :+ st"$indexType $size = ($e)->size;"
         //(range.isIndices, range.isReverse) match {
@@ -3327,4 +3340,11 @@ import StaticTranspiler._
     }
   }
 
+  def isExcluded(owner: QName, id: String): B = {
+    val r = config.excludedNames.contains(owner) || config.excludedNames.contains(owner :+ id)
+    if (r) {
+      reporter.info(None(), transKind, st"Excluding ${(owner, ".")}.$id in ${(owner, "_")}_$id-excluded.c".render)
+    }
+    return r
+  }
 }

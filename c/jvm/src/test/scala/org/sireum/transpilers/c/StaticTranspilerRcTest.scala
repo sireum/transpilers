@@ -96,6 +96,7 @@ class StaticTranspilerRcTest extends TestSuite {
         StringConversionsExtMethodPlugin()
       ),
       exts = ISZ(extFile),
+      excludedNames = HashSet.empty[ISZ[String]],
       forLoopOpt = forLoopOpt,
       stackSize = "16 * 1024 * 1024"
     )

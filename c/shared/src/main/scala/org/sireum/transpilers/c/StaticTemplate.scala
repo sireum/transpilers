@@ -48,7 +48,13 @@ object StaticTemplate {
     'Scalar1
   }
 
-  @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST])
+  object Compiled {
+    def empty: Compiled = {
+      return Compiled(ISZ(), ISZ(), ISZ(), ISZ())
+    }
+  }
+
+  @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST], excludedImpl: ISZ[ST])
 
   @datatype class Vard(kind: TypeKind.Type, id: String, tpe: ST, tpePtr: ST, isVar: B, isHidden: B)
 
@@ -277,7 +283,7 @@ object StaticTemplate {
 
     @pure def cSource(fs: QName): B = {
       val sops = ops.StringOps(fs(fs.size - 1))
-      return sops.endsWith(".c") || sops.endsWith(".h")
+      return (sops.endsWith(".c") || sops.endsWith(".h")) && !sops.endsWith("-excluded.c")
     }
 
     @pure def files(fss: ISZ[QName]): ISZ[ST] = {
@@ -309,9 +315,6 @@ object StaticTemplate {
     }
 
     val mains: ISZ[ST] = for (f <- mainFilenames) yield target(f)
-
-    // MATH(EXPR stack_size "4 * 1000 * 1000")
-    // set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size,$${stack_size}")
 
     val r =
       st"""cmake_minimum_required(VERSION 3.6.2)
@@ -415,6 +418,7 @@ object StaticTemplate {
       val tHeaderFilename = typeHeaderFilename(filename).render
       val headerFilename = st"$filename.h".render
       val implFilename = st"$filename.c".render
+      val excludedImplFilename = st"$filename-excluded.c".render
       r = r :+ ((dir :+ tHeaderFilename, st"""#ifndef SIREUM_TYPE_H_$filename
       |#define SIREUM_TYPE_H_$filename
       |#include <misc.h>
@@ -433,6 +437,11 @@ object StaticTemplate {
         r = r :+ ((dir :+ implFilename, st"""#include <all.h>
         |
         |${(comp.impl, "\n\n")}"""))
+      }
+      if (comp.excludedImpl.nonEmpty) {
+        r = r :+ ((dir :+ excludedImplFilename, st"""#include <all.h>
+        |
+        |${(comp.excludedImpl, "\n\n")}"""))
       }
     }
     return r

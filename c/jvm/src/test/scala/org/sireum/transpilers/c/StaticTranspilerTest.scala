@@ -354,6 +354,7 @@ class StaticTranspilerTest extends TestSuite {
       customConstants = HashMap.empty,
       plugins = ISZ(NumberConversionsExtMethodPlugin()),
       exts = ISZ(),
+      excludedNames = HashSet.empty,
       forLoopOpt = F,
       stackSize = "16 * 1024 * 1024"
     )
