@@ -184,7 +184,7 @@ object StaticTranspiler {
         val to = ops.StringOps(id).substring(2, id.size)
         return compiled(
           header = compiled.header :+
-            st"""static inline $to ${mangleName(method.owner)}_to$to(StackFrame sf, $from n) {
+            st"""static inline $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n) {
             |  return ($to) n;
             |}"""
         )
@@ -210,7 +210,7 @@ object StaticTranspiler {
       val (header, impl): (ST, ST) = method.id.native match {
         case "toU8is" =>
           val t = transpiler.transpileType(iszU8Type)
-          val h = st"void conversions_String_toU8is($t result, StackFrame caller, String s)"
+          val h = st"void conversions_String_toU8is(STACK_FRAME $t result, String s)"
           val i = st"""$h {
           |  DeclNewStackFrame(caller, "String.scala", "org.sireum.conversions.String", "toU8is", 0);
           |  size_t size = s->size * sizeof(C);
@@ -921,7 +921,11 @@ import StaticTranspiler._
         val oldStmts = stmts
         val e =
           transObjectMethodInvoke(ISZ(), AST.Typed.unit, methodNameRes(None(), atexit.methodRes), ISZ(), ISZ())
-        val r = ISZ(st"StackFrame sf = NULL;", st"$e;")
+        val r = ISZ(
+          st"""#ifdef SIREUM_LOC
+              |StackFrame sf = NULL;
+              |#endif""",
+          st"$e;")
         stmts = oldStmts
         r
       case _ => ISZ()
@@ -1003,11 +1007,11 @@ import StaticTranspiler._
             else
               st", ${(for (p <- ops.ISZOps(mres.paramNames).zip(minfo.methodType.tpe.args)) yield st"(${transpileType(p._2)}) ${localId(p._1)}", ", ")}"
           if (rt == AST.Typed.unit) {
-            cases = cases :+ st"case T$tpe: $mName(caller, ($tpe) this$args); return;"
+            cases = cases :+ st"case T$tpe: $mName(CALLER ($tpe) this$args); return;"
           } else if (scalar) {
-            cases = cases :+ st"case T$tpe: return $mName(caller, ($tpe) this$args);"
+            cases = cases :+ st"case T$tpe: return $mName(CALLER ($tpe) this$args);"
           } else {
-            cases = cases :+ st"case T$tpe: $mName(result, caller, ($tpe) this$args); return;"
+            cases = cases :+ st"case T$tpe: $mName(CALLER result, ($tpe) this$args); return;"
           }
       }
     }
@@ -1256,12 +1260,14 @@ import StaticTranspiler._
       }
     }
     if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
-      return st"$name(sf${commaArgs(args)})"
+      return if (args.isEmpty) st"$name(SF_LAST)" else st"$name(SF ${(args, ", ")})"
     } else {
       val temp = freshTempName()
       val tpe = transpileType(retType)
       stmts = stmts :+ st"DeclNew$tpe($temp);"
-      stmts = stmts :+ st"$name(($tpe) &$temp, sf${commaArgs(args)});"
+      stmts = stmts :+
+        (if (args.isEmpty) st"$name(SF ($tpe) &$temp);"
+        else st"$name(SF ($tpe) &$temp${commaArgs(args)});")
       return st"(($tpe) &$temp)"
     }
   }
@@ -1299,7 +1305,7 @@ import StaticTranspiler._
             return if (res.id == string"T") trueLit else falseLit
           } else {
             if (res.isInObject) {
-              return st"${mangleName(res.owner)}_${res.id}(sf)"
+              return st"${mangleName(res.owner)}_${res.id}(SF_LAST)"
             } else {
               val t = currReceiverOpt.get
               return st"${transpileType(t)}_${fieldId(res.id)}_(this)"
@@ -1378,7 +1384,7 @@ import StaticTranspiler._
               val tpe = transpileType(t)
               val temp = freshTempName()
               stmts = stmts :+ st"DeclNew$tpe($temp);"
-              stmts = stmts :+ st"${tpe}_apply(sf, &$temp, $left, $right);"
+              stmts = stmts :+ st"${tpe}_apply(SF &$temp, $left, $right);"
               return st"(&$temp)"
             case _ =>
               val op: String = res.kind match {
@@ -1410,7 +1416,7 @@ import StaticTranspiler._
                   val tpe = transpileType(t)
                   val temp = freshTempName()
                   stmts = stmts :+ st"DeclNew$tpe($temp);"
-                  stmts = stmts :+ st"${tpe}_apply(sf, &$temp, (${transpileType(t.args(0))}) $left, (${transpileType(t.args(1))}) $right);"
+                  stmts = stmts :+ st"${tpe}_apply(SF &$temp, (${transpileType(t.args(0))}) $left, (${transpileType(t.args(1))}) $right);"
                   return st"(&$temp)"
                 case _ => halt(s"Infeasible: $res.kind")
               }
@@ -1474,7 +1480,7 @@ import StaticTranspiler._
         args = args :+ a
       }
       stmts = stmts :+ st"DeclNew$tpe($temp);"
-      stmts = stmts :+ st"${tpe}_apply(sf, &$temp, ${(args, ", ")});"
+      stmts = stmts :+ st"${tpe}_apply(SF &$temp, ${(args, ", ")});"
       return st"(&$temp)"
     }
 
@@ -1511,19 +1517,19 @@ import StaticTranspiler._
               val e = transpileExp(select.receiverOpt.get)
               val t = select.targs(0).typedOpt.get
               val tpe = transpileType(t)
-              return st"${tpe}__as(sf, $e)"
+              return st"${tpe}__as(SF $e)"
             case AST.ResolvedInfo.BuiltIn.Kind.IsInstanceOf =>
               val e = transpileExp(select.receiverOpt.get)
               val t = select.targs(0).typedOpt.get
               val tpe = transpileType(t)
-              return st"${tpe}__is(sf, $e)"
+              return st"${tpe}__is(SF $e)"
             case AST.ResolvedInfo.BuiltIn.Kind.String =>
               val receiver = select.receiverOpt.get
               val e = transpileExp(receiver)
               val t = expType(receiver)
               val temp = freshTempName()
               stmts = stmts :+ st"DeclNewString($temp);"
-              stmts = stmts :+ st"${transpileType(t)}_string($temp, sf, $e);"
+              stmts = stmts :+ st"${transpileType(t)}_string(SF $temp, $e);"
               return st"((String) &$temp)"
             case _ => halt("Infeasible")
           }
@@ -1555,7 +1561,7 @@ import StaticTranspiler._
           }
         case res: AST.ResolvedInfo.Var =>
           if (res.isInObject) {
-            return st"${mangleName(res.owner)}_${res.id}(sf)"
+            return st"${mangleName(res.owner)}_${res.id}(SF_LAST)"
           } else {
             val receiver = select.receiverOpt.get
             return transSelectVar(receiver, res)
@@ -1607,12 +1613,12 @@ import StaticTranspiler._
         }
       }
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
-        return st"$name(sf, $receiver${commaArgs(args)})"
+        return st"$name(SF $receiver${commaArgs(args)})"
       } else {
         val temp = freshTempName()
         val tpe = transpileType(retType)
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"$name(($tpe) &$temp, sf, $receiver${commaArgs(args)});"
+        stmts = stmts :+ st"$name(SF ($tpe) &$temp, $receiver${commaArgs(args)});"
         return st"(($tpe) &$temp)"
       }
     }
@@ -1631,11 +1637,13 @@ import StaticTranspiler._
       }
       val name: ST = if (sNameSet.contains(res.owner)) st"${tpe}_${res.id}" else methodNameRes(None(), res)
       if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
-        return st"$name(sf${commaArgs(args)})"
+        return if (args.isEmpty) st"$name(SF_LAST)" else st"$name(SF ${(args, ", ")})"
       } else {
         val temp = freshTempName()
         stmts = stmts :+ st"DeclNew$tpe($temp);"
-        stmts = stmts :+ st"$name(($tpe) &$temp, sf${commaArgs(args)});"
+        stmts = stmts :+
+          (if (args.isEmpty) st"$name(SF ($tpe) &$temp);"
+          else st"$name(SF ($tpe) &$temp${commaArgs(args)});")
         return st"(($tpe) &$temp)"
       }
     }
@@ -1654,7 +1662,7 @@ import StaticTranspiler._
         }
       }
       stmts = stmts :+ st"DeclNew$tpe($temp);"
-      stmts = stmts :+ st"${tpe}_apply(sf, &$temp${commaArgs(args)});"
+      stmts = stmts :+ st"${tpe}_apply(SF &$temp${commaArgs(args)});"
       return st"(&$temp)"
     }
 
@@ -1933,16 +1941,16 @@ import StaticTranspiler._
       for (arg <- exp.args) {
         val lit = exp.lits(i)
         val s = transpileLitString(lit.posOpt, lit.value)
-        stmts = stmts :+ st"""String_string((String) &$temp, sf, $s);"""
+        stmts = stmts :+ st"""String_string(SF (String) &$temp, $s);"""
         val t = expType(arg)
         val tpe = transpileType(t)
         val e = transpileExp(arg)
-        stmts = stmts :+ st"${tpe}_string((String) &$temp, sf, $e);"
+        stmts = stmts :+ st"${tpe}_string(SF (String) &$temp, $e);"
         i = i + 1
       }
       val lit = exp.lits(i)
       val s = transpileLitString(lit.posOpt, lit.value)
-      stmts = stmts :+ st"""String_string((String) &$temp, sf, $s);"""
+      stmts = stmts :+ st"""String_string(SF (String) &$temp, $s);"""
       return st"((String) &$temp)"
     }
 
@@ -2045,7 +2053,7 @@ import StaticTranspiler._
   def transToString(s: ST, exp: AST.Exp): Unit = {
     val tmp = transpileExp(exp)
     val mangledName = transpileType(expType(exp))
-    stmts = stmts :+ st"${mangledName}_string($s, sf, $tmp);"
+    stmts = stmts :+ st"${mangledName}_string(SF $s, $tmp);"
   }
 
   def transPrintH(isOut: ST, exp: AST.Exp): Unit = {
@@ -2216,7 +2224,7 @@ import StaticTranspiler._
     }
     def transNamePattern(t: AST.Typed.Name, pat: AST.Pattern.Structure): Unit = {
       val tpe = transpileType(t)
-      stmts = stmts :+ st"$handledVar = $handledVar && ${tpe}__is(sf, $exp);"
+      stmts = stmts :+ st"$handledVar = $handledVar && ${tpe}__is(SF $exp);"
       val oldStmts = stmts
       stmts = ISZ()
       pat.idOpt match {
@@ -2229,7 +2237,7 @@ import StaticTranspiler._
         case _ =>
       }
       val immutable = isImmutable(typeKind(t))
-      val e = st"${tpe}__as(sf, $exp)"
+      val e = st"${tpe}__as(SF $exp)"
       val adtInfo = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt]
       for (idPattern <- ops.ISZOps(adtInfo.extractorTypeMap.keys).zip(pat.patterns)) {
         val (id, p) = idPattern
@@ -2286,7 +2294,7 @@ import StaticTranspiler._
             stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${localId(res.id)});"
           case res: AST.ResolvedInfo.Var =>
             if (res.isInObject) {
-              stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}(sf));"
+              stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}(SF_LAST));"
             } else {
               stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}_(this));"
             }
@@ -2299,7 +2307,7 @@ import StaticTranspiler._
         pat.typeOpt match {
           case Some(tpe) =>
             val t = tpe.typedOpt.get
-            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__is(sf, $exp);"
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(t)}__is(SF $exp);"
           case _ => // skip
         }
       case pat: AST.Pattern.VarBinding =>
@@ -2311,7 +2319,7 @@ import StaticTranspiler._
         val kind = typeKind(t)
         pat.tipeOpt match {
           case Some(tipe) =>
-            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(tipe.typedOpt.get)}__is(sf, $exp);"
+            stmts = stmts :+ st"$handledVar = $handledVar && ${transpileType(tipe.typedOpt.get)}__is(SF $exp);"
             if (isScalar(kind)) {
               stmts = stmts :+ st"if ($handledVar) { $name = $exp; }"
             } else {
@@ -2696,7 +2704,7 @@ import StaticTranspiler._
             case res: AST.ResolvedInfo.Var =>
               if (res.isInObject) {
                 val name = mangleName(res.owner :+ res.id)
-                transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, (${transpileType(expType(lhs))}) $rhs);")
+                transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);")
               } else {
                 val t = currReceiverOpt.get
                 transpileAssignExp(
@@ -2710,7 +2718,7 @@ import StaticTranspiler._
           val res = lhs.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Var]
           if (res.isInObject) {
             val name = mangleName(res.owner :+ res.id)
-            transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(sf, (${transpileType(expType(lhs))}) $rhs);")
+            transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);")
           } else {
             val t = expType(lhs.receiverOpt.get)
             transpileAssignExp(
@@ -3205,17 +3213,23 @@ import StaticTranspiler._
   ): ST = {
     val name = methodName(receiverOpt, isInObject, owner, id, noTypeParams, t)
     val tpe = transpileType(t.ret)
-    val (retType, retTypeDecl): (ST, ST) =
-      if (isScalar(typeKind(t.ret)) || t.ret == AST.Typed.unit) (st"", tpe)
-      else (st"$tpe result, ", st"void")
+    val (noRet, retType, retTypeDecl): (B, ST, ST) =
+      if (isScalar(typeKind(t.ret)) || t.ret == AST.Typed.unit) (T, st"", tpe)
+      else (F, st"$tpe result", st"void")
     val preParams: ST = receiverOpt match {
-      case Some(receiver) => st"${retType}StackFrame caller, ${transpileType(receiver)} this"
-      case _ => st"${retType}StackFrame caller"
+      case Some(receiver) =>
+        val comma: String = if (paramNames.isEmpty && closureVars.isEmpty) "" else ","
+        if (noRet) st"STACK_FRAME ${transpileType(receiver)} this$comma"
+        else st"STACK_FRAME $retType, ${transpileType(receiver)} this$comma"
+      case _ =>
+        if (paramNames.isEmpty && closureVars.isEmpty)
+          if (noRet) st"STACK_FRAME_LAST" else st"STACK_FRAME $retType"
+        else if (noRet) st"STACK_FRAME" else st"STACK_FRAME $retType,"
     }
     val params: ST =
       if (paramNames.isEmpty) preParams
       else
-        st"$preParams, ${(
+        st"$preParams ${(
           for (p <- ops.ISZOps(t.args).zip(paramNames))
             yield st"${transpileType(p._1)} ${localId(p._2)}",
           ", "
@@ -3233,7 +3247,8 @@ import StaticTranspiler._
             cl = cl :+ st"$ptpe ${localId(cv.id)}"
           }
         }
-        st", ${(cl, ", ")}"
+        val sep: String = if (paramNames.isEmpty) " " else ", "
+        st"$sep${(cl, ", ")}"
       }
     return st"$retTypeDecl $name($params$cls)"
   }

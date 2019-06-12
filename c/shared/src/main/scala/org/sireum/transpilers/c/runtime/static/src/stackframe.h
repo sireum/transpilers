@@ -37,23 +37,37 @@ struct StackFrame {
   int line;
 };
 
-#ifdef SIREUM_NO_LOC
-#define DeclNewStackFrame(_caller, _uri, _owner, _name, _line) StackFrame sf = NULL;
-#define sfUpdateLoc(l)
-#else
+#ifdef SIREUM_LOC
 #define DeclNewStackFrame(_caller, _uri, _owner, _name, _line) struct StackFrame sf[1] = { (struct StackFrame) { .caller = (_caller), .uri = (_uri), .owner = (_owner), .name = (_name), .line = (_line) } }
-#define sfUpdateLoc(l) sf->line = l
+#define sfUpdateLoc(l)    sf->line = l
+#define STACK_FRAME       StackFrame caller,
+#define STACK_FRAME_LAST  StackFrame caller
+#define STACK_FRAME_SF    StackFrame sf,
+#define SF                sf,
+#define SF_LAST           sf
+#define CALLER            caller,
+#define CALLER_LAST       caller
+#else
+#define DeclNewStackFrame(_caller, _uri, _owner, _name, _line)
+#define sfUpdateLoc(l)
+#define STACK_FRAME
+#define STACK_FRAME_LAST
+#define STACK_FRAME_SF
+#define SF
+#define SF_LAST
+#define CALLER
+#define CALLER_LAST
 #endif
 
 
-#define sfAbort(msg) sfAbortImpl(sf, msg); abort()
+#define sfAbort(msg) sfAbortImpl(SF msg); abort()
 
-void sfAbortImpl(StackFrame sf, char *msg);
+void sfAbortImpl(STACK_FRAME_SF char *msg);
 
 #define sfAssert(cond, msg) if (!(cond)) { sfAbort(msg); }
 
-#define sfDump(isOut) sfDumpImpl(sf, isOut)
+#define sfDump(isOut) sfDumpImpl(SF isOut)
 
-void sfDumpImpl(StackFrame sf, B isOut);
+void sfDumpImpl(STACK_FRAME_SF B isOut);
 
 #endif

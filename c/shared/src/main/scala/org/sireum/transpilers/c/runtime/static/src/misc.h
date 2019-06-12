@@ -22,8 +22,8 @@
  (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef SIREUM_PRINT_H
-#define SIREUM_PRINT_H
+#ifndef SIREUM_MISC_H
+#define SIREUM_MISC_H
 
 #include <memory.h>
 #include <stdio.h>
@@ -36,7 +36,7 @@ static inline void String_assign(String dest, String src) {
   memcpy(dest->value, src->value, srcSize + 1);
 }
 
-void String__append(String dest, StackFrame sf, String src);
+void String__append(STACK_FRAME_SF String dest, String src);
 
 #ifdef SIREUM_NO_PRINT
 
@@ -84,12 +84,14 @@ void String__append(String dest, StackFrame sf, String src);
 
 #endif
 
-void B_string(String result, StackFrame caller, B this);
-void C_string(String result, StackFrame caller, C this);
-void Z_string(String result, StackFrame caller, Z this);
-void F32_string(String result, StackFrame caller, F32 this);
-void F64_string(String result, StackFrame caller, F64 this);
-void R_string(String result, StackFrame caller, R this);
-void String_string(String result, StackFrame caller, String this);
-
+void B_string(STACK_FRAME String result, B this);
+void C_string(STACK_FRAME String result, C this);
+void Z_string(STACK_FRAME String result, Z this);
+void F32_string(STACK_FRAME String result, F32 this);
+void F64_string(STACK_FRAME String result, F64 this);
+void R_string(STACK_FRAME String result, R this);
+void String_string(STACK_FRAME String result, String this);
+void Type_string(STACK_FRAME String result, void* this);
+void Type_cprint(void *this, B isOut);
+B Type__eq(void *t1, void *t2);
 #endif

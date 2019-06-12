@@ -227,9 +227,6 @@ object StaticTemplate {
       |#include <types.h>
       |${(for (name <- ops.ISZOps(names).sortWith(qnameLt _)) yield st"#include <${(name, "_")}.h>", "\n")}
       |
-      |B Type__eq(void *t1, void *t2);
-      |void Type_cprint(void *this, B isOut);
-      |void Type_string(String result, StackFrame caller, void* this);
       |${(entries, "\n")}
       |
       |#endif"""
@@ -260,11 +257,11 @@ object StaticTemplate {
       |  #endif
       |}
       |
-      |void Type_string(String result, StackFrame caller, void *this) {
+      |void Type_string(STACK_FRAME String result, void *this) {
       |  TYPE type = ((Type) this)->type;
       |  switch (type) {
       |    ${(
-        for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string(result, caller, (${tn._2}) this); return;",
+        for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string(CALLER result, (${tn._2}) this); return;",
         "\n"
       )}
       |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
@@ -335,13 +332,13 @@ object StaticTemplate {
       |  add_definitions(-DSIREUM_NO_PRINT)
       |endif(NO_PRINT)
       |
-      |option(NO_LOC
-      |  "Build the program without location update."
+      |option(WITH_LOC
+      |  "Build the program with Slang location info."
       |  OFF)
       |
-      |if(NO_LOC)
-      |  add_definitions(-DSIREUM_NO_LOC)
-      |endif(NO_LOC)
+      |if(WITH_LOC)
+      |  add_definitions(-DSIREUM_LOC)
+      |endif(WITH_LOC)
       |
       |add_library($project STATIC
       |        ${(files(filess), "\n")})
@@ -500,7 +497,7 @@ object StaticTemplate {
       |
       |  t_args.size = ($iszSizeType) size;
       |
-      |  return (int) ${mangleName(owner)}_$id(sf, &t_args);
+      |  return (int) ${mangleName(owner)}_$id(SF &t_args);
       |}"""
     } else {
       st"""#include <all.h>
@@ -529,7 +526,7 @@ object StaticTemplate {
       |
       |  t_args.size = ($iszSizeType) size;
       |
-      |  return (int) ${mangleName(owner)}_$id(sf, &t_args);
+      |  return (int) ${mangleName(owner)}_$id(SF &t_args);
       |}"""
     }
     return r
@@ -544,7 +541,7 @@ object StaticTemplate {
     constructorStmts: ISZ[ST]
   ): Compiled = {
     val constructorParams: ST = commaArgs(for (q <- constructorParamTypes) yield st"${q._4} ${q._2}")
-    val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this$constructorParams)"
+    val constructorHeader = st"void ${name}_apply(STACK_FRAME $name this$constructorParams)"
     val constructorInits: ISZ[ST] = for (q <- constructorParamTypes)
       yield
         if (isScalar(q._1)) st"this->${q._2} = ${q._2};"
@@ -608,7 +605,7 @@ object StaticTemplate {
       st"""static inline B ${name}__ne($name this, $name other) {
       |  return !${name}__eq(this, other);
       |}"""
-    val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
+    val stringHeader = st"void ${name}_string(STACK_FRAME String result, $name this)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
 
     val header =
@@ -621,18 +618,20 @@ object StaticTemplate {
       |$cprintHeader;
       |$stringHeader;
       |
-      |#define ${name}__is(sf, this) ((($name) this)->type == T$name)
+      |static inline B ${name}__is(STACK_FRAME void* this) {
+      |  return (($name) this)->type == T$name;
+      |}
       |
-      |static inline $name ${name}__as(StackFrame caller, void *this) {
-      |  if (${name}__is(caller, this)) return ($name) this;
+      |static inline $name ${name}__as(STACK_FRAME void *this) {
+      |  if (${name}__is(CALLER this)) return ($name) this;
       |  fprintf(stderr, "Invalid case from %s to $tpe.", TYPE_string(this));
-      |  sfAbortImpl(caller, "");
+      |  sfAbortImpl(CALLER "");
       |  $abort
       |}"""
 
     var eqStmts = ISZ[ST]()
     var stringStmts = ISZ[ST](st"""DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "string", 0);
-    |String_string(result, sf, string("${className(className.size - 1)}("));""")
+    |String_string(SF result, string("${className(className.size - 1)}("));""")
     var cprintStmts = ISZ[ST](st"""String_cprint(string("${className(className.size - 1)}("), isOut);""")
 
     if (constructorParamTypes.size > 1) {
@@ -647,13 +646,13 @@ object StaticTemplate {
         eqStmts = eqStmts :+ st"if (${vd.tpePtr}__ne(${pre}this->${vd.id}, ${pre}other->${vd.id})) return F;"
       }
       if (i > 0) {
-        stringStmts = stringStmts :+ st"String_string(result, sf, sep);"
+        stringStmts = stringStmts :+ st"String_string(SF result, sep);"
         cprintStmts = cprintStmts :+ st"String_cprint(sep, isOut);"
       }
-      stringStmts = stringStmts :+ st"${vd.tpePtr}_string(result, sf, ${pre}this->${vd.id});"
+      stringStmts = stringStmts :+ st"${vd.tpePtr}_string(SF result, ${pre}this->${vd.id});"
       cprintStmts = cprintStmts :+ st"${vd.tpePtr}_cprint(${pre}this->${vd.id}, isOut);"
     }
-    stringStmts = stringStmts :+ st"""String_string(result, sf, string(")"));"""
+    stringStmts = stringStmts :+ st"""String_string(SF result, string(")"));"""
     cprintStmts = cprintStmts :+ st"""String_cprint(string(")"), isOut);"""
 
     val impl =
@@ -700,26 +699,27 @@ object StaticTemplate {
       |#define ${name}__eq(this, other) Type__eq(this, other)
       |#define ${name}__ne(this, other) (!Type__eq(this, other))
       |#define ${name}_cprint(this, isOut) Type_cprint(this, isOut)
-      |#define ${name}_string(result, caller, this) Type_string(result, caller, this)
-      |
-      |B ${name}__is(StackFrame caller, void *this);
-      |$name ${name}__as(StackFrame caller, void *this);"""
+      |B ${name}__is(STACK_FRAME void *this);
+      |$name ${name}__as(STACK_FRAME void *this);
+      |static inline void ${name}_string(STACK_FRAME String result, $name this) {
+      |  Type_string(CALLER result, this);
+      |}"""
     val impl =
       st"""// $tpe
       |
-      |B ${name}__is(StackFrame caller, void *this) {
+      |B ${name}__is(STACK_FRAME void *this) {
       |  switch(((Type) this)->type) {
       |    ${(for (t <- leafTypes) yield st"case T$t: return T;", "\n")}
       |    default: return F;
       |  }
       |}
       |
-      |$name ${name}__as(StackFrame caller, void *this) {
+      |$name ${name}__as(STACK_FRAME void *this) {
       |  switch(((Type) this)->type) {
       |    ${(for (t <- leafTypes) yield st"case T$t: break;", "\n")}
       |    default:
       |      fprintf(stderr, "Invalid cast from %s to $tpe.", TYPE_string(this));
-      |      sfAbortImpl(caller, "");
+      |      sfAbortImpl(CALLER "");
       |  }
       |  return ($name) this;
       |}"""
@@ -762,7 +762,7 @@ object StaticTemplate {
       case Some(otherName) =>
         val other: String = if (isImmutable) "MS" else "IS"
         Some(st"""
-        |static inline void ${name}_to$other($otherName result, StackFrame caller, $name this) {
+        |static inline void ${name}_to$other(STACK_FRAME $otherName result, $name this) {
         |  STATIC_ASSERT(Max$otherName >= Max$name, "Invalid cast from $tpe to $other[...,...].");
         |  result->type = T$otherName;
         |  result->size = this->size;
@@ -785,19 +785,26 @@ object StaticTemplate {
       |};
       |
       |#define DeclNew$name(x) struct $name x = { .type = T$name }
-      |#define ${name}_size(sf, this) (($indexType) (this)->size)
-      |#define ${name}_zize(sf, this) ((Z) (this)->size)
+      |
+      |static inline $indexType ${name}_size(STACK_FRAME $name this) {
+      |   return ($indexType) (this)->size;
+      |}
+      |
+      |static inline Z ${name}_zize(STACK_FRAME $name this) {
+      |   return (Z) (this)->size;
+      |}
+      |
       |$at"""
     val eqHeader = st"B ${name}__eq($name this, $name other)"
-    val createHeader = st"void ${name}_create($name result, StackFrame caller, $indexType size, $elementTypePtr dflt)"
-    val zreateHeader = st"void ${name}_zreate($name result, StackFrame caller, Z size, $elementTypePtr dflt)"
-    val appendHeader = st"void ${name}__append($name result, StackFrame caller, $name this, $elementTypePtr value)"
-    val prependHeader = st"void ${name}__prepend($name result, StackFrame caller, $name this, $elementTypePtr value)"
-    val appendAllHeader = st"void ${name}__appendAll($name result, StackFrame caller, $name this, $name other)"
-    val removeHeader = st"void ${name}__remove($name result, StackFrame caller, $name this, $elementTypePtr value)"
-    val removeAllHeader = st"void ${name}__removeAll($name result, StackFrame caller, $name this, $name other)"
+    val createHeader = st"void ${name}_create(STACK_FRAME $name result, $indexType size, $elementTypePtr dflt)"
+    val zreateHeader = st"void ${name}_zreate(STACK_FRAME $name result, Z size, $elementTypePtr dflt)"
+    val appendHeader = st"void ${name}__append(STACK_FRAME $name result, $name this, $elementTypePtr value)"
+    val prependHeader = st"void ${name}__prepend(STACK_FRAME $name result, $name this, $elementTypePtr value)"
+    val appendAllHeader = st"void ${name}__appendAll(STACK_FRAME $name result, $name this, $name other)"
+    val removeHeader = st"void ${name}__remove(STACK_FRAME $name result, $name this, $elementTypePtr value)"
+    val removeAllHeader = st"void ${name}__removeAll(STACK_FRAME $name result, $name this, $name other)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
-    val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
+    val stringHeader = st"void ${name}_string(STACK_FRAME String result, $name this)"
     val header =
       st"""// $tpe
       |$eqHeader;
@@ -925,20 +932,20 @@ object StaticTemplate {
         |
         |$stringHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "string", 0);
-        |  String_string(result, sf, string("["));
+        |  String_string(SF result, string("["));
         |  $sizeType size = this->size;
         |  if (size > 0) {
         |    $elementType *value = this->value;
         |    String space = string(" ");
-        |    String_string(result, sf, space);
-        |    ${elementTypePtr}_string(result, sf, value[0]);
+        |    String_string(SF result, space);
+        |    ${elementTypePtr}_string(SF result, value[0]);
         |    for ($sizeType i = 1; i < size; i++) {
-        |      String_string(result, sf, string(", "));
-        |      ${elementTypePtr}_string(result, sf, value[i]);
+        |      String_string(SF result, string(", "));
+        |      ${elementTypePtr}_string(SF result, value[i]);
         |    }
-        |    String_string(result, sf, space);
+        |    String_string(SF result, space);
         |  }
-        |  String_string(result, sf, string("]"));
+        |  String_string(SF result, string("]"));
         |}"""
       else
         st"""// $tpe
@@ -1050,20 +1057,20 @@ object StaticTemplate {
         |
         |$stringHeader {
         |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "string", 0);
-        |  String_string(result, sf, string("["));
+        |  String_string(SF result, string("["));
         |  $sizeType size = this->size;
         |  if (size > 0) {
         |    $elementType *value = this->value;
         |    String space = string(" ");
-        |    String_string(result, sf, space);
-        |    ${elementTypePtr}_string(result, sf, ($elementTypePtr) &(value[0]));
+        |    String_string(SF result, space);
+        |    ${elementTypePtr}_string(SF result, ($elementTypePtr) &(value[0]));
         |    for ($sizeType i = 1; i < size; i++) {
-        |      String_string(result, sf, string(", "));
-        |      ${elementTypePtr}_string(result, sf, ($elementTypePtr) &(value[i]));
+        |      String_string(SF result, string(", "));
+        |      ${elementTypePtr}_string(SF result, ($elementTypePtr) &(value[i]));
         |    }
-        |    String_string(result, sf, space);
+        |    String_string(SF result, space);
         |  }
-        |  String_string(result, sf, string("]"));
+        |  String_string(SF result, string("]"));
         |}"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
@@ -1132,7 +1139,7 @@ object StaticTemplate {
 
     optElementTypeOpt match {
       case Some((optElementType, someElementType, noneElementType)) =>
-        val byNameHeader = st"void ${mangledName}_byName($optElementType result, StackFrame caller, String s)"
+        val byNameHeader = st"void ${mangledName}_byName(STACK_FRAME $optElementType result, String s)"
         header = header :+ byNameHeader
         impl = impl :+
           st"""$byNameHeader {
@@ -1147,7 +1154,7 @@ object StaticTemplate {
           |  else Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType));
           |}"""
 
-        val byOrdinalHeader = st"void ${mangledName}_byOrdinal($optElementType result, StackFrame caller, Z n)"
+        val byOrdinalHeader = st"void ${mangledName}_byOrdinal(STACK_FRAME $optElementType result, Z n)"
         header = header :+ byOrdinalHeader
         impl = impl :+
           st"""$byOrdinalHeader {
@@ -1202,14 +1209,14 @@ object StaticTemplate {
       |  #endif
       |}"""
 
-    val stringHeader = st"void ${mangledName}_string(String result, StackFrame caller, $mangledName this)"
+    val stringHeader = st"void ${mangledName}_string(STACK_FRAME String result, $mangledName this)"
     header = header :+ stringHeader
     impl = impl :+
       st"""$stringHeader {
       |  DeclNewStackFrame(caller, "$uri", "$mangledName", "string", 0);
       |  switch (this) {
       |    ${(
-        for (e <- elements) yield st"""case ${elemName(e)}: String_string(result, sf, string("$e")); return;""",
+        for (e <- elements) yield st"""case ${elemName(e)}: String_string(SF result, string("$e")); return;""",
         "\n"
       )}
       |  }
@@ -1388,7 +1395,7 @@ object StaticTemplate {
       |  return (B) (n1 >= n2);
       |}
       |$shift"""
-    val stringHeader = st"void ${mangledName}_string(String result, StackFrame caller, $mangledName this)"
+    val stringHeader = st"void ${mangledName}_string(STACK_FRAME String result, $mangledName this)"
 
     var header = ISZ(
       st"""#ifdef SIREUM_NO_PRINT
@@ -1518,7 +1525,7 @@ object StaticTemplate {
       |#define ${name}_size(this) Z_C($size)"""
     val cParamTypes: ISZ[ST] = for (p <- constructorParamTypes) yield p._3
     val cParams: ISZ[ST] = for (p <- ops.ISZOps(cParamTypes).zip(indices)) yield st"${p._1} _${p._2 + 1}"
-    val constructorHeader = st"void ${name}_apply(StackFrame caller, $name this, ${(cParams, ", ")})"
+    val constructorHeader = st"void ${name}_apply(STACK_FRAME $name this, ${(cParams, ", ")})"
     val typesIndices: ISZ[((TypeKind.Type, ST, ST), Z)] = ops.ISZOps(constructorParamTypes).zip(indices)
     var accessors = ISZ[ST]()
     var constructorStmts = ISZ[ST]()
@@ -1543,7 +1550,7 @@ object StaticTemplate {
     }
     val eqHeader = st"B ${name}__eq($name this, $name other)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
-    val stringHeader = st"void ${name}_string(String result, StackFrame caller, $name this)"
+    val stringHeader = st"void ${name}_string(STACK_FRAME String result, $name this)"
     val header =
       st"""// $tpe
       |$constructorHeader;
@@ -1592,18 +1599,18 @@ object StaticTemplate {
       |$stringHeader {
       |  DeclNewStackFrame(caller, "Tuple$size.scala", "org.sireum.Tuple$size", "string", 0);
       |  String sep = string(", ");
-      |  String_string(result, sf, string("("));
-      |  ${cParamTypes(0)}_string(result, sf, ${if (isScalar(constructorParamTypes(0)._1)) ""
+      |  String_string(SF result, string("("));
+      |  ${cParamTypes(0)}_string(SF result, ${if (isScalar(constructorParamTypes(0)._1)) ""
       else s"(${cParamTypes(0).render}) &"}this->_1);
       |  ${(
         for (i <- z"1" until size)
           yield
-            st"""String_string(result, sf, sep);
-            |${cParamTypes(i)}_string(result, sf, ${if (isScalar(constructorParamTypes(i)._1)) ""
+            st"""String_string(SF result, sep);
+            |${cParamTypes(i)}_string(SF result, ${if (isScalar(constructorParamTypes(i)._1)) ""
             else s"(${cParamTypes(i).render}) &"}this->_${i + 1});""",
         "\n"
       )}
-      |  String_string(result, sf, string(")"));
+      |  String_string(SF result, string(")"));
       |}"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
@@ -1625,36 +1632,36 @@ object StaticTemplate {
     var globals = ISZ[ST]()
     for (q <- vars) {
       val (kind, id, t, tPtr, isVar) = q
-      val h = st"$tPtr ${name}_$id(StackFrame caller)"
+      val h = st"$tPtr ${name}_$id(STACK_FRAME_LAST)"
       globals = globals :+ st"$t _${name}_$id;"
       accessorHeaders = accessorHeaders :+ st"$h;"
       val scalar = isScalar(kind)
       val pre: ST = if (scalar) st"" else st"($tPtr) &"
       accessors = accessors :+
         st"""$h {
-        |  ${name}_init(caller);
+        |  ${name}_init(CALLER_LAST);
         |  return ${pre}_${name}_$id;
         |}"""
       if (isVar) {
-        val h2 = st"void ${name}_${id}_a(StackFrame caller, $tPtr p_$id)"
+        val h2 = st"void ${name}_${id}_a(STACK_FRAME $tPtr p_$id)"
         accessorHeaders = accessorHeaders :+ st"$h2;"
         if (scalar) {
           accessors = accessors :+
             st"""$h2 {
-            |  ${name}_init(caller);
+            |  ${name}_init(CALLER_LAST);
             |  _${name}_$id = p_$id;
             |}"""
         } else {
           accessors = accessors :+
             st"""$h2 {
-            |  ${name}_init(caller);
+            |  ${name}_init(CALLER_LAST);
             |  Type_assign(&_${name}_$id, p_$id, sizeof($t));
             |}"""
         }
       }
     }
     val header =
-      st"""void ${name}_init(StackFrame caller);
+      st"""void ${name}_init(STACK_FRAME_LAST);
       |
       |${(accessorHeaders, "\n")}"""
     val impl =
@@ -1662,7 +1669,7 @@ object StaticTemplate {
       |
       |${(globals, "\n")}
       |
-      |void ${name}_init(StackFrame caller) {
+      |void ${name}_init(STACK_FRAME_LAST) {
       |  if (${name}_initialized_) return;
       |  ${name}_initialized_ = T;
       |  DeclNewStackFrame(caller, "$uri", "${dotName(objectName)}", "<init>", 0);

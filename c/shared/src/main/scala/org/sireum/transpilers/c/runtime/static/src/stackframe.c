@@ -26,13 +26,14 @@
 #include <stackframe.h>
 #include <string.h>
 
-void sfAbortImpl(StackFrame sf, char *msg) {
+void sfAbortImpl(STACK_FRAME_SF char *msg) {
   fprintf(stderr, "%s\n", msg);
   sfDump(F);
   exit(1);
 }
 
-void sfDumpImpl(StackFrame sf, bool isOut) {
+void sfDumpImpl(STACK_FRAME_SF bool isOut) {
+#ifdef SIREUM_LOC
   FILE *stream = isOut? stdout : stderr;
   StackFrame curr = sf;
   while (curr) {
@@ -46,4 +47,5 @@ void sfDumpImpl(StackFrame sf, bool isOut) {
     curr = curr->caller;
   }
   fflush(stream);
+#endif
 }

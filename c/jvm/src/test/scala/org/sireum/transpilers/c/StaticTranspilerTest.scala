@@ -392,7 +392,7 @@ class StaticTranspilerTest extends TestSuite {
 
     println()
     println("Running CMake ...")
-    Os.proc(ISZ("cmake", "-DCMAKE_BUILD_TYPE=Release", ".")).at(resultDir).console.runCheck()
+    Os.proc(ISZ("cmake", "-DCMAKE_BUILD_TYPE=Release", /* "-DWITH_LOC=on", */ ".")).at(resultDir).console.runCheck()
 
     val ldir = dir / s"L${line.value}"
 
