@@ -780,7 +780,7 @@ object StaticTemplate {
     val sName: String = if (isImmutable) "IS" else "MS"
     val sizeType = arraySizeType(maxElement)
     val atH = st"$elementTypePtr ${name}_at($name this, $indexType i)"
-    val upH = st"$elementTypePtr ${name}_up($name this, $indexType i, $elementTypePtr e)"
+    val upH = st"void ${name}_up($name this, $indexType i, $elementTypePtr e)"
     val atImpl = st"extern $atH;"
     val upImpl = st"extern $upH;"
     val (atHeader, upHeader): (ST, ST) =
