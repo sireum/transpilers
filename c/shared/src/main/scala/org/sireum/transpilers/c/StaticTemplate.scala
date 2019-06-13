@@ -322,6 +322,14 @@ object StaticTemplate {
           |
           |add_compile_options("$$<$$<CONFIG:Release>:-O2>")
           |
+          |option(NO_RANGE_CHECK
+          |  "Build the program without range checking."
+          |  OFF)
+          |
+          |if(NO_RANGE_CHECK)
+          |  add_definitions(-DSIREUM_NO_RANGE_CHECK)
+          |endif(NO_RANGE_CHECK)
+          |
           |option(NO_PRINT
           |  "Build the program without console output."
           |  OFF)
@@ -1297,6 +1305,14 @@ object StaticTemplate {
     val cType = st"${if (isUnsigned) "u" else ""}int${bitWidth}_t"
     val cTypeUp = st"${if (isUnsigned) "U" else ""}INT$bitWidth"
     val pr = st"PRI${if (isUnsigned) if (isBitVector) "x" else "u" else "d"}$bitWidth"
+    val min: ST = minOpt match {
+      case Some(m) => st"${mangledName}_C($m)"
+      case _ => st"${cTypeUp}_MIN"
+    }
+    val max: ST = maxOpt match {
+      case Some(m) => st"${mangledName}_C($m)"
+      case _ => st"${cTypeUp}_MAX"
+    }
     val (shiftHeader, shiftImpl): (ST, ST) =
       if (!isBitVector) {
         (st"", st"")
@@ -1314,31 +1330,31 @@ object StaticTemplate {
           (
             st"""
                 |inline $mangledName ${mangledName}__complement($mangledName n) {
-                |  return ~n;
+                |  return ${mangledName}__boundary(($mangledName) ~n);
                 |}
                 |
                 |inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
-                |  return n1 << n2;
+                |  return ${mangledName}__boundary(($mangledName) (n1 << n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__shr($mangledName n1, $mangledName n2) {
-                |  return n1 >> n2;
+                |  return ${mangledName}__boundary(($mangledName) (n1 >> n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2) {
-                |  return n1 >> n2;
+                |  return ${mangledName}__boundary(($mangledName) (n1 >> n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__and($mangledName n1, $mangledName n2) {
-                |  return n1 & n2;
+                |  return ${mangledName}__boundary(($mangledName) (n1 & n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__or($mangledName n1, $mangledName n2) {
-                |  return n1 | n2;
+                |  return ${mangledName}__boundary(($mangledName) (n1 | n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__xor($mangledName n1, $mangledName n2) {
-                |  return n1 ^ n2;
+                |  return ${mangledName}__boundary(($mangledName) (n1 ^ n2));
                 |}""", impl)
         } else {
           val unsigned: String = bitWidth match {
@@ -1357,49 +1373,40 @@ object StaticTemplate {
                 |inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ($mangledName) (un1 << un2);
+                |  return ${mangledName}__boundary(($mangledName) (un1 << un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__shr($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ($mangledName) (un1 >> un2);
+                |  return ${mangledName}__boundary(($mangledName) (un1 >> un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ($mangledName) (un1 >> un2);
+                |  return ${mangledName}__boundary(($mangledName) (un1 >> un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__and($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ($mangledName) (un1 & un2);
+                |  return ${mangledName}__boundary(($mangledName) (un1 & un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__or($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ($mangledName) (un1 | un2);
+                |  return ${mangledName}__boundary(($mangledName) (un1 | un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__xor($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ($mangledName) (un1 ^ un2);
+                |  return ${mangledName}__boundary(($mangledName) (un1 ^ un2));
                 |}""", impl)
         }
       }
-
-    val min: ST = minOpt match {
-      case Some(m) => st"${mangledName}_C($m)"
-      case _ => st"${cTypeUp}_MIN"
-    }
-    val max: ST = maxOpt match {
-      case Some(m) => st"${mangledName}_C($m)"
-      case _ => st"${cTypeUp}_MAX"
-    }
     val hex: ST = if (isBitVector && isUnsigned) st"0${bitWidth / 4}" else st""
     val typeHeader =
       st"""typedef $cType $mangledName;
@@ -1411,34 +1418,68 @@ object StaticTemplate {
           |
           |#define ${mangledName}_F "%$hex" $pr """""
     val stringHeader = st"void ${mangledName}_string(STACK_FRAME String result, $mangledName this)"
-
-    var header = ISZ(
+    var header = ISZ[ST]()
+    var impl = ISZ[ST]()
+    def addCheck(): Unit = {
+      header = header :+
+        st"""inline $mangledName ${mangledName}__boundary($mangledName n) {
+            |  #ifndef SIREUM_NO_RANGE_CHECK
+            |  assert($min <= n && n <= $max);
+            |  #endif
+            |  return n;
+            |}"""
+      impl = impl :+ st"extern $mangledName ${mangledName}__boundary($mangledName n);"
+    }
+    if (isBitVector) {
+      val (bitMin, bitMax): (Z, Z) = bitWidth match {
+        case z"8" =>
+          if (isUnsigned) (conversions.U8.toZ(U8.Min), conversions.U8.toZ(U8.Max))
+          else (conversions.S8.toZ(S8.Min), conversions.S8.toZ(S8.Max))
+        case z"16" =>
+          if (isUnsigned) (conversions.U16.toZ(U16.Min), conversions.U16.toZ(U16.Max))
+          else (conversions.S16.toZ(S16.Min), conversions.S16.toZ(S16.Max))
+        case z"32" =>
+          if (isUnsigned) (conversions.U32.toZ(U32.Min), conversions.U32.toZ(U32.Max))
+          else (conversions.S32.toZ(S32.Min), conversions.S32.toZ(S32.Max))
+        case z"64" =>
+          if (isUnsigned) (conversions.U64.toZ(U64.Min), conversions.U64.toZ(U64.Max))
+          else (conversions.S64.toZ(S64.Min), conversions.S64.toZ(S64.Max))
+      }
+      if (minOpt.getOrElse(bitMin) == bitMin && maxOpt.getOrElse(bitMax) == bitMax) {
+        header = header :+ st"#define ${mangledName}__boundary(n) n"
+      } else {
+        addCheck()
+      }
+    } else {
+      addCheck()
+    }
+    header = header :+
       st"""inline $mangledName ${mangledName}__plus($mangledName n) {
-          |  return n;
+          |  return ${mangledName}__boundary(n);
           |}
           |
           |inline $mangledName ${mangledName}__minus($mangledName n) {
-          |  return ($mangledName) -n;
+          |  return ${mangledName}__boundary(($mangledName) -n);
           |}
           |
           |inline $mangledName ${mangledName}__add($mangledName n1, $mangledName n2) {
-          |  return ($mangledName) (n1 + n2);
+          |  return ${mangledName}__boundary(($mangledName) (n1 + n2));
           |}
           |
           |inline $mangledName ${mangledName}__sub($mangledName n1, $mangledName n2) {
-          |  return ($mangledName) (n1 - n2);
+          |  return ${mangledName}__boundary(($mangledName) (n1 - n2));
           |}
           |
           |inline $mangledName ${mangledName}__mul($mangledName n1, $mangledName n2) {
-          |  return ($mangledName) (n1 * n2);
+          |  return ${mangledName}__boundary(($mangledName) (n1 * n2));
           |}
           |
           |inline $mangledName ${mangledName}__div($mangledName n1, $mangledName n2) {
-          |  return ($mangledName) (n1 / n2);
+          |  return ${mangledName}__boundary(($mangledName) (n1 / n2));
           |}
           |
           |inline $mangledName ${mangledName}__rem($mangledName n1, $mangledName n2) {
-          |  return ($mangledName) (n1 % n2);
+          |  return ${mangledName}__boundary(($mangledName) (n1 % n2));
           |}
           |
           |inline B ${mangledName}__eq($mangledName n1, $mangledName n2) {
@@ -1472,8 +1513,7 @@ object StaticTemplate {
           |#define ${mangledName}_cprint(this, isOut) { if (isOut) printf(${mangledName}_F, this); else fprintf(stderr, ${mangledName}_F, this); }
           |#endif
           |$stringHeader"""
-    )
-    var impl = ISZ(
+    impl = impl :+
       st"""extern $mangledName ${mangledName}__plus($mangledName n);
           |extern $mangledName ${mangledName}__minus($mangledName n);
           |extern $mangledName ${mangledName}__add($mangledName n1, $mangledName n2);
@@ -1497,7 +1537,7 @@ object StaticTemplate {
           |  sfAssert(newSize <= MaxString, "Insufficient maximum for String characters.");
           |  snprintf(&(result->value[result->size]), nSize + 1, ${mangledName}_F, this);
           |  result->size = newSize;
-          |}""")
+          |}"""
     optionTypeOpt match {
       case Some((optionName, someName, noneName)) =>
         val (ct, strTo): (String, String) =
@@ -1509,7 +1549,10 @@ object StaticTemplate {
     }
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
-      header = compiled.header :+ st"${(header, ";\n")};",
+      header = compiled.header :+
+        st"""#include <assert.h>
+            |
+            |${(header, ";\n")};""",
       impl = compiled.impl :+
         st"""#include <errno.h>
             |
