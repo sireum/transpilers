@@ -720,15 +720,20 @@ import StaticTranspiler._
           Some(fingerprint(otherType)._1)
         case _ => None()
       }
+      val isBit = etKind == TypeKind.Scalar1
+      if (isBit) {
+        genType(AST.Typed.u8)
+      }
       val newValue = array(
         value,
-        includes(ISZ(it, et)),
+        includes(ISZ(it, et) ++ (if (isBit) ISZ[AST.Typed](AST.Typed.u8) else ISZ[AST.Typed]())),
         t.string,
         t.ids == AST.Typed.isName,
         fingerprint(t)._1,
         otherTpeOpt,
         indexType,
         minIndex,
+        isBit,
         isScalar(etKind),
         elementType,
         transpileType(et),
@@ -1437,23 +1442,44 @@ import StaticTranspiler._
               }
               val left = transpileExp(exp.left)
               val right = transpileExp(exp.right)
-              val t = expType(exp.left)
-              return st"${transpileType(t)}$op($left, $right)"
+              if (ops.StringOps(op).endsWith(":")) {
+                val t = expType(exp.right)
+                return st"${transpileType(t)}$op($right, $left)"
+              } else {
+                val t = expType(exp.left)
+                return st"${transpileType(t)}$op($left, $right)"
+              }
           }
         case res: AST.ResolvedInfo.Method =>
-          val receiver = transpileExp(exp.left)
-          val receiverType = expType(exp.left).asInstanceOf[AST.Typed.Name]
-          val r = transInstanceMethodInvoke(
-            expType(exp),
-            methodNameRes(Some(receiverType), res),
-            receiverType,
-            receiver,
-            res.id,
-            res.tpeOpt.get.args,
-            ISZ(exp.right),
-            ISZ()
-          )
-          return r
+          if (ops.StringOps(exp.op).endsWith(":")) {
+            val receiver = transpileExp(exp.right)
+            val receiverType = expType(exp.right).asInstanceOf[AST.Typed.Name]
+            val r = transInstanceMethodInvoke(
+              expType(exp),
+              methodNameRes(Some(receiverType), res),
+              receiverType,
+              receiver,
+              res.id,
+              res.tpeOpt.get.args,
+              ISZ(exp.left),
+              ISZ()
+            )
+            return r
+          } else {
+            val receiver = transpileExp(exp.left)
+            val receiverType = expType(exp.left).asInstanceOf[AST.Typed.Name]
+            val r = transInstanceMethodInvoke(
+              expType(exp),
+              methodNameRes(Some(receiverType), res),
+              receiverType,
+              receiver,
+              res.id,
+              res.tpeOpt.get.args,
+              ISZ(exp.right),
+              ISZ()
+            )
+            return r
+          }
         case _ => halt("Infeasible")
       }
     }

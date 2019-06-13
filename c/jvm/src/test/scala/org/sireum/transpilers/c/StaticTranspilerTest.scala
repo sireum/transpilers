@@ -41,6 +41,22 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
+    * - testWorksheet("""var bs1 = ISZ[B](T, F, T)
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = bs1 :+ T
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = bs1 ++ bs1
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = bs1 - T
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = bs1 -- ISZ(F)
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = IS.create(7, T)
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = F +: bs1
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |""".stripMargin)
+
     * - testWorksheet("""@datatype class Foo(a: ISZ[Z])
                         |
                         |val foo = Foo(ISZ(1, 2, 3))
