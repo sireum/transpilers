@@ -1688,26 +1688,16 @@ import StaticTranspiler._
         val tpe = transpileType(t)
         val temp = freshTempName()
         val size = invoke.args.size
-        val sizeType = arraySizeType(minIndexMaxElementSize(t)._2)
+        val (min, maxSize) = minIndexMaxElementSize(t)
+        val sizeType = arraySizeType(maxSize)
         stmts = stmts :+ st"""STATIC_ASSERT($size <= Max$tpe, "Insufficient maximum for $t elements.");"""
         stmts = stmts :+ st"DeclNew$tpe($temp);"
         stmts = stmts :+ st"$temp.size = ($sizeType) $size;"
-        val targ = t.args(1)
-        val targKind = typeKind(targ)
-        if (isScalar(targKind)) {
-          var i = 0
-          for (arg <- invoke.args) {
-            val a = transpileExp(arg)
-            stmts = stmts :+ st"$temp.value[$i] = $a;"
-            i = i + 1
-          }
-        } else {
-          var i = 0
-          for (arg <- invoke.args) {
-            val a = transpileExp(arg)
-            stmts = stmts :+ st"Type_assign(&$temp.value[$i], $a, sizeof(${typePrefix(targKind)}${transpileType(targ)}));"
-            i = i + 1
-          }
+        var i = min
+        for (arg <- invoke.args) {
+          val a = transpileExp(arg)
+          stmts = stmts :+ st"${tpe}_up(&$temp, $i, $a);"
+          i = i + 1
         }
         return st"(&$temp)"
       }
@@ -1743,18 +1733,9 @@ import StaticTranspiler._
         val elementType = t.args(1)
         val argType = AST.Typed.Tuple(ISZ(indexType, elementType))
         val argTpe = transpileType(argType)
-        val argTypeKind = typeKind(elementType)
-        if (isScalar(argTypeKind)) {
-          for (arg <- invoke.args) {
-            val e = transpileExp(arg)
-            stmts = stmts :+ st"$temp.value[${argTpe}_1($e)] = ${argTpe}_2($e);"
-          }
-        } else {
-          val elementTpe = transpileType(elementType)
-          for (arg <- invoke.args) {
-            val e = transpileExp(arg)
-            stmts = stmts :+ st"Type_assign(&$temp.value[${argTpe}_1($e)], ${argTpe}_2($e), sizeof(${typePrefix(argTypeKind)}$elementTpe));"
-          }
+        for (arg <- invoke.args) {
+          val e = transpileExp(arg)
+          stmts = stmts :+ st"${tpe}_up(&$temp, ${argTpe}_1($e), ${argTpe}_2($e));"
         }
         return st"(&$temp)"
       }
@@ -2745,17 +2726,8 @@ import StaticTranspiler._
             case Some(rcv) => val r = transpileExp(rcv); (expType(rcv).asInstanceOf[AST.Typed.Name], r)
             case _ => val r = transpileExp(lhs.ident); (expType(lhs.ident).asInstanceOf[AST.Typed.Name], r)
           }
-          val et = receiverType.args(1)
           val index = transpileExp(lhs.args(0))
-          if (isScalar(typeKind(et))) {
-            transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(receiverType)}_at($receiver, $index) = $rhs;")
-          } else {
-            transpileAssignExp(
-              stmt.rhs,
-              (rhs, _) =>
-                st"Type_assign(${transpileType(receiverType)}_at($receiver, $index), $rhs, sizeof(${typeDecl(et)}));"
-            )
-          }
+          transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(receiverType)}_up($receiver, $index, $rhs);")
         case _ => halt("Infeasible")
       }
 

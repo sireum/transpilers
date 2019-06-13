@@ -322,13 +322,13 @@ object StaticTemplate {
           |
           |add_compile_options("$$<$$<CONFIG:Release>:-O2>")
           |
-          |option(NO_RANGE_CHECK
-          |  "Build the program without range checking."
+          |option(RANGE_CHECK
+          |  "Build the program with range checking."
           |  OFF)
           |
-          |if(NO_RANGE_CHECK)
-          |  add_definitions(-DSIREUM_NO_RANGE_CHECK)
-          |endif(NO_RANGE_CHECK)
+          |if(RANGE_CHECK)
+          |  add_definitions(-DSIREUM_RANGE_CHECK)
+          |endif(RANGE_CHECK)
           |
           |option(NO_PRINT
           |  "Build the program without console output."
@@ -779,9 +779,27 @@ object StaticTemplate {
     val offset: ST = if (minIndex == z"0") st"" else st"- ${indexType}_C($minIndex)"
     val sName: String = if (isImmutable) "IS" else "MS"
     val sizeType = arraySizeType(maxElement)
-    val at: ST =
-      if (isElementTypeScalar) st"#define ${name}_at(this, i) ((this)->value[($sizeType) (i)$offset])"
-      else st"#define ${name}_at(this, i) (($elementTypePtr) &((this)->value[($sizeType) (i)$offset]))"
+    val atH = st"$elementTypePtr ${name}_at($name this, $indexType i)"
+    val upH = st"$elementTypePtr ${name}_up($name this, $indexType i, $elementTypePtr e)"
+    val atImpl = st"extern $atH;"
+    val upImpl = st"extern $upH;"
+    val (atHeader, upHeader): (ST, ST) =
+      if (isElementTypeScalar)
+        (
+          st"""inline $atH {
+              |  return (this)->value[($sizeType) (i)$offset];
+              |}""",
+          st"""inline $upH {
+              |  (this)->value[($sizeType) (i)$offset] = e;
+              |}""")
+      else
+        (
+          st"""inline $atH {
+              |  return ($elementTypePtr) &((this)->value[($sizeType) (i)$offset]);
+              |}""",
+          st"""inline $upH {
+              |  Type_assign(&(this)->value[($sizeType) (i)$offset], e, sizeof($elementType));
+              |}""")
     val (toOtherHeaderOpt, toOtherImplOpt): (Option[ST], Option[ST]) = otherNameOpt match {
       case Some(otherName) =>
         val other: String = if (isImmutable) "MS" else "IS"
@@ -811,17 +829,7 @@ object StaticTemplate {
           |  $elementType value[Max$name];
           |};
           |
-          |#define DeclNew$name(x) struct $name x = { .type = T$name }
-          |
-          |inline $indexType ${name}_size(STACK_FRAME $name this) {
-          |   return ($indexType) (this)->size;
-          |}
-          |
-          |inline Z ${name}_zize(STACK_FRAME $name this) {
-          |   return (Z) (this)->size;
-          |}
-          |
-          |$at"""
+          |#define DeclNew$name(x) struct $name x = { .type = T$name }"""
     val eqHeader = st"B ${name}__eq($name this, $name other)"
     val createHeader = st"void ${name}_create(STACK_FRAME $name result, $indexType size, $elementTypePtr dflt)"
     val zreateHeader = st"void ${name}_zreate(STACK_FRAME $name result, Z size, $elementTypePtr dflt)"
@@ -834,6 +842,19 @@ object StaticTemplate {
     val stringHeader = st"void ${name}_string(STACK_FRAME String result, $name this)"
     val header =
       st"""// $tpe
+          |
+          |$atHeader
+          |
+          |$upHeader
+          |
+          |inline $indexType ${name}_size(STACK_FRAME $name this) {
+          |   return ($indexType) (this)->size;
+          |}
+          |
+          |inline Z ${name}_zize(STACK_FRAME $name this) {
+          |   return (Z) (this)->size;
+          |}
+          |
           |$eqHeader;
           |$createHeader;
           |$zreateHeader;
@@ -852,7 +873,8 @@ object StaticTemplate {
     val impl: ST =
       if (isElementTypeScalar)
         st"""// $tpe
-            |
+            |$atImpl
+            |$upImpl
             |extern $indexType ${name}_size(STACK_FRAME $name this);
             |extern Z ${name}_zize(STACK_FRAME $name this);
             |
@@ -982,6 +1004,10 @@ object StaticTemplate {
             |$toOtherImplOpt"""
       else
         st"""// $tpe
+            |$atImpl
+            |$upImpl
+            |extern $indexType ${name}_size(STACK_FRAME $name this);
+            |extern Z ${name}_zize(STACK_FRAME $name this);
             |
             |$eqHeader {
             |  $sizeType size = this->size;
@@ -1330,31 +1356,31 @@ object StaticTemplate {
           (
             st"""
                 |inline $mangledName ${mangledName}__complement($mangledName n) {
-                |  return ${mangledName}__boundary(($mangledName) ~n);
+                |  return ${mangledName}_range(($mangledName) ~n);
                 |}
                 |
                 |inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
-                |  return ${mangledName}__boundary(($mangledName) (n1 << n2));
+                |  return ${mangledName}_range(($mangledName) (n1 << n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__shr($mangledName n1, $mangledName n2) {
-                |  return ${mangledName}__boundary(($mangledName) (n1 >> n2));
+                |  return ${mangledName}_range(($mangledName) (n1 >> n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2) {
-                |  return ${mangledName}__boundary(($mangledName) (n1 >> n2));
+                |  return ${mangledName}_range(($mangledName) (n1 >> n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__and($mangledName n1, $mangledName n2) {
-                |  return ${mangledName}__boundary(($mangledName) (n1 & n2));
+                |  return ${mangledName}_range(($mangledName) (n1 & n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__or($mangledName n1, $mangledName n2) {
-                |  return ${mangledName}__boundary(($mangledName) (n1 | n2));
+                |  return ${mangledName}_range(($mangledName) (n1 | n2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__xor($mangledName n1, $mangledName n2) {
-                |  return ${mangledName}__boundary(($mangledName) (n1 ^ n2));
+                |  return ${mangledName}_range(($mangledName) (n1 ^ n2));
                 |}""", impl)
         } else {
           val unsigned: String = bitWidth match {
@@ -1373,37 +1399,37 @@ object StaticTemplate {
                 |inline $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ${mangledName}__boundary(($mangledName) (un1 << un2));
+                |  return ${mangledName}_range(($mangledName) (un1 << un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__shr($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ${mangledName}__boundary(($mangledName) (un1 >> un2));
+                |  return ${mangledName}_range(($mangledName) (un1 >> un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ${mangledName}__boundary(($mangledName) (un1 >> un2));
+                |  return ${mangledName}_range(($mangledName) (un1 >> un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__and($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ${mangledName}__boundary(($mangledName) (un1 & un2));
+                |  return ${mangledName}_range(($mangledName) (un1 & un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__or($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ${mangledName}__boundary(($mangledName) (un1 | un2));
+                |  return ${mangledName}_range(($mangledName) (un1 | un2));
                 |}
                 |
                 |inline $mangledName ${mangledName}__xor($mangledName n1, $mangledName n2) {
                 |  $unsigned un1 = ($unsigned) n1;
                 |  $unsigned un2 = ($unsigned) n2;
-                |  return ${mangledName}__boundary(($mangledName) (un1 ^ un2));
+                |  return ${mangledName}_range(($mangledName) (un1 ^ un2));
                 |}""", impl)
         }
       }
@@ -1422,31 +1448,23 @@ object StaticTemplate {
     var impl = ISZ[ST]()
     def addCheck(): Unit = {
       header = header :+
-        st"""inline $mangledName ${mangledName}__boundary($mangledName n) {
-            |  #ifndef SIREUM_NO_RANGE_CHECK
+        st"""inline $mangledName ${mangledName}_range($mangledName n) {
+            |  #ifdef SIREUM_RANGE_CHECK
             |  assert($min <= n && n <= $max);
             |  #endif
             |  return n;
             |}"""
-      impl = impl :+ st"extern $mangledName ${mangledName}__boundary($mangledName n);"
+      impl = impl :+ st"extern $mangledName ${mangledName}_range($mangledName n);"
     }
     if (isBitVector) {
       val (bitMin, bitMax): (Z, Z) = bitWidth match {
-        case z"8" =>
-          if (isUnsigned) (conversions.U8.toZ(U8.Min), conversions.U8.toZ(U8.Max))
-          else (conversions.S8.toZ(S8.Min), conversions.S8.toZ(S8.Max))
-        case z"16" =>
-          if (isUnsigned) (conversions.U16.toZ(U16.Min), conversions.U16.toZ(U16.Max))
-          else (conversions.S16.toZ(S16.Min), conversions.S16.toZ(S16.Max))
-        case z"32" =>
-          if (isUnsigned) (conversions.U32.toZ(U32.Min), conversions.U32.toZ(U32.Max))
-          else (conversions.S32.toZ(S32.Min), conversions.S32.toZ(S32.Max))
-        case z"64" =>
-          if (isUnsigned) (conversions.U64.toZ(U64.Min), conversions.U64.toZ(U64.Max))
-          else (conversions.S64.toZ(S64.Min), conversions.S64.toZ(S64.Max))
+        case z"8" => if (isUnsigned) (0, 255) else (-128, 127)
+        case z"16" => if (isUnsigned) (0, 65535) else (-32768, 32767)
+        case z"32" => if (isUnsigned) (0, 4294967295L) else (-2147483648, 2147483647)
+        case z"64" => if (isUnsigned) (0, z"18,446,744,073,709,551,615") else (-9223372036854775808L, 9223372036854775807L)
       }
       if (minOpt.getOrElse(bitMin) == bitMin && maxOpt.getOrElse(bitMax) == bitMax) {
-        header = header :+ st"#define ${mangledName}__boundary(n) n"
+        header = header :+ st"#define ${mangledName}_range(n) n"
       } else {
         addCheck()
       }
@@ -1455,31 +1473,31 @@ object StaticTemplate {
     }
     header = header :+
       st"""inline $mangledName ${mangledName}__plus($mangledName n) {
-          |  return ${mangledName}__boundary(n);
+          |  return ${mangledName}_range(n);
           |}
           |
           |inline $mangledName ${mangledName}__minus($mangledName n) {
-          |  return ${mangledName}__boundary(($mangledName) -n);
+          |  return ${mangledName}_range(($mangledName) -n);
           |}
           |
           |inline $mangledName ${mangledName}__add($mangledName n1, $mangledName n2) {
-          |  return ${mangledName}__boundary(($mangledName) (n1 + n2));
+          |  return ${mangledName}_range(($mangledName) (n1 + n2));
           |}
           |
           |inline $mangledName ${mangledName}__sub($mangledName n1, $mangledName n2) {
-          |  return ${mangledName}__boundary(($mangledName) (n1 - n2));
+          |  return ${mangledName}_range(($mangledName) (n1 - n2));
           |}
           |
           |inline $mangledName ${mangledName}__mul($mangledName n1, $mangledName n2) {
-          |  return ${mangledName}__boundary(($mangledName) (n1 * n2));
+          |  return ${mangledName}_range(($mangledName) (n1 * n2));
           |}
           |
           |inline $mangledName ${mangledName}__div($mangledName n1, $mangledName n2) {
-          |  return ${mangledName}__boundary(($mangledName) (n1 / n2));
+          |  return ${mangledName}_range(($mangledName) (n1 / n2));
           |}
           |
           |inline $mangledName ${mangledName}__rem($mangledName n1, $mangledName n2) {
-          |  return ${mangledName}__boundary(($mangledName) (n1 % n2));
+          |  return ${mangledName}_range(($mangledName) (n1 % n2));
           |}
           |
           |inline B ${mangledName}__eq($mangledName n1, $mangledName n2) {
