@@ -185,9 +185,10 @@ object StaticTranspiler {
         val to = ops.StringOps(id).substring(2, id.size)
         return compiled(
           header = compiled.header :+
-            st"""static inline $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n) {
+            st"""inline $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n) {
             |  return ($to) n;
-            |}"""
+            |}""",
+          impl = compiled.impl :+ st"extern $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
         )
       } else {
         halt(s"TODO: $method") // TODO

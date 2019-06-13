@@ -24,6 +24,10 @@
  */
 #include "misc.h"
 
+extern void String_assign(String dest, String src);
+extern B String__eq(String this, String other);
+extern B String__ne(String this, String other);
+
 void String__append(STACK_FRAME_SF String dest, String src) {
   Z srcSize = src->size;
   Z destSize = dest->size;

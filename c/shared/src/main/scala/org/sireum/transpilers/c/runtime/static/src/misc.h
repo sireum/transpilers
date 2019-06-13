@@ -29,11 +29,21 @@
 #include <stdio.h>
 #include <type-composite.h>
 
-static inline void String_assign(String dest, String src) {
+inline void String_assign(String dest, String src) {
   dest->type = src->type;
   Z srcSize = src->size;
   dest->size = srcSize;
   memcpy(dest->value, src->value, srcSize + 1);
+}
+
+inline B String__eq(String this, String other) {
+  Z thisSize = this->size;
+  if (thisSize != other->size) return F;
+  return memcmp(this->value, other->value, (size_t) thisSize) == 0;
+}
+
+inline B String__ne(String this, String other) {
+  return !String__eq(this, other);
 }
 
 void String__append(STACK_FRAME_SF String dest, String src);
