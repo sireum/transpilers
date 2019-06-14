@@ -2741,10 +2741,11 @@ import StaticTranspiler._
             val name = mangleName(res.owner :+ res.id)
             transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);")
           } else {
-            val t = expType(lhs.receiverOpt.get)
+            val receiver = lhs.receiverOpt.get
+            val t = expType(receiver)
             transpileAssignExp(
               stmt.rhs,
-              (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);"
+              (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(${transpileExp(receiver)}, (${transpileType(expType(lhs))}) $rhs);"
             )
           }
         case lhs: AST.Exp.Invoke =>
