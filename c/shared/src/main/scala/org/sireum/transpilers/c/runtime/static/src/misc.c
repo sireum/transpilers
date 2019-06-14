@@ -24,6 +24,8 @@
  */
 #include "misc.h"
 
+extern B _T(STACK_FRAME_LAST);
+extern B _F(STACK_FRAME_LAST);
 extern void String_assign(String dest, String src);
 extern B String__eq(String this, String other);
 extern B String__ne(String this, String other);

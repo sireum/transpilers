@@ -29,6 +29,14 @@
 #include <stdio.h>
 #include <type-composite.h>
 
+inline B _T(STACK_FRAME_LAST) {
+  return T;
+}
+
+inline B _F(STACK_FRAME_LAST) {
+    return F;
+}
+
 inline void String_assign(String dest, String src) {
   dest->type = src->type;
   Z srcSize = src->size;
