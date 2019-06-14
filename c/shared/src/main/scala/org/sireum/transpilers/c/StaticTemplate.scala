@@ -1775,7 +1775,7 @@ object StaticTemplate {
           |}
           |
           |inline B ${mangledName}__le($mangledName n1, $mangledName n2) {
-          |  return (B) (n1 == n2);
+          |  return (B) (n1 <= n2);
           |}
           |
           |inline B ${mangledName}__gt($mangledName n1, $mangledName n2) {
