@@ -801,10 +801,7 @@ object StaticTemplate {
             |  #ifdef SIREUM_BOUND_CHECK
             |  assert (0 <= idx && idx < this->size);
             |  #endif
-            |  U8 mask = 1;
-            |  for (ssize_t i = 0; i < idx % 8; i++) {
-            |    mask <<= 1;
-            |  }
+            |  U8 mask = (U8) (1 << (idx % 8));
             |  return ($elementType) (this->value[idx / 8] & mask ? 1 : 0);
             |}"""
       else st"extern $atH;"
@@ -815,10 +812,7 @@ object StaticTemplate {
             |  #ifdef SIREUM_BOUND_CHECK
             |  assert (0 <= idx && idx < this->size);
             |  #endif
-            |  U8 mask = 1;
-            |  for (ssize_t i = 0; i < idx % 8; i++) {
-            |    mask <<= 1;
-            |  }
+            |  U8 mask = (U8) (1 << idx % 8);
             |  idx = idx / 8;
             |  if (e) {
             |    this->value[idx] |= mask;
