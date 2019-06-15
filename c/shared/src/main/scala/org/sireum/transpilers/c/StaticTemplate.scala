@@ -330,10 +330,6 @@ object StaticTemplate {
           |  add_definitions(-DSIREUM_BOUND_CHECK)
           |endif(BOUND_CHECK)
           |
-          |option(NO_PRINT
-          |  "Build the program without console output."
-          |  OFF)
-          |
           |option(RANGE_CHECK
           |  "Build the program with range checking."
           |  OFF)
@@ -794,35 +790,29 @@ object StaticTemplate {
     val sizeType = arraySizeType(maxElement)
     val atH = st"$elementTypePtr ${name}_at($name this, $indexType i)"
     val upH = st"void ${name}_up($name this, $indexType i, $elementTypePtr e)"
-    val atImpl: ST =
-      if (isBit)
-        st"""$atH {
-            |  ssize_t idx = i$offset;
-            |  #ifdef SIREUM_BOUND_CHECK
-            |  assert (0 <= idx && idx < this->size);
-            |  #endif
-            |  U8 mask = (U8) (1 << (idx % 8));
-            |  return ($elementType) (this->value[idx / 8] & mask ? 1 : 0);
-            |}"""
-      else st"extern $atH;"
-    val upImpl: ST =
-      if (isBit)
-        st"""$upH {
-            |  ssize_t idx = i$offset;
-            |  #ifdef SIREUM_BOUND_CHECK
-            |  assert (0 <= idx && idx < this->size);
-            |  #endif
-            |  U8 mask = (U8) (1 << idx % 8);
-            |  idx = idx / 8;
-            |  if (e) {
-            |    this->value[idx] |= mask;
-            |  } else {
-            |    this->value[idx] &= ~mask;
-            |  }
-            |}"""
-      else st"extern $upH;"
     val (atHeader, upHeader): (ST, ST) =
-      if (isBit) (st"$atH;", st"$upH;")
+      if (isBit)
+        (
+          st"""inline $atH {
+              |  ssize_t idx = i$offset;
+              |  #ifdef SIREUM_BOUND_CHECK
+              |  assert (0 <= idx && idx < this->size);
+              |  #endif
+              |  U8 mask = (U8) (1 << (idx % 8));
+              |  return ($elementType) (this->value[idx / 8] & mask ? 1 : 0);
+              |}""",
+          st"""inline $upH {
+              |  ssize_t idx = i$offset;
+              |  #ifdef SIREUM_BOUND_CHECK
+              |  assert (0 <= idx && idx < this->size);
+              |  #endif
+              |  U8 mask = ((U8) (1 << idx % 8));
+              |  if (e) {
+              |    this->value[idx / 8] |= mask;
+              |  } else {
+              |    this->value[idx / 8] &= ~mask;
+              |  }
+              |}""")
       else if (isElementTypeScalar)
         (
           st"""inline $atH {
@@ -855,6 +845,8 @@ object StaticTemplate {
               |  #endif
               |  Type_assign(&this->value[($sizeType) idx], e, sizeof($elementType));
               |}""")
+    val atImpl: ST = st"extern $atH;"
+    val upImpl: ST = st"extern $upH;"
     val (toOtherHeaderOpt, toOtherImplOpt): (Option[ST], Option[ST]) = otherNameOpt match {
       case Some(otherName) =>
         val other: String = if (isImmutable) "MS" else "IS"
