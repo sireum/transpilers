@@ -363,7 +363,7 @@ import StaticTranspiler._
   var localRename: HashMap[String, ST] = HashMap.empty
   var nestedMethods: HashMap[QName, (B, AST.Stmt.Method, ISZ[ClosureVar])] = HashMap.empty
 
-  def transpile(rep: Reporter): Result = {
+  def transpile(rep: Reporter): StaticTranspiler.Result = {
 
     var r = HashSMap.empty[QName, ST]
     var cFilenames: ISZ[ISZ[String]] = ISZ()
@@ -529,7 +529,7 @@ import StaticTranspiler._
 
     work()
 
-    return Result(r)
+    return StaticTranspiler.Result(r)
   }
 
   def genClassConstructor(nt: TypeSpecializer.NamedType): Unit = {

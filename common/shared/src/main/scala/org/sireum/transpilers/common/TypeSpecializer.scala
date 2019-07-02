@@ -106,7 +106,7 @@ object TypeSpecializer {
     entryPoints: ISZ[EntryPoint],
     forwarding: HashMap[QName, QName],
     reporter: Reporter
-  ): Result = {
+  ): TypeSpecializer.Result = {
     val ts = TypeSpecializer(th, entryPoints, forwarding)
     val r = ts.specialize()
     reporter.reports(ts.reporter.messages)
@@ -366,7 +366,7 @@ import TypeSpecializer._
       buildLeaves(info)
     }
 
-    return Result(
+    return TypeSpecializer.Result(
       th,
       eps,
       nameTypes,
