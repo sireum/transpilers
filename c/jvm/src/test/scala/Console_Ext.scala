@@ -8,6 +8,6 @@ object Console_Ext {
       buffer += U8(b)
       b = System.in.read()
     }
-    return ISZ(buffer: _*)
+    return ISZ(buffer.toIndexedSeq: _*)
   }
 }

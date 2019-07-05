@@ -39,8 +39,8 @@ class StaticTranspilerRcTest extends TestSuite {
   lazy val typeChecker: TypeChecker = FrontEnd.checkedLibraryReporter._1
   val dir: Os.Path = Os.path(implicitly[sourcecode.File].value).up.up.up.up.up.up.up.up.up / "app"
 
-  def map: scala.collection.Map[scala.Seq[Predef.String], Predef.String] =
-    RC.text(Seq("../../../..")) { (p, f) =>
+  def map: scala.collection.Map[scala.Vector[Predef.String], Predef.String] =
+    RC.text(Vector("../../../..")) { (p, f) =>
       val filename = p.last
       if (filename.endsWith(".scala")) {
         val r = _root_.java.nio.file.Files.newBufferedReader(f.toPath, _root_.java.nio.charset.StandardCharsets.UTF_8)
@@ -63,7 +63,7 @@ class StaticTranspilerRcTest extends TestSuite {
 
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
-      Parser(map(Seq(uri)))
+      Parser(map(Vector(uri)))
         .parseTopUnit[AST.TopUnit.Program](allowSireum = F, isWorksheet = T, isDiet = F, Some(uri), reporter) match {
         case Some(program) if !reporter.hasIssue =>
           val p = FrontEnd.checkWorksheet(Some(typeChecker.typeHierarchy), program, reporter)
@@ -78,7 +78,7 @@ class StaticTranspilerRcTest extends TestSuite {
           halt(())
       }
 
-    val extKey = Seq("ext", "ext.c")
+    val extKey = Vector("ext", "ext.c")
     val extFile = StaticTranspiler.ExtFile(extKey.mkString("/"), map(extKey))
 
     val config = StaticTranspiler.Config(

@@ -29,7 +29,7 @@ import org.sireum._
 object Runtime_Ext {
 
   def staticFiles: HashMap[ISZ[String], String] = {
-    val map = org.sireum.$internal.RC.text(Seq("runtime/shared/src", "runtime/static/src")) {
+    val map = org.sireum.$internal.RC.text(Vector("runtime/shared/src", "runtime/static/src")) {
       (_, _) => true
     }
     var r = HashMap.empty[ISZ[String], String]
