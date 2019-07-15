@@ -3021,7 +3021,7 @@ import StaticTranspiler._
       case _: AST.Stmt.ExtMethod => // skip
       case _: AST.Stmt.SpecVar => // skip
       case _: AST.Stmt.TypeAlias => // skip
-      case _: AST.Stmt.LStmt => // skip
+      case _: AST.Stmt.Spec => // skip
       case _: AST.Stmt.SubZ => // skip
     }
   }

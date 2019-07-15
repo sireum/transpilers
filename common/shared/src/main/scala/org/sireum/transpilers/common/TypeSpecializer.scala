@@ -207,7 +207,7 @@ import TypeSpecializer._
           case _: AST.Stmt.Expr => T
           case _: AST.Stmt.Var => T
           case _: AST.Stmt.VarPattern => T
-          case _: AST.Stmt.LStmt => F
+          case _: AST.Stmt.Spec => F
           case _: AST.Stmt.TypeAlias => F
           case _: AST.Stmt.SpecMethod => F
           case _: AST.Stmt.Object => F
