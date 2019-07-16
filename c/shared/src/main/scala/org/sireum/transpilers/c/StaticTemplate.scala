@@ -613,12 +613,12 @@ object StaticTemplate {
       if (isScalar(vd.kind)) {
         accessors = accessors :+ st"#define ${name}_${vd.id}_(this) ((this)->${vd.id})"
         if (vd.isVar) {
-          accessors = accessors :+ st"#define ${name}_${vd.id}_a(this, value) (this)->${vd.id} = (value)"
+          accessors = accessors :+ st"#define ${name}_${vd.id}_a(this, p_value) (this)->${vd.id} = (p_value)"
         }
       } else {
         accessors = accessors :+ st"#define ${name}_${vd.id}_(this) ((${vd.tpePtr}) &(this)->${vd.id})"
         if (vd.isVar) {
-          accessors = accessors :+ st"#define ${name}_${vd.id}_a(this, value) Type_assign(&(this)->${vd.id}, value, sizeof(${vd.tpe}))"
+          accessors = accessors :+ st"#define ${name}_${vd.id}_a(this, p_value) Type_assign(&(this)->${vd.id}, p_value, sizeof(${vd.tpe}))"
         }
       }
     }
