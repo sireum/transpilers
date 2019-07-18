@@ -154,7 +154,7 @@ import TypeSpecializer._
   var extMethods: HashSSet[SMethod] = HashSSet.empty
   var workList: ISZ[Method] = ISZ()
   var seen: HashSSet[SMethod] = HashSSet.empty
-  var descendantsCache: HashMap[Poset.Index, HashSet[Poset.Index]] = HashMap.empty
+  var descendantsCache: HashSMap[Poset.Index, HashSSet[Poset.Index]] = HashSMap.empty
   var currReceiverOpt: Option[AST.Typed.Name] = None()
   var currSMethodOpt: Option[SMethod] = None()
 
