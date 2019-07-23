@@ -1712,6 +1712,7 @@ import StaticTranspiler._
       def transSApply(): ST = {
         val t = expType(invoke).asInstanceOf[AST.Typed.Name]
         val tpe = transpileType(t)
+        val etpe = transpileType(t.args(1))
         val temp = freshTempName()
         val size = invoke.args.size
         val (min, maxSize) = minIndexMaxElementSize(t)
@@ -1722,7 +1723,7 @@ import StaticTranspiler._
         var i = min
         for (arg <- invoke.args) {
           val a = transpileExp(arg)
-          stmts = stmts :+ st"${tpe}_up(&$temp, $i, $a);"
+          stmts = stmts :+ st"${tpe}_up(&$temp, $i, ($etpe) $a);"
           i = i + 1
         }
         return st"(&$temp)"
@@ -1751,6 +1752,7 @@ import StaticTranspiler._
       def transSStore(name: QName): ST = {
         val t = expType(invoke).asInstanceOf[AST.Typed.Name]
         val tpe = transpileType(t)
+        val etpe = transpileType(t.args(1))
         val temp = freshTempName()
         val receiver = transReceiver()
         stmts = stmts :+ st"DeclNew$tpe($temp);"
@@ -1761,7 +1763,7 @@ import StaticTranspiler._
         val argTpe = transpileType(argType)
         for (arg <- invoke.args) {
           val e = transpileExp(arg)
-          stmts = stmts :+ st"${tpe}_up(&$temp, ${argTpe}_1($e), ${argTpe}_2($e));"
+          stmts = stmts :+ st"${tpe}_up(&$temp, ${argTpe}_1($e), ($etpe) ${argTpe}_2($e));"
         }
         return st"(&$temp)"
       }
@@ -2730,7 +2732,7 @@ import StaticTranspiler._
                 val t = currReceiverOpt.get
                 transpileAssignExp(
                   stmt.rhs,
-                  (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this,(${transpileType(expType(lhs))}) $rhs);"
+                  (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);"
                 )
               }
             case _ => halt("Infeasible")
@@ -2754,7 +2756,8 @@ import StaticTranspiler._
             case _ => val r = transpileExp(lhs.ident); (expType(lhs.ident).asInstanceOf[AST.Typed.Name], r)
           }
           val index = transpileExp(lhs.args(0))
-          transpileAssignExp(stmt.rhs, (rhs, _) => st"${transpileType(receiverType)}_up($receiver, $index, $rhs);")
+          transpileAssignExp(stmt.rhs, (rhs, _) =>
+            st"${transpileType(receiverType)}_up($receiver, $index, (${transpileType(expType(lhs))}) $rhs);")
         case _ => halt("Infeasible")
       }
 
