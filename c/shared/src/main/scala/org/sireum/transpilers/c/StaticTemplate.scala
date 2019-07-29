@@ -2040,7 +2040,7 @@ object StaticTemplate {
     var globals = ISZ[ST]()
     for (q <- vars) {
       val (kind, id, t, tPtr, isVar) = q
-      val h = st"$tPtr ${name}_$id(STACK_FRAME_LAST)"
+      val h = st"$tPtr ${name}_$id(STACK_FRAME_ONLY)"
       globals = globals :+ st"$t _${name}_$id;"
       accessorHeaders = accessorHeaders :+ st"$h;"
       val scalar = isScalar(kind)
@@ -2069,7 +2069,7 @@ object StaticTemplate {
       }
     }
     val header =
-      st"""void ${name}_init(STACK_FRAME_LAST);
+      st"""void ${name}_init(STACK_FRAME_ONLY);
           |
           |${(accessorHeaders, "\n")}"""
     val impl =
@@ -2077,7 +2077,7 @@ object StaticTemplate {
           |
           |${(globals, "\n")}
           |
-          |void ${name}_init(STACK_FRAME_LAST) {
+          |void ${name}_init(STACK_FRAME_ONLY) {
           |  if (${name}_initialized_) return;
           |  ${name}_initialized_ = T;
           |  DeclNewStackFrame(caller, "$uri", "${dotName(objectName)}", "<init>", 0);

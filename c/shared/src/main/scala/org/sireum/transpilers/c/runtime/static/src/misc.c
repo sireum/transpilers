@@ -24,8 +24,8 @@
  */
 #include "misc.h"
 
-B _T(STACK_FRAME_LAST);
-B _F(STACK_FRAME_LAST);
+B _T(STACK_FRAME_ONLY);
+B _F(STACK_FRAME_ONLY);
 void String_assign(String dest, String src);
 B String__eq(String this, String other);
 B String__ne(String this, String other);

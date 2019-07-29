@@ -29,11 +29,11 @@
 #include <stdio.h>
 #include <type-composite.h>
 
-inline B _T(STACK_FRAME_LAST) {
+inline B _T(STACK_FRAME_ONLY) {
   return T;
 }
 
-inline B _F(STACK_FRAME_LAST) {
+inline B _F(STACK_FRAME_ONLY) {
     return F;
 }
 

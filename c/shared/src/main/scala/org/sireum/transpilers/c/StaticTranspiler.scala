@@ -3239,7 +3239,7 @@ import StaticTranspiler._
         else st"STACK_FRAME $retType, ${transpileType(receiver)} this$comma"
       case _ =>
         if (paramNames.isEmpty && closureVars.isEmpty)
-          if (noRet) st"STACK_FRAME_LAST" else st"STACK_FRAME $retType"
+          if (noRet) st"STACK_FRAME_ONLY" else st"STACK_FRAME $retType"
         else if (noRet) st"STACK_FRAME" else st"STACK_FRAME $retType,"
     }
     val params: ST =

@@ -41,7 +41,7 @@ struct StackFrame {
 #define DeclNewStackFrame(_caller, _uri, _owner, _name, _line) struct StackFrame sf[1] = { (struct StackFrame) { .caller = (_caller), .uri = (_uri), .owner = (_owner), .name = (_name), .line = (_line) } }
 #define sfUpdateLoc(l)    sf->line = l
 #define STACK_FRAME       StackFrame caller,
-#define STACK_FRAME_LAST  StackFrame caller
+#define STACK_FRAME_ONLY  StackFrame caller
 #define STACK_FRAME_SF    StackFrame sf,
 #define SF                sf,
 #define SF_LAST           sf
@@ -51,7 +51,7 @@ struct StackFrame {
 #define DeclNewStackFrame(_caller, _uri, _owner, _name, _line)
 #define sfUpdateLoc(l)
 #define STACK_FRAME
-#define STACK_FRAME_LAST
+#define STACK_FRAME_ONLY  void
 #define STACK_FRAME_SF
 #define SF
 #define SF_LAST
