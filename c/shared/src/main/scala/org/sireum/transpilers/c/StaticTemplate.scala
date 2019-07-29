@@ -132,7 +132,7 @@ object StaticTemplate {
       }
           |} TYPE;
           |
-          |char *TYPE_string(void *type);
+          |char *TYPE_string_(void *type);
           |
           |typedef struct Type *Type;
           |struct Type {
@@ -209,7 +209,7 @@ object StaticTemplate {
           |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
           |}
           |
-          |char *TYPE_string(void *type) {
+          |char *TYPE_string_(void *type) {
           |  static char *strings[] = {
           |    ${(strings, ",\n")}
           |  };
@@ -256,12 +256,12 @@ object StaticTemplate {
           |  #endif
           |}
           |
-          |void Type_string(STACK_FRAME String result, void *this) {
+          |void Type_string_(STACK_FRAME String result, void *this) {
           |  TYPE type = ((Type) this)->type;
           |  switch (type) {
           |    ${
         (
-          for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string(CALLER result, (${tn._2}) this); return;",
+          for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string_(CALLER result, (${tn._2}) this); return;",
           "\n"
         )
       }
@@ -629,7 +629,7 @@ object StaticTemplate {
           |  return !${name}__eq(this, other);
           |}"""
     val neImpl = st"B ${name}__ne($name this, $name other);"
-    val stringHeader = st"void ${name}_string(STACK_FRAME String result, $name this)"
+    val stringHeader = st"void ${name}_string_(STACK_FRAME String result, $name this)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
 
     val header =
@@ -648,7 +648,7 @@ object StaticTemplate {
           |
           |inline $name ${name}__as(STACK_FRAME void *this) {
           |  if (${name}__is(CALLER this)) return ($name) this;
-          |  fprintf(stderr, "Invalid case from %s to $tpe.", TYPE_string(this));
+          |  fprintf(stderr, "Invalid case from %s to $tpe.", TYPE_string_(this));
           |  sfAbortImpl(CALLER "");
           |  $abort
           |}"""
@@ -656,7 +656,7 @@ object StaticTemplate {
     var eqStmts = ISZ[ST]()
     var stringStmts = ISZ[ST](
       st"""DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "string", 0);
-          |String_string(SF result, string("${className(className.size - 1)}("));""")
+          |String_string_(SF result, string("${className(className.size - 1)}("));""")
     var cprintStmts = ISZ[ST](st"""String_cprint(string("${className(className.size - 1)}("), isOut);""")
 
     if (constructorParamTypes.size > 1) {
@@ -671,13 +671,13 @@ object StaticTemplate {
         eqStmts = eqStmts :+ st"if (${vd.tpePtr}__ne(${pre}this->${vd.id}, ${pre}other->${vd.id})) return F;"
       }
       if (i > 0) {
-        stringStmts = stringStmts :+ st"String_string(SF result, sep);"
+        stringStmts = stringStmts :+ st"String_string_(SF result, sep);"
         cprintStmts = cprintStmts :+ st"String_cprint(sep, isOut);"
       }
-      stringStmts = stringStmts :+ st"${vd.tpePtr}_string(SF result, ${pre}this->${vd.id});"
+      stringStmts = stringStmts :+ st"${vd.tpePtr}_string_(SF result, ${pre}this->${vd.id});"
       cprintStmts = cprintStmts :+ st"${vd.tpePtr}_cprint(${pre}this->${vd.id}, isOut);"
     }
-    stringStmts = stringStmts :+ st"""String_string(SF result, string(")"));"""
+    stringStmts = stringStmts :+ st"""String_string_(SF result, string(")"));"""
     cprintStmts = cprintStmts :+ st"""String_cprint(string(")"), isOut);"""
 
     val impl =
@@ -731,8 +731,8 @@ object StaticTemplate {
           |#define ${name}_cprint(this, isOut) Type_cprint(this, isOut)
           |B ${name}__is(STACK_FRAME void *this);
           |$name ${name}__as(STACK_FRAME void *this);
-          |inline void ${name}_string(STACK_FRAME String result, $name this) {
-          |  Type_string(CALLER result, this);
+          |inline void ${name}_string_(STACK_FRAME String result, $name this) {
+          |  Type_string_(CALLER result, this);
           |}"""
     val impl =
       st"""// $tpe
@@ -748,13 +748,13 @@ object StaticTemplate {
           |  switch(((Type) this)->type) {
           |    ${(for (t <- leafTypes) yield st"case T$t: break;", "\n")}
           |    default:
-          |      fprintf(stderr, "Invalid cast from %s to $tpe.", TYPE_string(this));
+          |      fprintf(stderr, "Invalid cast from %s to $tpe.", TYPE_string_(this));
           |      sfAbortImpl(CALLER "");
           |  }
           |  return ($name) this;
           |}
           |
-          |void ${name}_string(STACK_FRAME String result, $name this);"""
+          |void ${name}_string_(STACK_FRAME String result, $name this);"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
       header = compiled.header :+ header,
@@ -886,7 +886,7 @@ object StaticTemplate {
     val removeHeader = st"void ${name}__sub(STACK_FRAME $name result, $name this, $elementTypePtr value)"
     val removeAllHeader = st"void ${name}__removeAll(STACK_FRAME $name result, $name this, $name other)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
-    val stringHeader = st"void ${name}_string(STACK_FRAME String result, $name this)"
+    val stringHeader = st"void ${name}_string_(STACK_FRAME String result, $name this)"
     val header =
       st"""// $tpe
           |
@@ -1105,16 +1105,16 @@ object StaticTemplate {
             |
             |$stringHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "string", 0);
-            |  String_string(SF result, string("["));
+            |  String_string_(SF result, string("["));
             |  intmax_t size = this->size;
             |  intmax_t n = size / 8;
             |  for (intmax_t i = 0; i < n; i++) {
-            |    U8_string(SF result, endian(this->value[i]));
+            |    U8_string_(SF result, endian(this->value[i]));
             |  }
             |  if (size % 8 != 0) {
-            |    U8_string(SF result, endian(this->value[n]));
+            |    U8_string_(SF result, endian(this->value[n]));
             |  }
-            |  String_string(SF result, string("]"));
+            |  String_string_(SF result, string("]"));
             |}
             |
             |B ${name}__ne($name this, $name other);
@@ -1232,20 +1232,20 @@ object StaticTemplate {
             |
             |$stringHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "string", 0);
-            |  String_string(SF result, string("["));
+            |  String_string_(SF result, string("["));
             |  $sizeType size = this->size;
             |  if (size > 0) {
             |    $elementType *value = this->value;
             |    String space = string(" ");
-            |    String_string(SF result, space);
-            |    ${elementTypePtr}_string(SF result, value[0]);
+            |    String_string_(SF result, space);
+            |    ${elementTypePtr}_string_(SF result, value[0]);
             |    for ($sizeType i = 1; i < size; i++) {
-            |      String_string(SF result, string(", "));
-            |      ${elementTypePtr}_string(SF result, value[i]);
+            |      String_string_(SF result, string(", "));
+            |      ${elementTypePtr}_string_(SF result, value[i]);
             |    }
-            |    String_string(SF result, space);
+            |    String_string_(SF result, space);
             |  }
-            |  String_string(SF result, string("]"));
+            |  String_string_(SF result, string("]"));
             |}
             |
             |B ${name}__ne($name this, $name other);
@@ -1364,20 +1364,20 @@ object StaticTemplate {
             |
             |$stringHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "string", 0);
-            |  String_string(SF result, string("["));
+            |  String_string_(SF result, string("["));
             |  $sizeType size = this->size;
             |  if (size > 0) {
             |    $elementType *value = this->value;
             |    String space = string(" ");
-            |    String_string(SF result, space);
-            |    ${elementTypePtr}_string(SF result, ($elementTypePtr) &(value[0]));
+            |    String_string_(SF result, space);
+            |    ${elementTypePtr}_string_(SF result, ($elementTypePtr) &(value[0]));
             |    for ($sizeType i = 1; i < size; i++) {
-            |      String_string(SF result, string(", "));
-            |      ${elementTypePtr}_string(SF result, ($elementTypePtr) &(value[i]));
+            |      String_string_(SF result, string(", "));
+            |      ${elementTypePtr}_string_(SF result, ($elementTypePtr) &(value[i]));
             |    }
-            |    String_string(SF result, space);
+            |    String_string_(SF result, space);
             |  }
-            |  String_string(SF result, string("]"));
+            |  String_string_(SF result, string("]"));
             |}
             |
             |B ${name}__ne($name this, $name other);
@@ -1533,7 +1533,7 @@ object StaticTemplate {
           |  #endif
           |}"""
 
-    val stringHeader = st"void ${mangledName}_string(STACK_FRAME String result, $mangledName this)"
+    val stringHeader = st"void ${mangledName}_string_(STACK_FRAME String result, $mangledName this)"
     header = header :+ stringHeader
     impl = impl :+
       st"""$stringHeader {
@@ -1541,7 +1541,7 @@ object StaticTemplate {
           |  switch (this) {
           |    ${
         (
-          for (e <- elements) yield st"""case ${elemName(e)}: String_string(SF result, string("$e")); return;""",
+          for (e <- elements) yield st"""case ${elemName(e)}: String_string_(SF result, string("$e")); return;""",
           "\n"
         )
       }
@@ -1691,7 +1691,7 @@ object StaticTemplate {
           |#define ${mangledName}_Max ${cTypeUp}_MAX
           |
           |#define ${mangledName}_F "%$hex" $pr """""
-    val stringHeader = st"void ${mangledName}_string(STACK_FRAME String result, $mangledName this)"
+    val stringHeader = st"void ${mangledName}_string_(STACK_FRAME String result, $mangledName this)"
     var header = ISZ[ST]()
     var impl = ISZ[ST]()
     def addCheck(): Unit = {
@@ -1945,7 +1945,7 @@ object StaticTemplate {
     }
     val eqHeader = st"B ${name}__eq($name this, $name other)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
-    val stringHeader = st"void ${name}_string(STACK_FRAME String result, $name this)"
+    val stringHeader = st"void ${name}_string_(STACK_FRAME String result, $name this)"
     val header =
       st"""// $tpe
           |$constructorHeader;
@@ -2001,8 +2001,8 @@ object StaticTemplate {
           |$stringHeader {
           |  DeclNewStackFrame(caller, "Tuple$size.scala", "org.sireum.Tuple$size", "string", 0);
           |  String sep = string(", ");
-          |  String_string(SF result, string("("));
-          |  ${cParamTypes(0)}_string(SF result, ${
+          |  String_string_(SF result, string("("));
+          |  ${cParamTypes(0)}_string_(SF result, ${
         if (isScalar(constructorParamTypes(0)._1)) ""
         else s"(${cParamTypes(0).render}) &"
       }this->_1);
@@ -2010,15 +2010,15 @@ object StaticTemplate {
         (
           for (i <- z"1" until size)
             yield
-              st"""String_string(SF result, sep);
-                  |${cParamTypes(i)}_string(SF result, ${
+              st"""String_string_(SF result, sep);
+                  |${cParamTypes(i)}_string_(SF result, ${
                 if (isScalar(constructorParamTypes(i)._1)) ""
                 else s"(${cParamTypes(i).render}) &"
               }this->_${i + 1});""",
           "\n"
         )
       }
-          |  String_string(SF result, string(")"));
+          |  String_string_(SF result, string(")"));
           |}"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,

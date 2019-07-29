@@ -42,7 +42,7 @@ void String__append(STACK_FRAME_SF String dest, String src) {
   dest->size = size;
 }
 
-void B_string(STACK_FRAME String result, B this) {
+void B_string_(STACK_FRAME String result, B this) {
   DeclNewStackFrame(caller, "B.scala", "org.sireum.B", "string", 0);
   Z size = result->size;
   Z newSize = size + 1;
@@ -52,7 +52,7 @@ void B_string(STACK_FRAME String result, B this) {
   result->size = newSize;
 }
 
-void C_string(STACK_FRAME String result, C this) {
+void C_string_(STACK_FRAME String result, C this) {
   DeclNewStackFrame(caller, "C.scala", "org.sireum.C", "string", 0);
   Z size = result->size;
   Z newSize = size + 1;
@@ -62,7 +62,7 @@ void C_string(STACK_FRAME String result, C this) {
   result->size = newSize;
 }
 
-void Z_string(STACK_FRAME String result, Z this) {
+void Z_string_(STACK_FRAME String result, Z this) {
   DeclNewStackFrame(caller, "Z.scala", "org.sireum.Z", "string", 0);
   int nSize = snprintf(NULL, 0, Z_F, this);
   Z size = result->size;
@@ -72,7 +72,7 @@ void Z_string(STACK_FRAME String result, Z this) {
   result->size = newSize;
 }
 
-void F32_string(STACK_FRAME String result, F32 this) {
+void F32_string_(STACK_FRAME String result, F32 this) {
   DeclNewStackFrame(caller, "FloatingPoint.scala", "org.sireum.F32", "string", 0);
   int nSize = snprintf(NULL, 0, F32_F, this);
   Z size = result->size;
@@ -82,7 +82,7 @@ void F32_string(STACK_FRAME String result, F32 this) {
   result->size = newSize;
 }
 
-void F64_string(STACK_FRAME String result, F64 this) {
+void F64_string_(STACK_FRAME String result, F64 this) {
   DeclNewStackFrame(caller, "FloatingPoint.scala", "org.sireum.F64", "string", 0);
   int nSize = snprintf(NULL, 0, F64_F, this);
   Z size = result->size;
@@ -92,7 +92,7 @@ void F64_string(STACK_FRAME String result, F64 this) {
   result->size = newSize;
 }
 
-void R_string(STACK_FRAME String result, R this) {
+void R_string_(STACK_FRAME String result, R this) {
   DeclNewStackFrame(caller, "R.scala", "org.sireum.R", "string", 0);
   int nSize = snprintf(NULL, 0, R_F, this);
   Z size = result->size;
@@ -102,7 +102,7 @@ void R_string(STACK_FRAME String result, R this) {
   result->size = newSize;
 }
 
-void String_string(STACK_FRAME String result, String this) {
+void String_string_(STACK_FRAME String result, String this) {
   DeclNewStackFrame(caller, "String.scala", "org.sireum.String", "string", 0);
   String__append(SF result, this);
 }

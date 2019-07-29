@@ -1029,7 +1029,7 @@ import StaticTranspiler._
       st"""$header {
       |  switch (this->type) {
       |    ${(cases, "\n")}
-      |    default: fprintf(stderr, "Infeasible TYPE: %s.\n", TYPE_string(this)); exit(1);
+      |    default: fprintf(stderr, "Infeasible TYPE: %s.\n", TYPE_string_(this)); exit(1);
       |  }
       |}"""
     val newValue: Compiled =
@@ -1570,7 +1570,7 @@ import StaticTranspiler._
               val t = expType(receiver)
               val temp = freshTempName()
               stmts = stmts :+ st"DeclNewString($temp);"
-              stmts = stmts :+ st"${transpileType(t)}_string(SF $temp, $e);"
+              stmts = stmts :+ st"${transpileType(t)}_string_(SF $temp, $e);"
               return st"((String) &$temp)"
             case _ => halt("Infeasible")
           }
@@ -1965,16 +1965,16 @@ import StaticTranspiler._
       for (arg <- exp.args) {
         val lit = exp.lits(i)
         val s = transpileLitString(lit.posOpt, lit.value)
-        stmts = stmts :+ st"""String_string(SF (String) &$temp, $s);"""
+        stmts = stmts :+ st"""String_string_(SF (String) &$temp, $s);"""
         val t = expType(arg)
         val tpe = transpileType(t)
         val e = transpileExp(arg)
-        stmts = stmts :+ st"${tpe}_string(SF (String) &$temp, $e);"
+        stmts = stmts :+ st"${tpe}_string_(SF (String) &$temp, $e);"
         i = i + 1
       }
       val lit = exp.lits(i)
       val s = transpileLitString(lit.posOpt, lit.value)
-      stmts = stmts :+ st"""String_string(SF (String) &$temp, $s);"""
+      stmts = stmts :+ st"""String_string_(SF (String) &$temp, $s);"""
       return st"((String) &$temp)"
     }
 
@@ -2077,7 +2077,7 @@ import StaticTranspiler._
   def transToString(s: ST, exp: AST.Exp): Unit = {
     val tmp = transpileExp(exp)
     val mangledName = transpileType(expType(exp))
-    stmts = stmts :+ st"${mangledName}_string(SF $s, $tmp);"
+    stmts = stmts :+ st"${mangledName}_string_(SF $s, $tmp);"
   }
 
   def transPrintH(isOut: ST, exp: AST.Exp): Unit = {

@@ -102,14 +102,14 @@ void String__append(STACK_FRAME_SF String dest, String src);
 
 #endif
 
-void B_string(STACK_FRAME String result, B this);
-void C_string(STACK_FRAME String result, C this);
-void Z_string(STACK_FRAME String result, Z this);
-void F32_string(STACK_FRAME String result, F32 this);
-void F64_string(STACK_FRAME String result, F64 this);
-void R_string(STACK_FRAME String result, R this);
-void String_string(STACK_FRAME String result, String this);
-void Type_string(STACK_FRAME String result, void* this);
+void B_string_(STACK_FRAME String result, B this);
+void C_string_(STACK_FRAME String result, C this);
+void Z_string_(STACK_FRAME String result, Z this);
+void F32_string_(STACK_FRAME String result, F32 this);
+void F64_string_(STACK_FRAME String result, F64 this);
+void R_string_(STACK_FRAME String result, R this);
+void String_string_(STACK_FRAME String result, String this);
+void Type_string_(STACK_FRAME String result, void* this);
 void Type_cprint(void *this, B isOut);
 B Type__eq(void *t1, void *t2);
 #endif
