@@ -1572,7 +1572,15 @@ import StaticTranspiler._
               stmts = stmts :+ st"DeclNewString($temp);"
               stmts = stmts :+ st"${transpileType(t)}_string_(SF $temp, $e);"
               return st"((String) &$temp)"
-            case _ => halt("Infeasible")
+            case AST.ResolvedInfo.BuiltIn.Kind.EnumName =>
+              val receiver = select.receiverOpt.get
+              val e = transpileExp(receiver)
+              val t = expType(receiver)
+              val temp = freshTempName()
+              stmts = stmts :+ st"DeclNewString($temp);"
+              stmts = stmts :+ st"${transpileType(t)}_name_((String) &$temp, $e);"
+              return st"((String) &$temp)"
+            case _ => halt(s"Unexpected: $res")
           }
         case res: AST.ResolvedInfo.Method =>
           res.mode match {

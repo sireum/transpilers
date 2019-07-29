@@ -1440,7 +1440,7 @@ object StaticTemplate {
           |  return (Z) this;
           |}
           |
-          |inline void ${mangledName}_name(String result, $mangledName this) {
+          |inline void ${mangledName}_name_(String result, $mangledName this) {
           |  switch (this) {
           |    ${(for (e <- elements) yield enumCase(e), "\n")}
           |  }
@@ -1558,7 +1558,7 @@ object StaticTemplate {
             |B ${mangledName}__eq($mangledName this, $mangledName other);
             |B ${mangledName}__ne($mangledName this, $mangledName other);
             |Z ${mangledName}__ordinal($mangledName this);
-            |void ${mangledName}_name(String result, $mangledName this);
+            |void ${mangledName}_name_(String result, $mangledName this);
             |
         |${(impl, "\n\n")}"""
     )

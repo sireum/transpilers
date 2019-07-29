@@ -41,28 +41,6 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
-    * - testWorksheet("""var bs1 = ISZ[B](T, F, T)
-                        |println(s"$bs1.size = ${bs1.size}")
-                        |bs1 = bs1 :+ T
-                        |println(s"$bs1.size = ${bs1.size}")
-                        |bs1 = bs1 ++ bs1
-                        |println(s"$bs1.size = ${bs1.size}")
-                        |bs1 = bs1 - T
-                        |println(s"$bs1.size = ${bs1.size}")
-                        |bs1 = bs1 -- ISZ(F)
-                        |println(s"$bs1.size = ${bs1.size}")
-                        |bs1 = IS.create(7, T)
-                        |println(s"$bs1.size = ${bs1.size}")
-                        |bs1 = F +: bs1
-                        |println(s"$bs1.size = ${bs1.size}")
-                        |""".stripMargin)
-
-    * - testWorksheet("""@datatype class Foo(a: ISZ[Z])
-                        |
-                        |val foo = Foo(ISZ(1, 2, 3))
-                        |val first = foo.a(0)
-                        |assert(first == 1)""".stripMargin)
-
     * - testWorksheet("""println("Hello World!")""".stripMargin)
 
     * - testWorksheet("""val x = 5 * 5 + 1
@@ -99,6 +77,8 @@ class StaticTranspilerTest extends TestSuite {
                         |
                         |println(Direction.Left)
                         |println(Direction.Right)
+                        |println(Direction.Left.name)
+                        |println(Direction.Right.name)
                         |println(Direction.byName("Left"))
                         |println(Direction.byName("Right"))
                         |println(Direction.byName("Left").get)
@@ -143,6 +123,22 @@ class StaticTranspilerTest extends TestSuite {
                         |val s3 = ZS.create(5, 1)
                         |println(s3)
                         |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin)
+
+    * - testWorksheet("""var bs1 = ISZ[B](T, F, T)
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = bs1 :+ T
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = bs1 ++ bs1
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = bs1 - T
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = bs1 -- ISZ(F)
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = IS.create(7, T)
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |bs1 = F +: bs1
+                        |println(s"$bs1.size = ${bs1.size}")
+                        |""".stripMargin)
 
     * - testWorksheet("""def foo(x: Z): Z = {
                         |  return x + 1
@@ -213,6 +209,12 @@ class StaticTranspilerTest extends TestSuite {
                         |  u8"0xe5", u8"0x89", u8"0xc5", u8"0x1c", u8"0xa1", u8"0xa4", u8"0xa8", u8"0x41",
                         |  u8"0x6d", u8"0xf6", u8"0x54", u8"0x5a", u8"0x1c", u8"0xe8", u8"0xba", u8"0x00"
                         |))""".stripMargin)
+
+    * - testWorksheet("""@datatype class Foo(a: ISZ[Z])
+                        |
+                        |val foo = Foo(ISZ(1, 2, 3))
+                        |val first = foo.a(0)
+                        |assert(first == 1)""".stripMargin)
 
     * - testWorksheet("""@record trait Foo {
                         |  def x: Z
@@ -339,7 +341,6 @@ class StaticTranspilerTest extends TestSuite {
                         |println(Foo.foo(4))
                         |println(Foo.fooP(4, 5))
                         |println(Bar(4).bar(5))""".stripMargin)
-
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
