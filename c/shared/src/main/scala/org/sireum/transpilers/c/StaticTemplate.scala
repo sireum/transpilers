@@ -196,7 +196,7 @@ object StaticTemplate {
     val r =
       st"""#include <types.h>
           |
-          |extern size_t sizeOf(Type t);
+          |size_t sizeOf(Type t);
           |
           |void Type_assign(void *dest, void *src, size_t destSize) {
           |  Type srcType = (Type) src;
@@ -628,7 +628,7 @@ object StaticTemplate {
       st"""inline B ${name}__ne($name this, $name other) {
           |  return !${name}__eq(this, other);
           |}"""
-    val neImpl = st"extern B ${name}__ne($name this, $name other);"
+    val neImpl = st"B ${name}__ne($name this, $name other);"
     val stringHeader = st"void ${name}_string(STACK_FRAME String result, $name this)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
 
@@ -700,8 +700,8 @@ object StaticTemplate {
           |  #endif
           |}
           |
-          |extern B ${name}__is(STACK_FRAME void* this);
-          |extern $name ${name}__as(STACK_FRAME void *this);"""
+          |B ${name}__is(STACK_FRAME void* this);
+          |$name ${name}__as(STACK_FRAME void *this);"""
 
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
@@ -754,7 +754,7 @@ object StaticTemplate {
           |  return ($name) this;
           |}
           |
-          |extern void ${name}_string(STACK_FRAME String result, $name this);"""
+          |void ${name}_string(STACK_FRAME String result, $name this);"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
       header = compiled.header :+ header,
@@ -794,7 +794,7 @@ object StaticTemplate {
       if (isBit)
         (
           st"""inline $atH {
-              |  ssize_t idx = i$offset;
+              |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
               |  assert (0 <= idx && idx < this->size);
               |  #endif
@@ -802,7 +802,7 @@ object StaticTemplate {
               |  return ($elementType) (this->value[idx / 8] & mask ? 1 : 0);
               |}""",
           st"""inline $upH {
-              |  ssize_t idx = i$offset;
+              |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
               |  assert (0 <= idx && idx < this->size);
               |  #endif
@@ -816,14 +816,14 @@ object StaticTemplate {
       else if (isElementTypeScalar)
         (
           st"""inline $atH {
-              |  ssize_t idx = i$offset;
+              |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
               |  assert (0 <= idx && idx < this->size);
               |  #endif
               |  return this->value[($sizeType) idx];
               |}""",
           st"""inline $upH {
-              |  ssize_t idx = i$offset;
+              |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
               |  assert (0 <= idx && idx < this->size);
               |  #endif
@@ -832,21 +832,21 @@ object StaticTemplate {
       else
         (
           st"""inline $atH {
-              |  ssize_t idx = i$offset;
+              |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
               |  assert (0 <= idx && idx < this->size);
               |  #endif
               |  return ($elementTypePtr) &(this->value[($sizeType) idx]);
               |}""",
           st"""inline $upH {
-              |  ssize_t idx = i$offset;
+              |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
               |  assert (0 <= idx && idx < this->size);
               |  #endif
               |  Type_assign(&this->value[($sizeType) idx], e, sizeof($elementType));
               |}""")
-    val atImpl: ST = st"extern $atH;"
-    val upImpl: ST = st"extern $upH;"
+    val atImpl: ST = st"$atH;"
+    val upImpl: ST = st"$upH;"
     val (toOtherHeaderOpt, toOtherImplOpt): (Option[ST], Option[ST]) = otherNameOpt match {
       case Some(otherName) =>
         val other: String = if (isImmutable) "MS" else "IS"
@@ -859,7 +859,7 @@ object StaticTemplate {
               |  memcpy(&result->value, &this->value, this->size * sizeof($elementType));
               |}"""), Some(
           st"""
-              |extern void ${name}_to$other(STACK_FRAME $otherName result, $name this);"""))
+              |void ${name}_to$other(STACK_FRAME $otherName result, $name this);"""))
       case _ => (None(), None())
     }
     val typeHeader =
@@ -867,7 +867,7 @@ object StaticTemplate {
           |${(includes, "\n")}
           |
           |#define Max$name $maxElement
-          |#define ${name}SizeT ${if (isBit) "ssize_t" else sizeType}
+          |#define ${name}SizeT ${if (isBit) "intmax_t" else sizeType}
           |
           |typedef struct $name *$name;
           |struct $name {
@@ -922,19 +922,19 @@ object StaticTemplate {
         st"""// $tpe
             |$atImpl
             |$upImpl
-            |extern $indexType ${name}_size(STACK_FRAME $name this);
-            |extern Z ${name}_zize(STACK_FRAME $name this);
+            |$indexType ${name}_size(STACK_FRAME $name this);
+            |Z ${name}_zize(STACK_FRAME $name this);
             |
             |$eqHeader {
-            |  ssize_t size = this->size;
+            |  intmax_t size = this->size;
             |  if (size != other->size) return F;
-            |  ssize_t n = size / 8;
-            |  for (ssize_t i = 0; i < n; i++) {
+            |  intmax_t n = size / 8;
+            |  for (intmax_t i = 0; i < n; i++) {
             |    if (this->value[i] != other->value[i]) return F;
             |  }
-            |  ssize_t m = size % 8;
+            |  intmax_t m = size % 8;
             |  U8 mask = 1;
-            |  for (ssize_t i = 0; i < m; i++) {
+            |  for (intmax_t i = 0; i < m; i++) {
             |    if ((this->value[n] & mask) != (other->value[n] & mask)) return F;
             |    mask <<= 1;
             |  }
@@ -944,21 +944,21 @@ object StaticTemplate {
             |$createHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "create", 0);
             |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
-            |  ssize_t zize = (ssize_t) size;
+            |  intmax_t zize = (intmax_t) size;
             |  U8 d = (U8) (dflt ? -1 : 0);
-            |  ssize_t n = zize / 8;
-            |  for (ssize_t i = 0; i < n; i++) {
+            |  intmax_t n = zize / 8;
+            |  for (intmax_t i = 0; i < n; i++) {
             |    result->value[i] = d;
             |  }
-            |  ssize_t m = size % 8;
+            |  intmax_t m = size % 8;
             |  U8 mask = 1;
             |  if (dflt) {
-            |    for (ssize_t i = 0; i < m; i++) {
+            |    for (intmax_t i = 0; i < m; i++) {
             |      result->value[n] |= mask;
             |      mask <<= 1;
             |    }
             |  } else {
-            |    for (ssize_t i = 0; i < m; i++) {
+            |    for (intmax_t i = 0; i < m; i++) {
             |      result->value[n] &= ~mask;
             |      mask <<= 1;
             |    }
@@ -969,21 +969,21 @@ object StaticTemplate {
             |$zreateHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "zreate", 0);
             |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
-            |  ssize_t zize = (ssize_t) size;
+            |  intmax_t zize = (intmax_t) size;
             |  U8 d = (U8) (dflt ? -1 : 0);
-            |  ssize_t n = zize / 8;
-            |  for (ssize_t i = 0; i < n; i++) {
+            |  intmax_t n = zize / 8;
+            |  for (intmax_t i = 0; i < n; i++) {
             |    result->value[i] = d;
             |  }
-            |  ssize_t m = size % 8;
+            |  intmax_t m = size % 8;
             |  U8 mask = 1;
             |  if (dflt) {
-            |    for (ssize_t i = 0; i < m; i++) {
+            |    for (intmax_t i = 0; i < m; i++) {
             |      result->value[n] |= mask;
             |      mask <<= 1;
             |    }
             |  } else {
-            |    for (ssize_t i = 0; i < m; i++) {
+            |    for (intmax_t i = 0; i < m; i++) {
             |      result->value[n] &= ~mask;
             |      mask <<= 1;
             |    }
@@ -994,27 +994,27 @@ object StaticTemplate {
             |$appendHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", ":+", 0);
             |  sfAssert(this->size + 1 <= Max$name, "Insufficient maximum for $tpe elements.");
-            |  ssize_t thisSize = this->size;
+            |  intmax_t thisSize = this->size;
             |  Type_assign(result, this, sizeof(struct $name));
             |  ${name}_up(result, thisSize, value);
-            |  result->size = (ssize_t) (thisSize + 1);
+            |  result->size = (intmax_t) (thisSize + 1);
             |}
             |
             |$prependHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "+:", 0);
             |  sfAssert(this->size + 1 <= Max$name, "Insufficient maximum for $tpe elements.");
-            |  ssize_t thisSize = this->size;
+            |  intmax_t thisSize = this->size;
             |  ${name}_up(result, 0, value);
-            |  for (ssize_t i = 0; i < thisSize; i++)
+            |  for (intmax_t i = 0; i < thisSize; i++)
             |    ${name}_up(result, i + 1, ${name}_at(this, i));
-            |  result->size = (ssize_t) (thisSize + 1);
+            |  result->size = (intmax_t) (thisSize + 1);
             |}
             |
             |$appendAllHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "++", 0);
             |  sfAssert(this->size + other->size <= Max$name, "Insufficient maximum for $tpe elements.");
-            |  ssize_t thisSize = this->size;
-            |  ssize_t otherSize = other->size;
+            |  intmax_t thisSize = this->size;
+            |  intmax_t otherSize = other->size;
             |  Type_assign(result, this, sizeof(struct $name));
             |  result->size = ($sizeType) (thisSize + otherSize);
             |  for ($sizeType i = 0; i < otherSize; i++)
@@ -1023,9 +1023,9 @@ object StaticTemplate {
             |
             |$removeHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "-", 0);
-            |  ssize_t thisSize = this->size;
-            |  ssize_t k = 0;
-            |  for (ssize_t i = 0; i < thisSize; i++) {
+            |  intmax_t thisSize = this->size;
+            |  intmax_t k = 0;
+            |  for (intmax_t i = 0; i < thisSize; i++) {
             |    $elementTypePtr o = ${name}_at(this, i);
             |    if (${elementTypePtr}__ne(o, value)) ${name}_up(result, k++, o);
             |  }
@@ -1034,13 +1034,13 @@ object StaticTemplate {
             |
             |$removeAllHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "--", 0);
-            |  ssize_t thisSize = this->size;
-            |  ssize_t otherSize = other->size;
-            |  ssize_t k = 0;
-            |  for (ssize_t i = 0; i < thisSize; i++) {
+            |  intmax_t thisSize = this->size;
+            |  intmax_t otherSize = other->size;
+            |  intmax_t k = 0;
+            |  for (intmax_t i = 0; i < thisSize; i++) {
             |    B found = F;
             |    $elementTypePtr o = ${name}_at(this, i);
-            |    for (ssize_t j = 0; j < otherSize && !found; j++)
+            |    for (intmax_t j = 0; j < otherSize && !found; j++)
             |      if (${elementTypePtr}__eq(o, ${name}_at(other, j))) found = T;
             |    if (!found) ${name}_up(result, k++, o);
             |  }
@@ -1091,9 +1091,9 @@ object StaticTemplate {
             |$cprintHeader {
             |  #ifndef SIREUM_NO_PRINT
             |  String_cprint(string("["), isOut);
-            |  ssize_t size = this->size;
-            |  ssize_t n = size / 8;
-            |  for (ssize_t i = 0; i < n; i++) {
+            |  intmax_t size = this->size;
+            |  intmax_t n = size / 8;
+            |  for (intmax_t i = 0; i < n; i++) {
             |    U8_cprint(endian(this->value[i]), isOut);
             |  }
             |  if (size % 8 != 0) {
@@ -1106,9 +1106,9 @@ object StaticTemplate {
             |$stringHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "string", 0);
             |  String_string(SF result, string("["));
-            |  ssize_t size = this->size;
-            |  ssize_t n = size / 8;
-            |  for (ssize_t i = 0; i < n; i++) {
+            |  intmax_t size = this->size;
+            |  intmax_t n = size / 8;
+            |  for (intmax_t i = 0; i < n; i++) {
             |    U8_string(SF result, endian(this->value[i]));
             |  }
             |  if (size % 8 != 0) {
@@ -1117,14 +1117,14 @@ object StaticTemplate {
             |  String_string(SF result, string("]"));
             |}
             |
-            |extern B ${name}__ne($name this, $name other);
+            |B ${name}__ne($name this, $name other);
             |$toOtherImplOpt"""
       else if (isElementTypeScalar)
         st"""// $tpe
             |$atImpl
             |$upImpl
-            |extern $indexType ${name}_size(STACK_FRAME $name this);
-            |extern Z ${name}_zize(STACK_FRAME $name this);
+            |$indexType ${name}_size(STACK_FRAME $name this);
+            |Z ${name}_zize(STACK_FRAME $name this);
             |
             |$eqHeader {
             |  $sizeType size = this->size;
@@ -1248,14 +1248,14 @@ object StaticTemplate {
             |  String_string(SF result, string("]"));
             |}
             |
-            |extern B ${name}__ne($name this, $name other);
+            |B ${name}__ne($name this, $name other);
             |$toOtherImplOpt"""
       else
         st"""// $tpe
             |$atImpl
             |$upImpl
-            |extern $indexType ${name}_size(STACK_FRAME $name this);
-            |extern Z ${name}_zize(STACK_FRAME $name this);
+            |$indexType ${name}_size(STACK_FRAME $name this);
+            |Z ${name}_zize(STACK_FRAME $name this);
             |
             |$eqHeader {
             |  $sizeType size = this->size;
@@ -1380,7 +1380,7 @@ object StaticTemplate {
             |  String_string(SF result, string("]"));
             |}
             |
-            |extern B ${name}__ne($name this, $name other);
+            |B ${name}__ne($name this, $name other);
             |$toOtherImplOpt"""
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
@@ -1555,10 +1555,10 @@ object StaticTemplate {
       impl = compiled.impl :+
         st"""// $tpe
             |
-            |extern B ${mangledName}__eq($mangledName this, $mangledName other);
-            |extern B ${mangledName}__ne($mangledName this, $mangledName other);
-            |extern Z ${mangledName}__ordinal($mangledName this);
-            |extern void ${mangledName}_name(String result, $mangledName this);
+            |B ${mangledName}__eq($mangledName this, $mangledName other);
+            |B ${mangledName}__ne($mangledName this, $mangledName other);
+            |Z ${mangledName}__ordinal($mangledName this);
+            |void ${mangledName}_name(String result, $mangledName this);
             |
         |${(impl, "\n\n")}"""
     )
@@ -1593,13 +1593,13 @@ object StaticTemplate {
       } else {
         val impl =
           st"""
-              |extern $mangledName ${mangledName}__complement($mangledName n);
-              |extern $mangledName ${mangledName}__shl($mangledName n1, $mangledName n2);
-              |extern $mangledName ${mangledName}__shr($mangledName n1, $mangledName n2);
-              |extern $mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2);
-              |extern $mangledName ${mangledName}__and($mangledName n1, $mangledName n2);
-              |extern $mangledName ${mangledName}__or($mangledName n1, $mangledName n2);
-              |extern $mangledName ${mangledName}__xor($mangledName n1, $mangledName n2);"""
+              |$mangledName ${mangledName}__complement($mangledName n);
+              |$mangledName ${mangledName}__shl($mangledName n1, $mangledName n2);
+              |$mangledName ${mangledName}__shr($mangledName n1, $mangledName n2);
+              |$mangledName ${mangledName}__ushr($mangledName n1, $mangledName n2);
+              |$mangledName ${mangledName}__and($mangledName n1, $mangledName n2);
+              |$mangledName ${mangledName}__or($mangledName n1, $mangledName n2);
+              |$mangledName ${mangledName}__xor($mangledName n1, $mangledName n2);"""
         if (isUnsigned) {
           (
             st"""
@@ -1702,7 +1702,7 @@ object StaticTemplate {
             |  #endif
             |  return n;
             |}"""
-      impl = impl :+ st"extern $mangledName ${mangledName}_range($mangledName n);"
+      impl = impl :+ st"$mangledName ${mangledName}_range($mangledName n);"
     }
     if (isBitVector) {
       val (bitMin, bitMax): (Z, Z) = bitWidth match {
@@ -1780,19 +1780,19 @@ object StaticTemplate {
           |#endif
           |$stringHeader"""
     impl = impl :+
-      st"""extern $mangledName ${mangledName}__plus($mangledName n);
-          |extern $mangledName ${mangledName}__minus($mangledName n);
-          |extern $mangledName ${mangledName}__add($mangledName n1, $mangledName n2);
-          |extern $mangledName ${mangledName}__sub($mangledName n1, $mangledName n2);
-          |extern $mangledName ${mangledName}__mul($mangledName n1, $mangledName n2);
-          |extern $mangledName ${mangledName}__div($mangledName n1, $mangledName n2);
-          |extern $mangledName ${mangledName}__rem($mangledName n1, $mangledName n2);
-          |extern B ${mangledName}__eq($mangledName n1, $mangledName n2);
-          |extern B ${mangledName}__ne($mangledName n1, $mangledName n2);
-          |extern B ${mangledName}__lt($mangledName n1, $mangledName n2);
-          |extern B ${mangledName}__le($mangledName n1, $mangledName n2);
-          |extern B ${mangledName}__gt($mangledName n1, $mangledName n2);
-          |extern B ${mangledName}__ge($mangledName n1, $mangledName n2);
+      st"""$mangledName ${mangledName}__plus($mangledName n);
+          |$mangledName ${mangledName}__minus($mangledName n);
+          |$mangledName ${mangledName}__add($mangledName n1, $mangledName n2);
+          |$mangledName ${mangledName}__sub($mangledName n1, $mangledName n2);
+          |$mangledName ${mangledName}__mul($mangledName n1, $mangledName n2);
+          |$mangledName ${mangledName}__div($mangledName n1, $mangledName n2);
+          |$mangledName ${mangledName}__rem($mangledName n1, $mangledName n2);
+          |B ${mangledName}__eq($mangledName n1, $mangledName n2);
+          |B ${mangledName}__ne($mangledName n1, $mangledName n2);
+          |B ${mangledName}__lt($mangledName n1, $mangledName n2);
+          |B ${mangledName}__le($mangledName n1, $mangledName n2);
+          |B ${mangledName}__gt($mangledName n1, $mangledName n2);
+          |B ${mangledName}__ge($mangledName n1, $mangledName n2);
           |$shiftImpl
           |
           |$stringHeader {
@@ -1941,7 +1941,7 @@ object StaticTemplate {
         constructorStmts = constructorStmts :+
           st"Type_assign(&(this->_$index), _$index, sizeof($us $tPtr));"
       }
-      accessorImpls = accessorImpls :+ st"extern $tPtr ${name}_$index($name this);"
+      accessorImpls = accessorImpls :+ st"$tPtr ${name}_$index($name this);"
     }
     val eqHeader = st"B ${name}__eq($name this, $name other)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
@@ -1969,7 +1969,7 @@ object StaticTemplate {
           |
           |${(accessorImpls, "\n")}
           |
-          |extern B ${name}__ne($name this, $name other);
+          |B ${name}__ne($name this, $name other);
           |
           |$constructorHeader {
           |  DeclNewStackFrame(caller, "Tuple$size.scala", "${dotName(tupleName(size))}", "apply", 0);

@@ -188,7 +188,7 @@ object StaticTranspiler {
             st"""inline $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n) {
             |  return ($to) n;
             |}""",
-          impl = compiled.impl :+ st"extern $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
+          impl = compiled.impl :+ st"$to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
         )
       } else {
         halt(s"TODO: $method") // TODO
@@ -225,7 +225,7 @@ object StaticTranspiler {
       }
 
       return if (transpiler.isExcluded(method.owner, method.id))
-        compiled(header = compiled.header :+ st"extern $header", excludedImpl = compiled.excludedImpl :+ impl)
+        compiled(header = compiled.header :+ st"$header", excludedImpl = compiled.excludedImpl :+ impl)
       else compiled(header = compiled.header :+ header, impl = compiled.impl :+ impl)
     }
   }
@@ -1034,7 +1034,7 @@ import StaticTranspiler._
       |}"""
     val newValue: Compiled =
       if (isExcluded(method.owner, method.id))
-        value(header = value.header :+ st"extern $header;", excludedImpl = value.excludedImpl :+ impl)
+        value(header = value.header :+ st"$header;", excludedImpl = value.excludedImpl :+ impl)
       else
         value(header = value.header :+ st"$header;", impl = value.impl :+ impl)
     compiledMap = compiledMap + key ~> newValue
@@ -1102,7 +1102,7 @@ import StaticTranspiler._
       val value = getCompiled(key)
       compiledMap = compiledMap + key ~>
         (if (isExcluded(mres.owner, mres.id))
-          value(header = value.header :+ st"extern $header;", excludedImpl = value.excludedImpl :+ impl)
+          value(header = value.header :+ st"$header;", excludedImpl = value.excludedImpl :+ impl)
         else value(header = value.header :+ st"$header;", impl = value.impl :+ impl))
     }
 
@@ -1124,7 +1124,7 @@ import StaticTranspiler._
     val value = getCompiled(key)
     compiledMap = compiledMap + key ~>
       (if (isExcluded(res.owner, res.id))
-        value(header = value.header :+ st"extern $header;", excludedImpl = value.excludedImpl :+ impl)
+        value(header = value.header :+ st"$header;", excludedImpl = value.excludedImpl :+ impl)
       else value(header = value.header :+ st"$header;", impl = value.impl :+ impl))
 
     currReceiverOpt = oldCurrReceiverOpt
