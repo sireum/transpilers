@@ -676,17 +676,17 @@ import StaticTranspiler._
 
   def genTypeNames(): Unit = {
     @pure def typeFilename(t: AST.Typed): Option[QName] = {
-      val tname: QName = t match {
+      val (top, tname): (B, QName) = t match {
         case t: AST.Typed.Name =>
           ts.typeHierarchy.typeMap.get(t.ids).get match {
-            case _: TypeInfo.Enum => ops.ISZOps(t.ids).dropRight(1)
-            case _ => compiledKeyName(t)
+            case _: TypeInfo.Enum => (t.ids.size == 1, ops.ISZOps(t.ids).dropRight(1))
+            case _ => (t.ids.size == 1, compiledKeyName(t))
           }
-        case t: AST.Typed.Tuple => compiledKeyName(t)
-        case t: AST.Typed.Fun => compiledKeyName(t)
+        case t: AST.Typed.Tuple => (F, compiledKeyName(t))
+        case t: AST.Typed.Fun => (F, compiledKeyName(t))
         case _ => halt("Infeasible")
       }
-      return if (tname.size == z"1") None() else Some(tname)
+      return if (!top && tname.size == z"1") None() else Some(tname)
     }
 
     @pure def includes(ts: ISZ[AST.Typed]): ISZ[ST] = {
@@ -1962,9 +1962,63 @@ import StaticTranspiler._
     }
 
     def transInvokeNamed(exp: AST.Exp.InvokeNamed): ST = {
-      val args: ISZ[AST.Exp] = ops.ISZOps(exp.args).sortWith((na1, na2) => na1.index < na2.index).map(na => na.arg)
-      val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args, exp.attr))
-      return r
+        exp.attr.resOpt.get match {
+          case res: AST.ResolvedInfo.Method if res.mode == AST.MethodMode.Copy =>
+            var args = ISZ[AST.Exp]()
+            val owner = res.owner :+ res.id
+            val ti = ts.typeHierarchy.typeMap.get(owner).get.asInstanceOf[TypeInfo.Adt]
+            val nameArgMap = HashMap.empty[String, AST.Exp] ++ (for (arg <- exp.args) yield (arg.id.value, arg.arg))
+            val receiverType = exp.typedOpt.get.asInstanceOf[AST.Typed.Name]
+            val sm = TypeChecker.buildTypeSubstMap(owner, exp.posOpt, ti.ast.typeParams,
+              receiverType.args, reporter).get
+            val constructorRes = ti.constructorResOpt.get.subst(sm)
+            for (p <- ti.ast.params) {
+              val id = p.id.value
+              nameArgMap.get(id) match {
+                case Some(arg) => args = args :+ arg
+                case _ =>
+                  val t = ti.vars.get(id).get.typedOpt.get
+                  val arg: AST.Exp =
+                    exp.receiverOpt match {
+                      case Some(receiver) =>
+                        AST.Exp.Select(
+                          Some(
+                            AST.Exp.Select(
+                              Some(receiver),
+                              exp.ident.id,
+                              ISZ(),
+                              AST.ResolvedAttr(
+                                exp.posOpt,
+                                exp.ident.attr.resOpt,
+                                exp.typedOpt
+                              )
+                            )
+                          ),
+                          p.id, ISZ(),
+                          AST.ResolvedAttr(
+                            exp.posOpt,
+                            Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
+                            Some(t.subst(sm))
+                          ))
+                      case _ =>
+                        AST.Exp.Select(Some(exp.ident), p.id, ISZ(),
+                          AST.ResolvedAttr(
+                            exp.posOpt,
+                            Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
+                            Some(t.subst(sm))
+                          ))
+                    }
+                  args = args :+ arg
+              }
+            }
+            val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args,
+              exp.attr(resOpt = Some(constructorRes))))
+            return r
+          case _ =>
+            val args = ops.ISZOps(exp.args).sortWith((na1, na2) => na1.index < na2.index).map(na => na.arg)
+            val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args, exp.attr))
+            return r
+        }
     }
 
     def transStringInterpolate(exp: AST.Exp.StringInterpolate): ST = {
