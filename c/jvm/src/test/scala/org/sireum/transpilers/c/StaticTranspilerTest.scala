@@ -234,7 +234,10 @@ class StaticTranspilerTest extends TestSuite {
                          |val bar = Bar(3, foo)
                          |println(bar.foo(x = 3))
                          |println(Baz.foo(x = 4))
-                         |println(bar(foo = Baz.foo(x = 5)))""".stripMargin)
+                         |println(bar(foo = Baz.foo(x = 5)))
+                         |val s = MSZ(foo)
+                         |s(0) = s(0)(x = 6)
+                         |println(s)""".stripMargin)
 
     * - testWorksheet("""@record trait Foo {
                         |  def x: Z

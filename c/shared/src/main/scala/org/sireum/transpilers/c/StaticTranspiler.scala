@@ -1981,32 +1981,45 @@ import StaticTranspiler._
                   val arg: AST.Exp =
                     exp.receiverOpt match {
                       case Some(receiver) =>
-                        AST.Exp.Select(
-                          Some(
-                            AST.Exp.Select(
-                              Some(receiver),
-                              exp.ident.id,
-                              ISZ(),
-                              AST.ResolvedAttr(
-                                exp.posOpt,
-                                exp.ident.attr.resOpt,
-                                exp.typedOpt
-                              )
+                        if (exp.ident.id.value == "apply")
+                          AST.Exp.Select(
+                            Some(receiver),
+                            p.id, ISZ(),
+                            AST.ResolvedAttr(
+                              exp.posOpt,
+                              Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
+                              Some(t.subst(sm))
                             )
-                          ),
-                          p.id, ISZ(),
-                          AST.ResolvedAttr(
-                            exp.posOpt,
-                            Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
-                            Some(t.subst(sm))
-                          ))
+                          )
+                        else
+                          AST.Exp.Select(
+                            Some(
+                              AST.Exp.Select(
+                                Some(receiver),
+                                exp.ident.id,
+                                ISZ(),
+                                AST.ResolvedAttr(
+                                  exp.posOpt,
+                                  exp.ident.attr.resOpt,
+                                  exp.typedOpt
+                                )
+                              )
+                            ),
+                            p.id, ISZ(),
+                            AST.ResolvedAttr(
+                              exp.posOpt,
+                              Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
+                              Some(t.subst(sm))
+                            )
+                          )
                       case _ =>
                         AST.Exp.Select(Some(exp.ident), p.id, ISZ(),
                           AST.ResolvedAttr(
                             exp.posOpt,
                             Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
                             Some(t.subst(sm))
-                          ))
+                          )
+                        )
                     }
                   args = args :+ arg
               }
@@ -2015,7 +2028,10 @@ import StaticTranspiler._
               exp.attr(resOpt = Some(constructorRes))))
             return r
           case _ =>
-            val args = ops.ISZOps(exp.args).sortWith((na1, na2) => na1.index < na2.index).map(na => na.arg)
+            @pure def nasort(na1: AST.NamedArg, na2: AST.NamedArg): B = {
+              return na1.index < na2.index
+            }
+            val args = ops.ISZOps(exp.args).sortWith(nasort _).map((na: AST.NamedArg) => na.arg)
             val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args, exp.attr))
             return r
         }
