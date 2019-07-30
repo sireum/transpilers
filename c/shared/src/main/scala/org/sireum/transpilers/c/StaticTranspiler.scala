@@ -815,7 +815,23 @@ import StaticTranspiler._
     def genClass(t: AST.Typed.Name): Unit = {
       val key = compiledKeyName(t)
       val value = getCompiled(key)
-      val defaultString = !ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt].methods.contains("string")
+      val defaultString: B = {
+        var r = !ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt].methods.contains("string")
+        if (!r) {
+          var found = F
+          ts.methods.get(t.ids) match {
+            case Some(ms) =>
+              for (m <- ms.elements) {
+                if (m.info.ast.sig.id.value == "string") {
+                  found = T
+                }
+              }
+            case _ =>
+          }
+          r = !found
+        }
+        r
+      }
       for (nt <- ts.nameTypes.get(t.ids).get.elements if nt.tpe == t) {
         var types = ISZ[AST.Typed]()
         var cps = ISZ[Vard]()
