@@ -815,6 +815,7 @@ import StaticTranspiler._
     def genClass(t: AST.Typed.Name): Unit = {
       val key = compiledKeyName(t)
       val value = getCompiled(key)
+      val defaultString = !ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt].methods.contains("string")
       for (nt <- ts.nameTypes.get(t.ids).get.elements if nt.tpe == t) {
         var types = ISZ[AST.Typed]()
         var cps = ISZ[Vard]()
@@ -835,7 +836,7 @@ import StaticTranspiler._
         }
         val uri =
           filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt].posOpt, "")
-        val newValue = clasz(value, uri, t.ids, includes(types), t.string, fingerprint(t)._1, cps, vs)
+        val newValue = clasz(value, uri, t.ids, includes(types), t.string, fingerprint(t)._1, cps, vs, defaultString)
         compiledMap = compiledMap + key ~> newValue
       }
     }

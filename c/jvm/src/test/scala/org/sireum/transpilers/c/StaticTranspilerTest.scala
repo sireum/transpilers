@@ -216,6 +216,14 @@ class StaticTranspilerTest extends TestSuite {
                         |val first = foo.a(0)
                         |assert(first == 1)""".stripMargin)
 
+    * - testWorksheet(s"""@datatype class Foo(a: ISZ[Z]) {
+                         |  override def string: String = {
+                         |    return s"$${a.size}"
+                         |  }
+                         |}
+                         |val foo = Foo(ISZ(1, 2, 3))
+                         |println(foo)""".stripMargin)
+
     * - testWorksheet("""@record trait Foo {
                         |  def x: Z
                         |}
@@ -341,6 +349,7 @@ class StaticTranspilerTest extends TestSuite {
                         |println(Foo.foo(4))
                         |println(Foo.fooP(4, 5))
                         |println(Bar(4).bar(5))""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {

@@ -831,6 +831,20 @@ import TypeSpecializer._
       o.attr.resOpt.get match {
         case m: AST.ResolvedInfo.Method =>
           addResolvedMethod(o.posOpt, m, receiverTypeOpt(o.receiverOpt), o.typedOpt.get)
+        case AST.ResolvedInfo.BuiltIn(kind) if kind == AST.ResolvedInfo.BuiltIn.Kind.Print || kind == AST.ResolvedInfo.BuiltIn.Kind.Println =>
+          for (arg <- o.args) {
+            arg.typedOpt.get match {
+              case t: AST.Typed.Name =>
+                th.typeMap.get(t.ids).get match {
+                  case ti: TypeInfo.Adt if ti.methods.contains("string") =>
+                    val m = AST.ResolvedInfo.Method(F, AST.MethodMode.Method, ISZ(), t.ids, "string", ISZ(),
+                      Some(AST.Typed.Fun(F, T, ISZ(), AST.Typed.string)))
+                    addResolvedMethod(o.posOpt, m, Some(t), o.typedOpt.get)
+                  case _ =>
+                }
+              case _ =>
+            }
+          }
         case _ =>
       }
     }

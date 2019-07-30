@@ -589,7 +589,8 @@ object StaticTemplate {
                    tpe: String,
                    name: ST,
                    constructorParamTypes: ISZ[Vard],
-                   varTypes: ISZ[Vard]
+                   varTypes: ISZ[Vard],
+                   defaultString: B
                  ): Compiled = {
     val vars = constructorParamTypes ++ varTypes
     var members = ISZ[ST]()
@@ -632,6 +633,7 @@ object StaticTemplate {
     val stringHeader = st"void ${name}_string_(STACK_FRAME String result, $name this)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
 
+    val stringHeaderOpt: Option[ST] = if (defaultString) Some(st"$stringHeader;") else None()
     val header =
       st"""// $tpe
           |
@@ -639,7 +641,7 @@ object StaticTemplate {
           |
           |$eqHeader;
           |$neHeader;
-          |$stringHeader;
+          |$stringHeaderOpt
           |$cprintHeader;
           |
           |inline B ${name}__is(STACK_FRAME void* this) {
@@ -654,12 +656,19 @@ object StaticTemplate {
           |}"""
 
     var eqStmts = ISZ[ST]()
-    var stringStmts = ISZ[ST](
-      st"""DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "string", 0);
-          |String_string_(SF result, string("${className(className.size - 1)}("));""")
-    var cprintStmts = ISZ[ST](st"""String_cprint(string("${className(className.size - 1)}("), isOut);""")
+    var stringStmts = ISZ[ST]()
+    var cprintStmts = ISZ[ST]()
+    if (defaultString) {
+      cprintStmts = cprintStmts :+ st"""String_cprint(string("${className(className.size - 1)}("), isOut);"""
+      stringStmts = stringStmts :+ st"""DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "string", 0);
+                                       |String_string_(SF result, string("${className(className.size - 1)}("));"""
+    } else {
+      cprintStmts = cprintStmts :+ st"DeclNewString(temp);"
+      cprintStmts = cprintStmts :+ st"""${name}_string_(SF (String) &temp, this);"""
+      cprintStmts = cprintStmts :+ st"""String_cprint((String) &temp, this);"""
+    }
 
-    if (constructorParamTypes.size > 1) {
+    if (defaultString && constructorParamTypes.size > 1) {
       stringStmts = stringStmts :+ st"""String sep = string(", ");"""
       cprintStmts = cprintStmts :+ st"""String sep = string(", ");"""
     }
@@ -670,16 +679,27 @@ object StaticTemplate {
       if (!vd.isHidden) {
         eqStmts = eqStmts :+ st"if (${vd.tpePtr}__ne(${pre}this->${vd.id}, ${pre}other->${vd.id})) return F;"
       }
-      if (i > 0) {
-        stringStmts = stringStmts :+ st"String_string_(SF result, sep);"
-        cprintStmts = cprintStmts :+ st"String_cprint(sep, isOut);"
+      if (defaultString) {
+        if (i > 0) {
+          stringStmts = stringStmts :+ st"String_string_(SF result, sep);"
+          cprintStmts = cprintStmts :+ st"String_cprint(sep, isOut);"
+        }
+        stringStmts = stringStmts :+ st"${vd.tpePtr}_string_(SF result, ${pre}this->${vd.id});"
+        cprintStmts = cprintStmts :+ st"${vd.tpePtr}_cprint(${pre}this->${vd.id}, isOut);"
       }
-      stringStmts = stringStmts :+ st"${vd.tpePtr}_string_(SF result, ${pre}this->${vd.id});"
-      cprintStmts = cprintStmts :+ st"${vd.tpePtr}_cprint(${pre}this->${vd.id}, isOut);"
     }
-    stringStmts = stringStmts :+ st"""String_string_(SF result, string(")"));"""
-    cprintStmts = cprintStmts :+ st"""String_cprint(string(")"), isOut);"""
+    if (defaultString) {
+      stringStmts = stringStmts :+ st"""String_string_(SF result, string(")"));"""
+      cprintStmts = cprintStmts :+ st"""String_cprint(string(")"), isOut);"""
+    }
 
+    val stringImplOpt: Option[ST] =
+      if (defaultString)
+        Some(st"""
+                 |$stringHeader {
+                 |  ${(stringStmts, "\n")}
+                 |}""")
+      else None()
     val impl =
       st"""// $tpe
           |
@@ -689,10 +709,7 @@ object StaticTemplate {
           |}
           |
           |$neImpl
-          |
-          |$stringHeader {
-          |  ${(stringStmts, "\n")}
-          |}
+          |$stringImplOpt
           |
           |$cprintHeader {
           |  #ifndef SIREUM_NO_PRINT
@@ -702,7 +719,6 @@ object StaticTemplate {
           |
           |B ${name}__is(STACK_FRAME void* this);
           |$name ${name}__as(STACK_FRAME void *this);"""
-
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
       header = compiled.header :+ header,
