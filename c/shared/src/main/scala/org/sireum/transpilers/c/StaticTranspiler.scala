@@ -368,6 +368,31 @@ import StaticTranspiler._
     var r = HashSMap.empty[QName, ST]
     var cFilenames: ISZ[ISZ[String]] = ISZ()
 
+    def checkArgs(): Unit = {
+
+      val allTypes = ts.otherTypes ++ (for (nts <- ts.nameTypes.values; nt <- nts.elements) yield nt.tpe)
+
+      for (t <- config.customArraySizes.keys) {
+        if (!allTypes.contains(t)) {
+          rep.error(None(), transKind, s"Invalid custom size for non-existent type '$t'.")
+        }
+      }
+
+      for (n <- config.customConstants.keys) {
+        ts.typeHierarchy.nameMap.get(n) match {
+          case Some(_: Info.Var) =>
+          case _ =>
+            rep.error(None(), transKind, st"Invalid custom constant for non-existent object val/var '${(n, ".")}'.".render)
+        }
+      }
+    }
+
+    checkArgs()
+
+    if (rep.hasIssue) {
+      return StaticTranspiler.Result(r)
+    }
+
     def transEntryPoints(): Unit = {
       var i = 0
       for (ep <- ts.entryPoints) {
@@ -617,7 +642,14 @@ import StaticTranspiler._
     val indexType = t.args(0)
     val size: Z = config.customArraySizes.get(t) match {
       case Some(n) => n
-      case _ => config.maxArraySize
+      case _ =>
+        val t2: AST.Typed.Name =
+          if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, t.args)
+          else AST.Typed.Name(AST.Typed.isName, t.args)
+        config.customArraySizes.get(t2) match {
+          case Some(n) => n
+          case _ => config.maxArraySize
+        }
     }
     if (indexType == AST.Typed.z) {
       return (z"0", size)
