@@ -153,7 +153,7 @@ class StaticTranspilerTest extends TestSuite {
                         |  u8"0x51", u8"0xc1", u8"0x47", u8"0x56", u8"0xa0", u8"0x61", u8"0xd6", u8"0x62",
                         |  u8"0xf5", u8"0x80", u8"0xff", u8"0x4d", u8"0xe4", u8"0x3b", u8"0x49", u8"0xfa",
                         |  u8"0x82", u8"0xd8", u8"0x0a", u8"0x4b", u8"0x80", u8"0xf8", u8"0x43", u8"0x4a"
-                        |))""".stripMargin)
+                        |))""".stripMargin, 256)
 
     * - testWorksheet("""import org.sireum.U8._
                         |val hash = crypto.SHA3.sum256(IS.create(200, u8"0xa3"))
@@ -163,7 +163,7 @@ class StaticTranspilerTest extends TestSuite {
                         |  u8"0xa9", u8"0x8e", u8"0xf7", u8"0x6e", u8"0x83", u8"0x24", u8"0xaf", u8"0xbf",
                         |  u8"0xd4", u8"0x6c", u8"0xfd", u8"0x81", u8"0xb2", u8"0x2e", u8"0x39", u8"0x73",
                         |  u8"0xc6", u8"0x5f", u8"0xa1", u8"0xbd", u8"0x9d", u8"0xe3", u8"0x17", u8"0x87"
-                        |))""".stripMargin)
+                        |))""".stripMargin, 256)
 
     * - testWorksheet("""import org.sireum.U8._
                         |val hash = crypto.SHA3.sum384(IS.create(200, u8"0xa3"))
@@ -175,7 +175,7 @@ class StaticTranspilerTest extends TestSuite {
                         |  u8"0xd1", u8"0x73", u8"0x26", u8"0x49", u8"0xce", u8"0x1d", u8"0xbc", u8"0xdd",
                         |  u8"0x76", u8"0x19", u8"0x7a", u8"0x31", u8"0xfd", u8"0x55", u8"0xee", u8"0x98",
                         |  u8"0x9f", u8"0x2d", u8"0x70", u8"0x50", u8"0xdd", u8"0x47", u8"0x3e", u8"0x8f"
-                        |))""".stripMargin)
+                        |))""".stripMargin, 256)
 
     * - testWorksheet("""import org.sireum.U8._
                         |val hash = crypto.SHA3.sum512(IS.create(200, u8"0xa3"))
@@ -189,7 +189,7 @@ class StaticTranspilerTest extends TestSuite {
                         |  u8"0x65", u8"0x95", u8"0x84", u8"0x73", u8"0x9a", u8"0x2d", u8"0xf4", u8"0x6b",
                         |  u8"0xe5", u8"0x89", u8"0xc5", u8"0x1c", u8"0xa1", u8"0xa4", u8"0xa8", u8"0x41",
                         |  u8"0x6d", u8"0xf6", u8"0x54", u8"0x5a", u8"0x1c", u8"0xe8", u8"0xba", u8"0x00"
-                        |))""".stripMargin)
+                        |))""".stripMargin, 256)
 
     * - testWorksheet("""import org.sireum.U8._
                         |val a3 = ISZ(u8"0xa3")
@@ -208,7 +208,7 @@ class StaticTranspilerTest extends TestSuite {
                         |  u8"0x65", u8"0x95", u8"0x84", u8"0x73", u8"0x9a", u8"0x2d", u8"0xf4", u8"0x6b",
                         |  u8"0xe5", u8"0x89", u8"0xc5", u8"0x1c", u8"0xa1", u8"0xa4", u8"0xa8", u8"0x41",
                         |  u8"0x6d", u8"0xf6", u8"0x54", u8"0x5a", u8"0x1c", u8"0xe8", u8"0xba", u8"0x00"
-                        |))""".stripMargin)
+                        |))""".stripMargin, 256)
 
     * - testWorksheet("""@datatype class Foo(a: ISZ[Z])
                         |
@@ -367,7 +367,7 @@ class StaticTranspilerTest extends TestSuite {
 
   }
 
-  def testWorksheet(input: Predef.String)(implicit line: sourcecode.Line): Unit = {
+  def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
       Parser(s"import org.sireum._\n$input")
@@ -390,8 +390,8 @@ class StaticTranspilerTest extends TestSuite {
       fprintWidth = 3,
       defaultBitWidth = 64,
       maxStringSize = 256,
-      maxArraySize = 256,
-      customArraySizes = HashMap ++ ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string)) ~> 100),
+      maxArraySize = size,
+      customArraySizes = HashMap.empty,
       customConstants = HashMap.empty,
       plugins = ISZ(NumberConversionsExtMethodPlugin()),
       exts = ISZ(),
