@@ -370,7 +370,7 @@ import StaticTranspiler._
 
     def checkArgs(): Unit = {
 
-      val allTypes = ts.otherTypes ++ (for (nts <- ts.nameTypes.values; nt <- nts.elements) yield nt.tpe)
+      val allTypes = ts.otherTypes ++ (for (nts <- ts.nameTypes.values; nt <- nts.elements) yield nt.tpe.asInstanceOf[AST.Typed])
 
       for (t <- config.customArraySizes.keys) {
         if (!allTypes.contains(t)) {
