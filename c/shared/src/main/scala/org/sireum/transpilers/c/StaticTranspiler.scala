@@ -2166,6 +2166,10 @@ import StaticTranspiler._
       case _: AST.Exp.Eta => halt("TODO") // TODO
       case _: AST.Exp.Fun => halt("TODO") // TODO
       case _: AST.Exp.Quant => halt("TODO") // TODO
+      case _: AST.Exp.AtLoc => halt("Infeasible")
+      case _: AST.Exp.Input => halt("Infeasible")
+      case _: AST.Exp.Result => halt("Infeasible")
+      case _: AST.Exp.StateSeq => halt("Infeasible")
     }
   }
 
