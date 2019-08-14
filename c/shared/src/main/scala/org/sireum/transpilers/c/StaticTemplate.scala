@@ -273,7 +273,7 @@ object StaticTemplate {
     return r
   }
 
-  @pure def cmake(project: String, stackSize: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName]): ST = {
+  @pure def cmake(libOnly: B, project: String, stackSize: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName]): ST = {
     val mainFs = HashSet ++ mainFilenames
 
     @pure def cSource(fs: QName): B = {
@@ -309,7 +309,7 @@ object StaticTemplate {
       return r
     }
 
-    val mains: ISZ[ST] = for (f <- mainFilenames) yield target(f)
+    val mains: ISZ[ST] = if (libOnly) ISZ[ST]() else for (f <- mainFilenames) yield target(f)
 
     val r =
       st"""cmake_minimum_required(VERSION 3.6.2)

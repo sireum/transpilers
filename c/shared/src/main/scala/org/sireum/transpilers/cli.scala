@@ -91,6 +91,9 @@ object cli {
         Opt(name = "excludeBuild", longKey = "exclude-build", shortKey = Some('x'),
           tpe = Type.Str(Some(','), None()),
           description = "Type/method fully qualified names to exclude in the generated CMake file"),
+        Opt(name = "libOnly", longKey = "lib-only", shortKey = Some('l'),
+          tpe = Type.Flag(F),
+          description = "Only generate library definition in CMake file"),
       )),
       OptGroup(name = "Persistence", opts = ISZ(
         Opt(name = "save", longKey = "save", shortKey = None(), tpe = Type.Path(F, None()),

@@ -98,7 +98,8 @@ class StaticTranspilerRcTest extends TestSuite {
       exts = ISZ(extFile),
       excludedNames = HashSet.empty[ISZ[String]],
       forLoopOpt = forLoopOpt,
-      stackSize = "16 * 1024 * 1024"
+      stackSize = "16 * 1024 * 1024",
+      libOnly = F
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)

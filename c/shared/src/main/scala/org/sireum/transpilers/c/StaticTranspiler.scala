@@ -52,7 +52,8 @@ object StaticTranspiler {
     exts: ISZ[ExtFile],
     excludedNames: HashSet[QName],
     forLoopOpt: B,
-    stackSize: String
+    stackSize: String,
+    libOnly: B
   ) {
 
     @memoize def expPlugins: ISZ[ExpPlugin] = {
@@ -504,7 +505,7 @@ import StaticTranspiler._
       for (ext <- config.exts) {
         r = r + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> st"${ext.content}"
       }
-      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.projectName, config.stackSize, cFilenames, r.keys)
+      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.libOnly, config.projectName, config.stackSize, cFilenames, r.keys)
       r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
       )
