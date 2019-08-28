@@ -2318,7 +2318,7 @@ import StaticTranspiler._
     var declStmts = ISZ[ST]()
     var params = ISZ[ST]()
     var args = ISZ[ST]()
-    var scalars = ISZ[ST]()
+    var assigns = ISZ[ST]()
     var locals = HashSet.empty[String]
     currReceiverOpt match {
       case Some(currReceiver) =>
@@ -2337,14 +2337,9 @@ import StaticTranspiler._
         declStmts = declStmts :+ st"$tpe $name = &_$name;"
       }
       locals = locals + id.value
-      if (isScalar(kind)) {
-        params = params :+ st"$tpe *_$name"
-        args = args :+ st"&$name"
-        scalars = scalars :+ st"$tpe $name = *_$name;"
-      } else {
-        params = params :+ st"$tpe $name"
-        args = args :+ st"$name"
-      }
+      params = params :+ st"$tpe *_$name"
+      args = args :+ st"&$name"
+      assigns = assigns :+ st"$tpe $name = *_$name;"
     }
     def rec(p: AST.Pattern): Unit = {
       p match {
@@ -2374,7 +2369,7 @@ import StaticTranspiler._
       }
     }
     rec(pat)
-    return (declStmts, params, args, scalars, locals)
+    return (declStmts, params, args, assigns, locals)
   }
 
   def declPatternVars(allowShadow: B, pat: AST.Pattern): Unit = {
@@ -2556,17 +2551,17 @@ import StaticTranspiler._
             if (isScalar(kind)) {
               stmts = stmts :+ st"*_$name = $exp;"
             } else if (immutableParent) {
-                stmts = stmts :+ st"$name = (${transpileType(t)}) $exp;"
+                stmts = stmts :+ st"*_$name = (${transpileType(t)}) $exp;"
             } else {
-              stmts = stmts :+ st"Type_assign($name, $exp, sizeof(${typeDecl(t)}));"
+              stmts = stmts :+ st"Type_assign(*_$name, $exp, sizeof(${typeDecl(t)}));"
             }
           case _ =>
             if (isScalar(kind)) {
               stmts = stmts :+ st"*_$name = $exp;"
             } else if (immutableParent) {
-              stmts = stmts :+ st"$name = (${transpileType(t)}) $exp;"
+              stmts = stmts :+ st"*_$name = (${transpileType(t)}) $exp;"
             } else {
-              stmts = stmts :+ st"Type_assign($name, $exp, sizeof(${typeDecl(t)}));"
+              stmts = stmts :+ st"Type_assign(*_$name, $exp, sizeof(${typeDecl(t)}));"
             }
         }
       case pat: AST.Pattern.Structure =>
@@ -2594,7 +2589,7 @@ import StaticTranspiler._
     def transCase(handled: ST, exp: ST, cas: AST.Case): Unit = {
       val oldLocalRename = localRename
       val oldStmts = stmts
-      var (declStmts, params, args, scalars, locals) = declPatternVarParamArgs(T, cas.pattern)
+      var (declStmts, params, args, assigns, locals) = declPatternVarParamArgs(T, cas.pattern)
       stmts = ISZ()
       transpilePattern(immutable, T, exp, cas.pattern)
       val patStmts = stmts
@@ -2633,7 +2628,7 @@ import StaticTranspiler._
           additionalMethodImpls = additionalMethodImpls :+
             st"""static inline B $fname(STACK_FRAME $tpe $exp$parameters) {
                 |  ${(patStmts, "\n")}
-                |  ${(scalars, "\n")}
+                |  ${(assigns, "\n")}
                 |  ${(condStmts, "\n")}
                 |  return $cond;
                 |}"""
