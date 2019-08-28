@@ -303,7 +303,7 @@ object StaticTemplate {
         st"""
             |add_executable($name-bin ${(filepath, "/")})
             |
-            |target_link_libraries($name-bin LINK_PUBLIC $project)
+            |target_link_libraries($name-bin LINK_PUBLIC $project m)
             |
             |set_target_properties($name-bin PROPERTIES OUTPUT_NAME $name)"""
       return r
