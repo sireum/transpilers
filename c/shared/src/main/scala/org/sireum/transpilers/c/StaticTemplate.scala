@@ -462,9 +462,11 @@ object StaticTemplate {
     return r
   }
 
-  @pure def worksheet(filename: String, stmts: ISZ[ST]): ST = {
+  @pure def worksheet(filename: String, preambles: ISZ[ST], stmts: ISZ[ST]): ST = {
     val r =
       st"""#include <all.h>
+          |
+          |${(preambles, "\n\n")}
           |
           |int main(void) {
           |  DeclNewStackFrame(NULL, "$filename", "<worksheet>", "<main>", 0);
