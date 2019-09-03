@@ -1823,8 +1823,18 @@ import StaticTranspiler._
         val receiver = transReceiver()
         val arg = invoke.args(0)
         val tpe = transpileType(t)
-        val e = transpileExp(arg)
-        return st"${tpe}_at($receiver, $e)"
+        val et = t.args(1)
+        if (!isImmutable(typeKind(t)) && !isScalar(typeKind(et))) {
+          val e = transpileExp(arg)
+          val temp = freshTempName()
+          val etpe = transpileType(et)
+          stmts = stmts :+ st"DeclNew$etpe($temp);"
+          stmts = stmts :+ st"Type_assign(&$temp, ${tpe}_at($receiver, $e), sizeof(struct $etpe));"
+          return st"(&$temp)"
+        } else {
+          val e = transpileExp(arg)
+          return st"${tpe}_at($receiver, $e)"
+        }
       }
 
       def transSStore(name: QName): ST = {
