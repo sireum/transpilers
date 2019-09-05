@@ -365,6 +365,13 @@ class StaticTranspilerTest extends TestSuite {
                         |println(Foo.fooP(4, 5))
                         |println(Bar(4).bar(5))""".stripMargin)
 
+    * - testWorksheet("""val s = MSZ[Option[Option[Z]]](Some(Some(5)), Some(None[Z]()))
+                        |s(0) match {
+                        |  case Some(o) =>
+                        |    s(0) = None()
+                        |    assert(o == Some(5))
+                        |  case _ =>
+                        |}""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {

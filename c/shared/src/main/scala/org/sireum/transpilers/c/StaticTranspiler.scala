@@ -460,9 +460,10 @@ import StaticTranspiler._
             }
             transpileAssignExp(
               init,
-              (rhs, rhsT) =>
+              (rhs, rhsT, _) => ISZ(
                 if (isScalar(kind)) st"_${mangledName}_$id = $rhs;"
                 else st"Type_assign(&_${mangledName}_$id, $rhs, sizeof($rhsT));"
+              )
             )
           case _ =>
         }
@@ -600,9 +601,9 @@ import StaticTranspiler._
       val (id, (_, ct, init)) = v
       val kind = typeKind(ct)
       if (isScalar(kind)) {
-        transpileAssignExp(init, (rhs, _) => st"this->$id = $rhs;")
+        transpileAssignExp(init, (rhs, _, _) => ISZ(st"this->$id = $rhs;"))
       } else {
-        transpileAssignExp(init, (rhs, rhsT) => st"Type_assign(&this->$id, $rhs, sizeof($rhsT));")
+        transpileAssignExp(init, (rhs, rhsT, _) => ISZ(st"Type_assign(&this->$id, $rhs, sizeof($rhsT));"))
       }
     }
 
@@ -616,11 +617,11 @@ import StaticTranspiler._
     currReceiverOpt = oldReceiverOpts
   }
 
-  def transpileAssignExp(exp: AST.AssignExp, f: (ST, ST) => ST @pure): Unit = {
+  def transpileAssignExp(exp: AST.AssignExp, f: (ST, ST, B) => ISZ[ST] @pure): Unit = {
     exp match {
       case exp: AST.Stmt.Expr =>
-        val (rhs, _) = transpileExp(exp.exp)
-        stmts = stmts :+ f(rhs, typeDecl(exp.typedOpt.get))
+        val (rhs, shouldCopy) = transpileExp(exp.exp)
+        stmts = stmts ++ f(rhs, typeDecl(exp.typedOpt.get), shouldCopy || !isImmutable(typeKind(exp.attr.typedOpt.get)))
       case exp: AST.Stmt.Block =>
         val bstmts = exp.body.stmts
         for (stmt <- ops.ISZOps(bstmts).dropRight(1)) {
@@ -2270,7 +2271,7 @@ import StaticTranspiler._
       |}"""
   }
 
-  def transpileIf(stmt: AST.Stmt.If, fOpt: Option[(ST, ST) => ST @pure]): Unit = {
+  def transpileIf(stmt: AST.Stmt.If, fOpt: Option[(ST, ST, B) => ISZ[ST] @pure]): Unit = {
     val (cond, _) = transpileExp(stmt.cond)
     val oldStmts = stmts
     stmts = ISZ()
@@ -2592,7 +2593,7 @@ import StaticTranspiler._
     }
   }
 
-  def transpileMatch(stmt: AST.Stmt.Match, fOpt: Option[(ST, ST) => ST @pure]): Unit = {
+  def transpileMatch(stmt: AST.Stmt.Match, fOpt: Option[(ST, ST, B) => ISZ[ST] @pure]): Unit = {
     val t = expType(stmt.exp)
     val tpe = transpileType(t)
     val immutable = isImmutable(typeKind(t))
@@ -2875,24 +2876,23 @@ import StaticTranspiler._
       }
       val local = localId(stmt.id.value)
       val tpe = transpileType(t)
-      val kind = typeKind(t)
-      val scalar = isScalar(kind)
-      val immutable = isImmutable(kind)
+      val scalar = isScalar(typeKind(t))
       if (scalar) {
-        init match {
-          case _: AST.Stmt.Expr => transpileAssignExp(init, (rhs, _) => st"$tpe $local = $rhs;")
-          case _ =>
-            stmts = stmts :+ st"$tpe $local;"
-            transpileAssignExp(init, (rhs, _) => st"$local = $rhs;")
+        if (init.isInstanceOf[AST.Stmt.Expr]) {
+          transpileAssignExp(init, (rhs, _, _) => ISZ(st"$tpe $local = $rhs;"))
+        } else {
+          stmts = stmts :+ st"$tpe $local;"
+          transpileAssignExp(init, (rhs, _, _) => ISZ(st"$local = $rhs;"))
         }
       } else {
-        if (immutable && stmt.isVal && init.isInstanceOf[AST.Stmt.Expr]) {
-          transpileAssignExp(init, (rhs, _) => st"$tpe $local = ($tpe) $rhs;")
-        } else {
-          stmts = stmts :+ st"DeclNew$tpe(_$local);"
-          stmts = stmts :+ st"$tpe $local = ($tpe) &_$local;"
-          transpileAssignExp(init, (rhs, rhsT) => st"Type_assign($local, $rhs, sizeof($rhsT));")
-        }
+        stmts = stmts :+ st"DeclNew$tpe(_$local);"
+        stmts = stmts :+ st"$tpe $local;"
+        transpileAssignExp(init, (rhs, rhsT, shouldCopy) =>
+          if (shouldCopy) ISZ(
+            st"$local = ($tpe) &_$local;",
+            st"Type_assign($local, $rhs, sizeof($rhsT));"
+          ) else ISZ(st"$local = ($tpe) $rhs;")
+        )
       }
     }
 
@@ -2904,16 +2904,27 @@ import StaticTranspiler._
       }
       val temp = freshTempName()
       val tpe = transpileType(t)
-      stmts = stmts :+ st"$tpe $temp;"
       if (isScalar(typeKind(t))) {
-        transpileAssignExp(stmt.init, (rhs, _) => st"$temp = $rhs;")
+        if (stmt.init.isInstanceOf[AST.Stmt.Expr]) {
+          transpileAssignExp(stmt.init, (rhs, _, _) => ISZ(st"$tpe $temp = $rhs;"))
+        } else {
+          stmts = stmts :+ st"$tpe $temp;"
+          transpileAssignExp(stmt.init, (rhs, _, _) => ISZ(st"$temp = $rhs;"))
+        }
       } else {
-        transpileAssignExp(stmt.init, (rhs, _) => st"$temp = ($tpe) $rhs;")
+        stmts = stmts :+ st"DeclNew$tpe(_$temp);"
+        stmts = stmts :+ st"$tpe $temp;"
+        transpileAssignExp(stmt.init, (rhs, rhsT, shouldCopy) =>
+          if (shouldCopy) ISZ(
+            st"$temp = ($tpe) &_$temp;",
+            st"Type_assign($temp, $rhs, sizeof($rhsT));"
+          ) else ISZ(st"$temp = ($tpe) $rhs;")
+        )
       }
       val (declStmts, params, args, _, _) = declPatternVarParamArgs(F, stmt.pattern)
       val fname: ST = stmt.pattern.posOpt match {
-        case Some(pos) => mangleName(context ++ ISZ("match", s"${pos.beginLine}", s"${pos.beginColumn}"))
-        case _ => mangleName(context ++ ISZ("match", freshTempName().render))
+        case Some(pos) => mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}"))
+        case _ => mangleName(context ++ ISZ("extract", freshTempName().render))
       }
       val parameters: ST = if (params.isEmpty) st"" else st", ${(params, ", ")}"
       val arguments: ST = if (args.isEmpty) st"" else st", ${(args, ", ")}"
@@ -2938,36 +2949,36 @@ import StaticTranspiler._
         case lhs: AST.Exp.Ident =>
           lhs.attr.resOpt.get match {
             case res: AST.ResolvedInfo.LocalVar =>
+              val id = localId(lhs.id.value)
               res.scope match {
                 case AST.ResolvedInfo.LocalVar.Scope.Closure =>
                   val t = expType(stmt.lhs)
                   val kind = typeKind(t)
                   if (isScalar(kind)) {
-                    transpileAssignExp(stmt.rhs, (rhs, _) => st"*${localId(lhs.id.value)} = $rhs;")
+                    transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"*$id = $rhs;"))
                   } else {
-                    val id = localId(lhs.id.value)
-                    transpileAssignExp(stmt.rhs, (rhs, _) => st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));")
+                    transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));"))
                   }
                 case scope =>
                   val t = expType(stmt.lhs)
-                  val kind = typeKind(t)
-                  if (isScalar(kind) || (isImmutable(kind) && scope == AST.ResolvedInfo.LocalVar.Scope.Current)) {
-                    transpileAssignExp(stmt.rhs, (rhs, _) => st"${localId(lhs.id.value)} = $rhs;")
-                  } else {
-                    val id = localId(lhs.id.value)
-                    stmts = stmts :+ st"${localId(lhs.id.value)} = &_$id;"
-                    transpileAssignExp(stmt.rhs, (rhs, _) => st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));")
-                  }
+                  transpileAssignExp(stmt.rhs, (rhs, _, shouldCopy) =>
+                    if (isScalar(typeKind(t)) || (!shouldCopy && scope == AST.ResolvedInfo.LocalVar.Scope.Current))
+                      ISZ(st"$id = $rhs;")
+                    else ISZ(
+                      st"$id = &_$id;",
+                      st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));"
+                    )
+                  )
               }
             case res: AST.ResolvedInfo.Var =>
               if (res.isInObject) {
                 val name = mangleName(res.owner :+ res.id)
-                transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);")
+                transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);"))
               } else {
                 val t = currReceiverOpt.get
                 transpileAssignExp(
                   stmt.rhs,
-                  (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);"
+                  (rhs, _, _) => ISZ(st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);")
                 )
               }
             case _ => halt("Infeasible")
@@ -2976,14 +2987,14 @@ import StaticTranspiler._
           val res = lhs.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Var]
           if (res.isInObject) {
             val name = mangleName(res.owner :+ res.id)
-            transpileAssignExp(stmt.rhs, (rhs, _) => st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);")
+            transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);"))
           } else {
             val receiver = lhs.receiverOpt.get
             val t = expType(receiver)
             val (rcv, _) = transpileExp(receiver)
             transpileAssignExp(
               stmt.rhs,
-              (rhs, _) => st"${transpileType(t)}_${fieldId(res.id)}_a($rcv, (${transpileType(expType(lhs))}) $rhs);"
+              (rhs, _, _) => ISZ(st"${transpileType(t)}_${fieldId(res.id)}_a($rcv, (${transpileType(expType(lhs))}) $rhs);")
             )
           }
         case lhs: AST.Exp.Invoke =>
@@ -2992,8 +3003,8 @@ import StaticTranspiler._
             case _ => val (r, _) = transpileExp(lhs.ident); (expType(lhs.ident).asInstanceOf[AST.Typed.Name], r)
           }
           val (index, _) = transpileExp(lhs.args(0))
-          transpileAssignExp(stmt.rhs, (rhs, _) =>
-            st"${transpileType(receiverType)}_up($receiver, $index, (${transpileType(expType(lhs))}) $rhs);")
+          transpileAssignExp(stmt.rhs, (rhs, _, _) =>
+            ISZ(st"${transpileType(receiverType)}_up($receiver, $index, (${transpileType(expType(lhs))}) $rhs);"))
         case _ => halt("Infeasible")
       }
 
