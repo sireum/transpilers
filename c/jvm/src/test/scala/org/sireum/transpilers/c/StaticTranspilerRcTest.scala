@@ -130,7 +130,20 @@ class StaticTranspilerRcTest extends TestSuite {
         f = f / segment.value
       }
       f.up.mkdirAll()
-      f.writeOver(e._2.render.value)
+      f = f.canon
+      f.writeOver(e._2.render)
+      println(s"Wrote $f")
+    }
+    for (e <- r.extFiles.entries) {
+      val path = e._1
+      val extFile = e._2
+      var f = resultDir
+      for (segment <- path) {
+        f = f / segment.value
+      }
+      f.up.mkdirAll()
+      f = f.canon
+      f.writeOver(extFile.content)
       println(s"Wrote $f")
     }
 

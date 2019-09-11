@@ -510,6 +510,10 @@ import StaticTranspiler._
         ops.ISZOps(tn).sortWith((p1, p2) => p1._1 <= p2._1)
       }
 
+      for (ext <- config.exts) {
+        rExt = rExt + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> ext
+      }
+
       val typeQNames = compiledMap.keys
       r = r + ISZ[String](runtimeDir, "type-composite.h") ~> typeCompositeH(
         config.maxStringSize,
@@ -525,9 +529,6 @@ import StaticTranspiler._
       r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
       )
-      for (ext <- config.exts) {
-        rExt = rExt + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> ext
-      }
     }
 
     def work(): Unit = {
