@@ -94,7 +94,7 @@ object StaticTranspiler {
 
   }
 
-  @datatype class Result(files: HashSMap[QName, ST])
+  @datatype class Result(files: HashSMap[QName, ST], extFiles: HashSMap[QName, ExtFile])
 
   @sig trait Plugin
 
@@ -384,6 +384,7 @@ import StaticTranspiler._
   def transpile(rep: Reporter): StaticTranspiler.Result = {
 
     var r = HashSMap.empty[QName, ST]
+    var rExt = HashSMap.empty[QName, ExtFile]
     var cFilenames: ISZ[ISZ[String]] = ISZ()
 
     def checkArgs(): Unit = {
@@ -408,7 +409,7 @@ import StaticTranspiler._
     checkArgs()
 
     if (rep.hasIssue) {
-      return StaticTranspiler.Result(r)
+      return StaticTranspiler.Result(r, rExt)
     }
 
     def transEntryPoints(): Unit = {
@@ -520,13 +521,13 @@ import StaticTranspiler._
       r = r + ISZ[String](runtimeDir, "all.h") ~> allH(typeQNames, allHEntries)
       r = r + ISZ[String](runtimeDir, "all.c") ~> allC(typeNames, allCEntries)
       r = r ++ compiled(compiledMap)
-      for (ext <- config.exts) {
-        r = r + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> st"${ext.content}"
-      }
-      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.libOnly, config.projectName, config.stackSize, cFilenames, r.keys)
+      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.libOnly, config.projectName, config.stackSize, cFilenames, r.keys ++ rExt.keys)
       r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
       )
+      for (ext <- config.exts) {
+        rExt = rExt + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> ext
+      }
     }
 
     def work(): Unit = {
@@ -573,7 +574,7 @@ import StaticTranspiler._
 
     work()
 
-    return StaticTranspiler.Result(r)
+    return StaticTranspiler.Result(r, rExt)
   }
 
   def genClassConstructor(nt: TypeSpecializer.NamedType): Unit = {
