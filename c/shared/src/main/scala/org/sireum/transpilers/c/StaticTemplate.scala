@@ -868,16 +868,21 @@ object StaticTemplate {
     val (toOtherHeaderOpt, toOtherImplOpt): (Option[ST], Option[ST]) = otherNameOpt match {
       case Some(otherName) =>
         val other: String = if (isImmutable) "MS" else "IS"
-        (Some(
-          st"""
-              |inline void ${name}_to$other(STACK_FRAME $otherName result, $name this) {
-              |  STATIC_ASSERT(Max$otherName >= Max$name, "Invalid cast from $tpe to $other[...,...].");
-              |  result->type = T$otherName;
-              |  result->size = this->size;
-              |  memcpy(&result->value, &this->value, this->size * sizeof($elementType));
-              |}"""), Some(
-          st"""
-              |void ${name}_to$other(STACK_FRAME $otherName result, $name this);"""))
+        (
+          Some(
+            st"""
+                |inline void ${name}_to$other(STACK_FRAME $otherName result, $name this) {
+                |  STATIC_ASSERT(Max$otherName >= Max$name, "Invalid cast from $tpe to $other[...,...].");
+                |  result->type = T$otherName;
+                |  result->size = this->size;
+                |  memcpy(&result->value, &this->value, this->size ${if (isBit) st"/ 8 + 1" else st"* sizeof($elementType)"});
+                |}"""
+          ),
+          Some(
+            st"""
+                |void ${name}_to$other(STACK_FRAME $otherName result, $name this);"""
+          )
+        )
       case _ => (None(), None())
     }
     val typeHeader =
