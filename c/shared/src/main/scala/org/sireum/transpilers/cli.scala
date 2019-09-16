@@ -94,6 +94,9 @@ object cli {
         Opt(name = "libOnly", longKey = "lib-only", shortKey = Some('l'),
           tpe = Type.Flag(F),
           description = "Only generate library definition in CMake file"),
+        Opt(name = "stableTypeId", longKey = "stable-type-id", shortKey = Some('i'),
+          tpe = Type.Flag(F),
+          description = "Enable stable type id"),
       )),
       OptGroup(name = "Persistence", opts = ISZ(
         Opt(name = "save", longKey = "save", shortKey = None(), tpe = Type.Path(F, None()),

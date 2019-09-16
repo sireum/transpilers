@@ -41,19 +41,20 @@ object StaticTranspiler {
   @datatype class ExtFile(uri: String, content: String)
 
   @datatype class Config(
-    projectName: String,
-    fprintWidth: Z,
-    defaultBitWidth: Z,
-    maxStringSize: Z,
-    maxArraySize: Z,
-    customArraySizes: HashMap[AST.Typed, Z],
-    customConstants: HashMap[QName, AST.Exp],
-    plugins: ISZ[Plugin],
-    exts: ISZ[ExtFile],
-    excludedNames: HashSet[QName],
-    forLoopOpt: B,
-    stackSize: String,
-    libOnly: B
+                          projectName: String,
+                          fprintWidth: Z,
+                          defaultBitWidth: Z,
+                          maxStringSize: Z,
+                          maxArraySize: Z,
+                          customArraySizes: HashMap[AST.Typed, Z],
+                          customConstants: HashMap[QName, AST.Exp],
+                          plugins: ISZ[Plugin],
+                          exts: ISZ[ExtFile],
+                          excludedNames: HashSet[QName],
+                          forLoopOpt: B,
+                          stackSize: String,
+                          libOnly: B,
+                          stableTypeId: B,
   ) {
 
     @memoize def expPlugins: ISZ[ExpPlugin] = {
@@ -497,14 +498,18 @@ import StaticTranspiler._
       }
       r = r + ISZ(runtimeDir, ztypeFilename) ~> ztype
 
-      val typeNames: ISZ[(String, ST, ST)] = {
-        var tn: ISZ[(String, ST, ST)] = ISZ(
-          (dotName(AST.Typed.stringName), st"${mangleName(AST.Typed.stringName)}", st"String")
+      val typeNames: ISZ[(String, ST, ST, ST)] = {
+        var tn: ISZ[(String, ST, ST, ST)] = ISZ(
+          (AST.Typed.string.string, st"${mangleName(AST.Typed.stringName)}", st"String",
+            if (config.stableTypeId) stableId(AST.Typed.string) else st"0")
         )
+        var i = 1
         for (e <- typeNameMap.entries) {
           if (!builtInTypes.contains(e._1) && isClass(typeKind(e._1))) {
             val s = e._1.string
-            tn = tn :+ ((s, e._2, escapeString(None(), s)))
+            tn = tn :+ ((s, e._2, escapeString(None(), s),
+              if (config.stableTypeId) stableId(e._1) else st"$i"))
+            i = i + 1
           }
         }
         ops.ISZOps(tn).sortWith((p1, p2) => p1._1 <= p2._1)
@@ -514,12 +519,12 @@ import StaticTranspiler._
         rExt = rExt + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> ext
       }
 
-      val typeQNames = compiledMap.keys
       r = r + ISZ[String](runtimeDir, "type-composite.h") ~> typeCompositeH(
         config.maxStringSize,
         minIndexMaxElementSize(iszStringType)._2,
         typeNames
       )
+      val typeQNames = compiledMap.keys
       r = r + ISZ[String](runtimeDir, "types.h") ~> typesH(typeQNames, typeNames)
       r = r + ISZ[String](runtimeDir, "types.c") ~> typesC(typeNames)
       r = r + ISZ[String](runtimeDir, "all.h") ~> allH(typeQNames, allHEntries)
@@ -701,8 +706,7 @@ import StaticTranspiler._
     }
   }
 
-  @pure def fprint(t: AST.Typed): ST = {
-    val width = config.fprintWidth
+  @pure def fprintWidth(t: AST.Typed, width: Z): ST = {
     val max: Z = if (0 < width && width <= 64) width else 64
     val bytes = ops.ISZOps(crypto.SHA3.sum512(conversions.String.toU8is(t.string))).take(max)
     var cs = ISZ[C]()
@@ -712,6 +716,14 @@ import StaticTranspiler._
       cs = cs :+ ops.COps.hex2c(c & '\u000F')
     }
     return st"$cs"
+  }
+
+  @pure def stableId(t: AST.Typed): ST = {
+    return st"0x${fprintWidth(t, 4)}"
+  }
+
+  @pure def fprint(t: AST.Typed): ST = {
+    return fprintWidth(t, config.fprintWidth)
   }
 
   @pure def fingerprint(t: AST.Typed): (ST, B) = {

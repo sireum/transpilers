@@ -113,7 +113,7 @@ object StaticTemplate {
     "while"
   )
 
-  @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[(String, ST, ST)]): ST = {
+  @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[(String, ST, ST, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
           |#define SIREUM_GEN_TYPE_H
@@ -122,11 +122,10 @@ object StaticTemplate {
           |#include <stackframe.h>
           |
           |typedef enum {
-          |  T${typeNames(0)._2} = 0, // ${typeNames(0)._1}
           |  ${
         (
-          for (tn <- ops.ISZOps(ops.ISZOps(typeNames).zip(typeNames.indices.map((n: Z) => n))).drop(1))
-            yield st"T${tn._1._2} = ${tn._2}, // ${tn._1._1}",
+          for (tn <- typeNames)
+            yield st"T${tn._2} = ${tn._4}, // ${tn._1}",
           "\n"
         )
       }
@@ -161,7 +160,7 @@ object StaticTemplate {
     return r
   }
 
-  @pure def typesH(names: ISZ[QName], typeNames: ISZ[(String, ST, ST)]): ST = {
+  @pure def typesH(names: ISZ[QName], typeNames: ISZ[(String, ST, ST, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_H
           |#define SIREUM_GEN_H
@@ -191,7 +190,7 @@ object StaticTemplate {
     return r
   }
 
-  @pure def typesC(typeNames: ISZ[(String, ST, ST)]): ST = {
+  @pure def typesC(typeNames: ISZ[(String, ST, ST, ST)]): ST = {
     val strings: ISZ[ST] = for (tn <- typeNames) yield st""""${tn._3}""""
     val r =
       st"""#include <types.h>
@@ -232,7 +231,7 @@ object StaticTemplate {
     return r
   }
 
-  @pure def allC(typeNames: ISZ[(String, ST, ST)], entries: ISZ[ST]): ST = {
+  @pure def allC(typeNames: ISZ[(String, ST, ST, ST)], entries: ISZ[ST]): ST = {
     val r =
       st"""#include <all.h>
           |#include <errno.h>

@@ -405,7 +405,8 @@ class StaticTranspilerTest extends TestSuite {
       excludedNames = HashSet.empty,
       forLoopOpt = F,
       stackSize = "16 * 1024 * 1024",
-      libOnly = F
+      libOnly = F,
+      stableTypeId = F,
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)

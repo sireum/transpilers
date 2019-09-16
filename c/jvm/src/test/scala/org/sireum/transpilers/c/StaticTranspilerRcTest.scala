@@ -99,7 +99,8 @@ class StaticTranspilerRcTest extends TestSuite {
       excludedNames = HashSet.empty[ISZ[String]],
       forLoopOpt = forLoopOpt,
       stackSize = "16 * 1024 * 1024",
-      libOnly = F
+      libOnly = F,
+      stableTypeId = T
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)
