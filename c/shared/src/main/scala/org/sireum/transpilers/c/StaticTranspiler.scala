@@ -1095,16 +1095,17 @@ import StaticTranspiler._
           val minfo = findMethod(t)
           val mres = minfo.methodRes
           val mName = methodNameRes(Some(t), mres)
+          val mtpe = minfo.methodType.tpe
           val args: ST =
             if (mres.paramNames.isEmpty) st""
             else
-              st", ${(for (p <- ops.ISZOps(mres.paramNames).zip(minfo.methodType.tpe.args)) yield st"(${transpileType(p._2)}) ${localId(p._1)}", ", ")}"
+              st", ${(for (p <- ops.ISZOps(mres.paramNames).zip(mtpe.args)) yield st"(${transpileType(p._2)}) ${localId(p._1)}", ", ")}"
           if (rt == AST.Typed.unit) {
             cases = cases :+ st"case T$tpe: $mName(CALLER ($tpe) this$args); return;"
           } else if (scalar) {
             cases = cases :+ st"case T$tpe: return $mName(CALLER ($tpe) this$args);"
           } else {
-            cases = cases :+ st"case T$tpe: $mName(CALLER result, ($tpe) this$args); return;"
+            cases = cases :+ st"case T$tpe: $mName(CALLER (${transpileType(mtpe.ret)}) result, ($tpe) this$args); return;"
           }
       }
     }

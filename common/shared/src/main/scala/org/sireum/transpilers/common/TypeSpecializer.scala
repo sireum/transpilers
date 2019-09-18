@@ -313,7 +313,7 @@ import TypeSpecializer._
                         case Some(m) =>
                           val mFun = m.methodType.tpe.subst(aSubstMapOpt.get)
                           val smOpt =
-                            TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Supertype, tm.tpe, mFun, reporter)
+                            TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Subtype, tm.tpe, mFun, reporter)
                           smOpt match {
                             case Some(sm) =>
                               val target = SMethod(Some(receiver), receiver.ids, id, mFun.subst(sm), tm.mode)
