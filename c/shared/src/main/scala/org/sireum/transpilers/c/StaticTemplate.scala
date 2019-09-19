@@ -924,6 +924,14 @@ object StaticTemplate {
           |   return (Z) (this)->size;
           |}
           |
+          |inline B ${name}_isEmpty(STACK_FRAME $name this) {
+          |   return (this)->size == 0;
+          |}
+          |
+          |inline B ${name}_nonEmpty(STACK_FRAME $name this) {
+          |   return (this)->size != 0;
+          |}
+          |
           |$eqHeader;
           |$createHeader;
           |$zreateHeader;
