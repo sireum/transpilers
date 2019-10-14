@@ -902,20 +902,22 @@ import StaticTranspiler._
         var cps = ISZ[Vard]()
         for (cv <- nt.constructorVars.entries) {
           val (id, (isVal, isHidden, ct)) = cv
-          types = types :+ ct
-          val tpe = genType(ct)
-          val kind = typeKind(ct)
-          cps = cps :+ Vard(kind, fieldId(id).render, typeDecl(ct), tpe, !isVal, isHidden)
-          checkClosure(st"${(t.ids, ".")}'s $id".render, ct, None())
+          if (checkClosure(st"${(t.ids, ".")}'s $id".render, ct, None())) {
+            types = types :+ ct
+            val tpe = genType(ct)
+            val kind = typeKind(ct)
+            cps = cps :+ Vard(kind, fieldId(id).render, typeDecl(ct), tpe, !isVal, isHidden)
+          }
         }
         var vs = ISZ[Vard]()
         for (v <- nt.vars.entries) {
           val (id, (isVal, ct, _)) = v
-          types = types :+ ct
-          val tpe = genType(ct)
-          val kind = typeKind(ct)
-          vs = vs :+ Vard(kind, fieldId(id).render, typeDecl(ct), tpe, !isVal, F)
-          checkClosure(st"${(t.ids, ".")}'s $id".render, ct, None())
+          if (checkClosure(st"${(t.ids, ".")}'s $id".render, ct, None())) {
+            types = types :+ ct
+            val tpe = genType(ct)
+            val kind = typeKind(ct)
+            vs = vs :+ Vard(kind, fieldId(id).render, typeDecl(ct), tpe, !isVal, F)
+          }
         }
         val uri =
           filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt].posOpt, "")
@@ -1137,7 +1139,7 @@ import StaticTranspiler._
     return collector.r
   }
 
-  def checkClosure(title: String, t: AST.Typed, posOpt: Option[Position]): B = {
+  def checkClosure(title: => String, t: AST.Typed, posOpt: Option[Position]): B = {
     t match {
       case t: AST.Typed.Fun =>
         reporter.error(posOpt, transKind, s"Unsupported function type '$t' when translating $title")
