@@ -1136,6 +1136,23 @@ import StaticTranspiler._
   }
 
   def transpileMethod(method: TypeSpecializer.Method): Unit = {
+    def checkClosure(title: String, t: AST.Typed): B = {
+      t match {
+        case t: AST.Typed.Fun =>
+          reporter.error(None(), transKind,
+            st"Unsupported function type '$t' when translating ${(method.info.name, ".")}'s $title".render)
+          return F
+        case _ => return T
+      }
+    }
+    val mType = method.info.methodType
+    for (i <- mType.tpe.args.indices) {
+      if (!checkClosure(s"parameter ${mType.paramNames(i)}", mType.tpe.args(i))) {
+        return
+      }
+    }
+    checkClosure("return type", mType.tpe.ret)
+
     val res = method.info.methodRes
     val key: QName = currReceiverOpt match {
       case Some(rcv) => compiledKeyName(rcv)
