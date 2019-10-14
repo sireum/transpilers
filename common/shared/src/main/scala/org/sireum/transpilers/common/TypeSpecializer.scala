@@ -889,7 +889,7 @@ import TypeSpecializer._
   override def preExpBinary(o: AST.Exp.Binary): AST.MTransformer.PreResult[AST.Exp] = {
     o.attr.resOpt.get match {
       case m: AST.ResolvedInfo.Method =>
-        addResolvedMethod(o.posOpt, m, o.left.typedOpt.asInstanceOf[Option[AST.Typed.Name]], o.typedOpt.get)
+        addResolvedMethod(o.posOpt, m, Some(o.left.typedOpt.get.asInstanceOf[AST.Typed.Name]), o.typedOpt.get)
       case _ =>
     }
     transformExp(o.left)
