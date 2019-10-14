@@ -906,6 +906,7 @@ import StaticTranspiler._
           val tpe = genType(ct)
           val kind = typeKind(ct)
           cps = cps :+ Vard(kind, fieldId(id).render, typeDecl(ct), tpe, !isVal, isHidden)
+          checkClosure(st"${(t.ids, ".")}'s $id".render, ct, None())
         }
         var vs = ISZ[Vard]()
         for (v <- nt.vars.entries) {
@@ -914,6 +915,7 @@ import StaticTranspiler._
           val tpe = genType(ct)
           val kind = typeKind(ct)
           vs = vs :+ Vard(kind, fieldId(id).render, typeDecl(ct), tpe, !isVal, F)
+          checkClosure(st"${(t.ids, ".")}'s $id".render, ct, None())
         }
         val uri =
           filenameOfPosOpt(ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt].posOpt, "")
@@ -1135,23 +1137,37 @@ import StaticTranspiler._
     return collector.r
   }
 
-  def transpileMethod(method: TypeSpecializer.Method): Unit = {
-    def checkClosure(title: String, t: AST.Typed): B = {
-      t match {
-        case t: AST.Typed.Fun =>
-          reporter.error(None(), transKind,
-            st"Unsupported function type '$t' when translating ${(method.info.name, ".")}'s $title".render)
-          return F
-        case _ => return T
-      }
+  def checkClosure(title: String, t: AST.Typed, posOpt: Option[Position]): B = {
+    t match {
+      case t: AST.Typed.Fun =>
+        reporter.error(posOpt, transKind, s"Unsupported function type '$t' when translating $title")
+        return F
+      case t: AST.Typed.Name =>
+        for (targ <- t.args) {
+          if (!checkClosure(title, targ, posOpt)) {
+            return F
+          }
+        }
+        return T
+      case t: AST.Typed.Tuple =>
+        for (targ <- t.args) {
+          if (!checkClosure(title, targ, posOpt)) {
+            return F
+          }
+        }
+        return T
+      case _ => return T
     }
+  }
+
+  def transpileMethod(method: TypeSpecializer.Method): Unit = {
     val mType = method.info.methodType
     for (i <- mType.tpe.args.indices) {
-      if (!checkClosure(s"parameter ${mType.paramNames(i)}", mType.tpe.args(i))) {
+      if (!checkClosure(st"${(method.info.name, ".")}'s parameter ${mType.paramNames(i)}".render, mType.tpe.args(i), None())) {
         return
       }
     }
-    checkClosure("return type", mType.tpe.ret)
+    checkClosure(st"${(method.info.name, ".")}'s return type".render, mType.tpe.ret, None())
 
     val res = method.info.methodRes
     val key: QName = currReceiverOpt match {
@@ -2934,6 +2950,9 @@ import StaticTranspiler._
     }
 
     def transVar(stmt: AST.Stmt.Var): Unit = {
+      if (!checkClosure(s"${if (stmt.isVal) "val" else "var"} ${stmt.id.value}", stmt.attr.typedOpt.get, stmt.posOpt)) {
+        return
+      }
       stmts = stmts ++ transpileLoc(stmt.posOpt)
       val init = stmt.initOpt.get
       val t: AST.Typed = stmt.tipeOpt match {
@@ -2967,6 +2986,9 @@ import StaticTranspiler._
       val t: AST.Typed = stmt.tipeOpt match {
         case Some(tipe) => tipe.typedOpt.get
         case _ => stmt.init.asInstanceOf[AST.Stmt.Expr].typedOpt.get
+      }
+      if (!checkClosure(s"${if (stmt.isVal) "val pattern" else "var pattern"}", t, stmt.posOpt)) {
+        return
       }
       val temp = freshTempName()
       val tpe = transpileType(t)
