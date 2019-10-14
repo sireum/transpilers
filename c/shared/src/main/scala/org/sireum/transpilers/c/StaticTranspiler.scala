@@ -2777,19 +2777,53 @@ import StaticTranspiler._
         }
         return stmts
       case range: AST.EnumGen.Range.Expr =>
-        val (e, _) = transpileExp(range.exp)
-        val t = expType(range.exp).asInstanceOf[AST.Typed.Name]
+        @pure def isSSelectExp(e: AST.Exp, selector: String): B = {
+          e match {
+            case e: AST.Exp.Select =>
+              e.attr.resOpt.get match {
+                case res: AST.ResolvedInfo.Method if res.id == selector && (res.owner == AST.Typed.isName || res.owner == AST.Typed.msName) =>
+                  return T
+                case _ =>
+              }
+            case _ =>
+          }
+          return F
+        }
+        val indicesSelector = "indices"
+        val reverseSelector = "reverse"
+        @pure def expIndicesReverse(e: AST.Exp): (AST.Exp, B, B) = {
+          if (isSSelectExp(e, indicesSelector)) {
+            val indices = e.asInstanceOf[AST.Exp.Select]
+            val indicesReceiver = indices.receiverOpt.get
+            return (indicesReceiver, T, F)
+          } else if (isSSelectExp(e, reverseSelector)) {
+            val reverse = e.asInstanceOf[AST.Exp.Select]
+            val reverseReceiver = reverse.receiverOpt.get
+            if (isSSelectExp(reverseReceiver, indicesSelector)) {
+              val indices = reverseReceiver.asInstanceOf[AST.Exp.Select]
+              return (indices.receiverOpt.get, T, T)
+            } else {
+              return (reverseReceiver, F, T)
+            }
+          } else {
+            return (e, F, F)
+          }
+        }
+        val (normExp, isIndices, isReverse) = expIndicesReverse(range.exp)
+        val t = expType(normExp).asInstanceOf[AST.Typed.Name]
+        val it = t.args(0)
         val et = t.args(1)
         val tpe = transpileType(t)
         val temp = freshTempName()
-        stmts = stmts :+ st"$tpe $temp = $e;"
         val size = freshTempName()
         val index = freshTempName()
-        val (_, maxElements) = minIndexMaxElementSize(t)
+        val (minIndex, maxElements) = minIndexMaxElementSize(t)
         val indexType = arraySizeType(maxElements)
+        val (e, _) = transpileExp(normExp)
+        stmts = stmts :+ st"$tpe $temp = $e;"
         stmts = stmts :+ st"$indexType $size = ($e)->size;"
-        //(range.isIndices, range.isReverse) match {
-        //  case (F, F) =>
+        (isIndices, isReverse) match {
+          case (F, F) =>
             eg.idOpt match {
               case Some(id) =>
                 val eTpe = transpileType(et)
@@ -2808,7 +2842,7 @@ import StaticTranspiler._
                 |  ${(b, "\n")}
                 |}"""
             }
-        /*  case (F, T) =>
+          case (F, T) =>
             eg.idOpt match {
               case Some(id) =>
                 val eTpe = transpileType(et)
@@ -2869,7 +2903,7 @@ import StaticTranspiler._
                 |}"""
             }
           case _ => halt("Infeasible")
-        }*/
+        }
     }
   }
 

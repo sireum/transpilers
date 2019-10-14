@@ -123,7 +123,7 @@ object TypeSpecializer {
   val mainTpe: AST.Typed.Fun =
     AST.Typed.Fun(F, F, ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))), AST.Typed.z)
 
-  val preResultExpInvoke: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResultExpInvoke(continu = F)
+  val preResultExp: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResultExpInvoke(continu = F)
 
   def specialize(
     th: TypeHierarchy,
@@ -883,7 +883,19 @@ import TypeSpecializer._
     AST.MTransformer.transformISZ(o.targs, transformType _)
     AST.MTransformer.transformISZ(o.args, transformExp _)
     transformResolvedAttr(o.attr)
-    return preResultExpInvoke
+    return preResultExp
+  }
+
+  override def preExpBinary(o: AST.Exp.Binary): AST.MTransformer.PreResult[AST.Exp] = {
+    o.attr.resOpt.get match {
+      case m: AST.ResolvedInfo.Method =>
+        addResolvedMethod(o.posOpt, m, o.left.typedOpt.asInstanceOf[Option[AST.Typed.Name]], o.typedOpt.get)
+      case _ =>
+    }
+    transformExp(o.left)
+    transformExp(o.right)
+    transformResolvedAttr(o.attr)
+    return preResultExp
   }
 
   override def preExpInvokeNamed(o: AST.Exp.InvokeNamed): AST.MTransformer.PreResult[AST.Exp] = {
@@ -896,7 +908,7 @@ import TypeSpecializer._
     AST.MTransformer.transformISZ(o.targs, transformType _)
     AST.MTransformer.transformISZ(o.args, transformNamedArg _)
     transformResolvedAttr(o.attr)
-    return preResultExpInvoke
+    return preResultExp
   }
 
   override def preTyped(o: AST.Typed): AST.MTransformer.PreResult[AST.Typed] = {

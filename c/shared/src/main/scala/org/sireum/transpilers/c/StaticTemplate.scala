@@ -113,6 +113,35 @@ object StaticTemplate {
     "while"
   )
 
+  val symbolCharMap: HashMap[C, String] = HashMap ++ ISZ(
+    '+' ~> "__plus",
+    '-' ~> "__minus",
+    '*' ~> "__star",
+    '/' ~> "__slash",
+    '%' ~> "__percent",
+    '>' ~> "__gt",
+    '<' ~> "__lt",
+    '=' ~> "__eq",
+    '!' ~> "__bang",
+    '~' ~> "__tilde",
+    '@' ~> "__at",
+    '#' ~> "__pound",
+    '$' ~> "__dollar",
+    '^' ~> "__hat",
+    '(' ~> "__lparen",
+    ')' ~> "__rparen",
+    '{' ~> "__lbrace",
+    '}' ~> "__rbrace",
+    '[' ~> "__lbracket",
+    ']' ~> "__rbracket",
+    ':' ~> "__colon",
+    ';' ~> "__semi",
+    '.' ~> "__dot",
+    '?' ~> "__q",
+    '\\' ~> "__bslash",
+    ',' ~> "__comma",
+  )
+
   @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[(String, ST, ST, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
@@ -2134,30 +2163,7 @@ object StaticTemplate {
     if (keywords.contains(id)) {
       return st"m_$id"
     } else {
-      id match {
-        case AST.Exp.BinaryOp.Add => return st"_add"
-        case AST.Exp.BinaryOp.Sub => return st"_sub"
-        case AST.Exp.BinaryOp.Mul => return st"_mul"
-        case AST.Exp.BinaryOp.Div => return st"_div"
-        case AST.Exp.BinaryOp.Rem => return st"_rem"
-        case AST.Exp.BinaryOp.Eq => return st"_eq"
-        case AST.Exp.BinaryOp.Ne => return st"_ne"
-        case AST.Exp.BinaryOp.Shl => return st"_lt"
-        case AST.Exp.BinaryOp.Shr => return st"_le"
-        case AST.Exp.BinaryOp.Ushr => return st"_gt"
-        case AST.Exp.BinaryOp.Lt => return st"_ge"
-        case AST.Exp.BinaryOp.Le => return st"_shl"
-        case AST.Exp.BinaryOp.Gt => return st"_shr"
-        case AST.Exp.BinaryOp.Ge => return st"_ushr"
-        case AST.Exp.BinaryOp.And => return st"_and"
-        case AST.Exp.BinaryOp.Or => return st"_or"
-        case AST.Exp.BinaryOp.Xor => return st"_xor"
-        case AST.Exp.BinaryOp.Append => return st"_append"
-        case AST.Exp.BinaryOp.Prepend => return st"_prepend"
-        case AST.Exp.BinaryOp.AppendAll => return st"_appendAll"
-        case AST.Exp.BinaryOp.RemoveAll => return st"_removeAll"
-        case _ => return encodeName(id)
-      }
+      return encodeName(id)
     }
   }
 
@@ -2180,7 +2186,43 @@ object StaticTemplate {
   }
 
   @pure def encodeName(id: String): ST = {
-    return st"$id" // TODO
+    id match {
+      case AST.Exp.BinaryOp.Add => return st"_add"
+      case AST.Exp.BinaryOp.Sub => return st"_sub"
+      case AST.Exp.BinaryOp.Mul => return st"_mul"
+      case AST.Exp.BinaryOp.Div => return st"_div"
+      case AST.Exp.BinaryOp.Rem => return st"_rem"
+      case AST.Exp.BinaryOp.Eq => return st"_eq"
+      case AST.Exp.BinaryOp.Ne => return st"_ne"
+      case AST.Exp.BinaryOp.Shl => return st"_lt"
+      case AST.Exp.BinaryOp.Shr => return st"_le"
+      case AST.Exp.BinaryOp.Ushr => return st"_gt"
+      case AST.Exp.BinaryOp.Lt => return st"_ge"
+      case AST.Exp.BinaryOp.Le => return st"_shl"
+      case AST.Exp.BinaryOp.Gt => return st"_shr"
+      case AST.Exp.BinaryOp.Ge => return st"_ushr"
+      case AST.Exp.BinaryOp.And => return st"_and"
+      case AST.Exp.BinaryOp.Or => return st"_or"
+      case AST.Exp.BinaryOp.Xor => return st"_xor"
+      case AST.Exp.BinaryOp.Append => return st"_append"
+      case AST.Exp.BinaryOp.Prepend => return st"_prepend"
+      case AST.Exp.BinaryOp.AppendAll => return st"_appendAll"
+      case AST.Exp.BinaryOp.RemoveAll => return st"_removeAll"
+      case _ =>
+        val cis = conversions.String.toCis(id)
+        if (ops.ISZOps(cis).exists((c: C) => symbolCharMap.contains(c))) {
+          var r = ISZ[String]()
+          for (c <- cis) {
+            symbolCharMap.get(c) match {
+              case Some(s) => r = r :+ s
+              case _ => r = r :+ s"$c"
+            }
+          }
+          return st"$r"
+        } else {
+          return st"$id"
+        }
+    }
   }
 
   @pure def typeName(t: AST.Typed): QName = {
