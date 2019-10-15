@@ -2650,6 +2650,7 @@ import StaticTranspiler._
     val temp = freshTempName()
     val tfprint: ISZ[String] = t match {
       case t: AST.Typed.Name if t.args.nonEmpty => ISZ(fprint(t).render)
+      case t: AST.Typed.Tuple => ISZ(fprint(t).render)
       case _ => ISZ()
     }
     def transCase(handled: ST, exp: ST, cas: AST.Case): Unit = {
@@ -3018,6 +3019,7 @@ import StaticTranspiler._
       val (declStmts, params, args, _, _) = declPatternVarParamArgs(F, stmt.pattern)
       val tfprint: ISZ[String] = t match {
         case t: AST.Typed.Name if t.args.nonEmpty => ISZ(fprint(t).render)
+        case t: AST.Typed.Tuple => ISZ(fprint(t).render)
         case _ => ISZ()
       }
       val fname: ST = stmt.pattern.posOpt match {
