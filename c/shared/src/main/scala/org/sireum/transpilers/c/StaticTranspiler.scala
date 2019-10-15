@@ -2648,6 +2648,10 @@ import StaticTranspiler._
     val tpe = transpileType(t)
     val immutable = isImmutable(typeKind(t))
     val temp = freshTempName()
+    val tfprint: ISZ[String] = t match {
+      case t: AST.Typed.Name if t.args.nonEmpty => ISZ(fprint(t).render)
+      case _ => ISZ()
+    }
     def transCase(handled: ST, exp: ST, cas: AST.Case): Unit = {
       val oldLocalRename = localRename
       val oldStmts = stmts
@@ -2680,8 +2684,8 @@ import StaticTranspiler._
           }
       }
       val fname: ST = cas.pattern.posOpt match {
-        case Some(pos) => mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}"))
-        case _ => mangleName(context ++ ISZ("extract", freshTempName().render))
+        case Some(pos) => mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}") ++ tfprint)
+        case _ => mangleName(context ++ ISZ("extract", freshTempName().render) ++ tfprint)
       }
       val parameters: ST = if (params.isEmpty) st"" else st", ${(params, ", ")}"
       val arguments: ST = if (args.isEmpty) st"" else st", ${(args, ", ")}"
@@ -3012,9 +3016,13 @@ import StaticTranspiler._
         )
       }
       val (declStmts, params, args, _, _) = declPatternVarParamArgs(F, stmt.pattern)
+      val tfprint: ISZ[String] = t match {
+        case t: AST.Typed.Name if t.args.nonEmpty => ISZ(fprint(t).render)
+        case _ => ISZ()
+      }
       val fname: ST = stmt.pattern.posOpt match {
-        case Some(pos) => mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}"))
-        case _ => mangleName(context ++ ISZ("extract", freshTempName().render))
+        case Some(pos) => mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}") ++ tfprint)
+        case _ => mangleName(context ++ ISZ("extract", freshTempName().render) ++ tfprint)
       }
       val parameters: ST = if (params.isEmpty) st"" else st", ${(params, ", ")}"
       val arguments: ST = if (args.isEmpty) st"" else st", ${(args, ", ")}"
