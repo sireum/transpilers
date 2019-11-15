@@ -381,6 +381,16 @@ class StaticTranspilerTest extends TestSuite {
                         |m = m + 1 ~> Map.empty[Z, Z]
                         |assert(m.get(1) == Some(Map.empty[Z, Z]))""".stripMargin)
 
+    * - testWorksheet(
+      """def foo(opt: Option[Z]): Z = {
+        |  opt match {
+        |    case Some(x) => return x
+        |    case _ => return 0
+        |  }
+        |}
+        |
+        |foo(Some(4))""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {

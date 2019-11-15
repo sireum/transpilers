@@ -2746,6 +2746,15 @@ import StaticTranspiler._
       transCase(handled, tmp, cas)
     }
     stmts = stmts :+ st"""sfAssert($handled, "Error when pattern matching.");"""
+    @pure def isReturn(stmtOpt: Option[AST.Stmt]): B = {
+      stmtOpt match {
+        case Some(_: AST.Stmt.Return) => return T
+        case _ => return F
+      }
+    }
+    if (ops.ISZOps(stmt.leaves).forall(isReturn _)) {
+      stmts = stmts :+ st"exit(-1);"
+    }
   }
 
   @pure def transpileLoc(posOpt: Option[Position]): ISZ[ST] = {
