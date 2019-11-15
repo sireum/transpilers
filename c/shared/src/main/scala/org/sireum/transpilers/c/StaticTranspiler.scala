@@ -3303,6 +3303,7 @@ import StaticTranspiler._
             stmts = stmts :+ st"return $e;"
           } else {
             stmts = stmts :+ st"Type_assign(result, $e, sizeof(${typeDecl(t)}));"
+            stmts = stmts :+ st"return;"
           }
         case _ => stmts = stmts :+ st"return;"
       }
