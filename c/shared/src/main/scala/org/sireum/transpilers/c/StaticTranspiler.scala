@@ -183,18 +183,33 @@ object StaticTranspiler {
       val from = ops.ISZOps(method.owner).takeRight(1)
       val id = method.id
       val sops = ops.StringOps(id)
-      if (id.size > 2 && sops.startsWith("to")) {
-        val to = ops.StringOps(id).substring(2, id.size)
-        return compiled(
-          header = compiled.header :+
-            st"""inline $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n) {
-            |  return ($to) n;
-            |}""",
-          impl = compiled.impl :+ st"$to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
-        )
-      } else {
-        halt(s"TODO: $method") // TODO
+      if (id.size > 2) {
+        if (sops.startsWith("toRaw")) {
+          val to = sops.substring(5, id.size)
+          return compiled(
+            header = compiled.header :+
+              st"""inline $to ${mangleName(method.owner)}_toRaw$to(STACK_FRAME_SF $from n) {
+                  |  union {
+                  |    $from from;
+                  |    $to to;
+                  |  } temp;
+                  |  temp.from = n;
+                  |  return temp.to;
+                  |}""",
+            impl = compiled.impl :+ st"$to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
+          )
+        } else if (sops.startsWith("to")) {
+          val to = sops.substring(2, id.size)
+          return compiled(
+            header = compiled.header :+
+              st"""inline $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n) {
+                  |  return ($to) n;
+                  |}""",
+            impl = compiled.impl :+ st"$to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
+          )
+        }
       }
+      halt(s"TODO: $method") // TODO
     }
   }
 
@@ -355,7 +370,9 @@ object StaticTranspiler {
     "U8",
     "U16",
     "U32",
-    "U64"
+    "U64",
+    "F32",
+    "F64"
   )
 }
 
