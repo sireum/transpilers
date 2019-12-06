@@ -57,7 +57,7 @@ object Module {
 
     final override def description: String = "Transpiler Common"
 
-    final override def artifactName = "common"
+    final override def artifactName = s"$subUrl-common"
 
     final override def deps = Seq(alirObject)
 
@@ -70,7 +70,7 @@ object Module {
 
     final override def description: String = "Transpiler C"
 
-    final override def artifactName = "c"
+    final override def artifactName = s"$subUrl-c"
 
     final override def deps = Seq(commonObject)
 
