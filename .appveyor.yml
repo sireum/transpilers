@@ -20,4 +20,4 @@ install:
   - '%CYG_ROOT%\bin\cygcheck -dc cygwin'
 
 build_script:
-  - '%CYG_BASH% -lc "cd $APPVEYOR_BUILD_FOLDER && bin/build.cmd jitpack test"'
+  - '%CYG_BASH% -lc "cd $APPVEYOR_BUILD_FOLDER && bin/build.cmd test"'
