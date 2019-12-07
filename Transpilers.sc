@@ -26,9 +26,9 @@ import mill._
 import mill.scalalib._
 import org.sireum.mill.SireumModule._
 
-trait Module extends CrossSharedJsJitPack {
+trait Module extends CrossJvmJsJitPack {
 
-  final override def subUrl: String = "transpiler"
+  final override def subUrl: String = "transpilers"
 
   final override def developers = Seq(Developers.robby)
 
