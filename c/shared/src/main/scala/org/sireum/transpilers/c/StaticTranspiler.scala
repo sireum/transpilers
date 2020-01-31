@@ -1895,7 +1895,10 @@ import StaticTranspiler._
       }
 
       def transSSelect(name: QName): (ST, B) = {
-        val t = invoke.ident.typedOpt.get.asInstanceOf[AST.Typed.Name]
+        val t: AST.Typed.Name = invoke.ident.typedOpt.get match {
+          case it: AST.Typed.Name => it
+          case it: AST.Typed.Method if it.tpe.isByName => it.tpe.ret.asInstanceOf[AST.Typed.Name]
+        }
         val (receiver, _) = transReceiver()
         val arg = invoke.args(0)
         val tpe = transpileType(t)
@@ -1906,7 +1909,10 @@ import StaticTranspiler._
       }
 
       def transSStore(name: QName): ST = {
-        val t = expType(invoke).asInstanceOf[AST.Typed.Name]
+        val t: AST.Typed.Name = invoke.ident.typedOpt.get match {
+          case it: AST.Typed.Name => it
+          case it: AST.Typed.Method if it.tpe.isByName => it.tpe.ret.asInstanceOf[AST.Typed.Name]
+        }
         val tpe = transpileType(t)
         val etpe = transpileType(t.args(1))
         val temp = freshTempName()
