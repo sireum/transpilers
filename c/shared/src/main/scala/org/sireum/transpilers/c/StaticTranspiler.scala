@@ -647,11 +647,17 @@ import StaticTranspiler._
         val (rhs, shouldCopy) = transpileExp(exp.exp)
         stmts = stmts ++ f(rhs, typeDecl(exp.typedOpt.get), shouldCopy || !isImmutable(typeKind(exp.attr.typedOpt.get)))
       case exp: AST.Stmt.Block =>
+        val oldStmts = stmts
+        stmts = ISZ()
         val bstmts = exp.body.stmts
         for (stmt <- ops.ISZOps(bstmts).dropRight(1)) {
           transpileStmt(stmt)
         }
         transpileAssignExp(bstmts(bstmts.size - 1).asAssignExp, f)
+        stmts = oldStmts :+
+          st"""{
+              |  ${(stmts, "\n")}
+              |}"""
       case exp: AST.Stmt.If => transpileIf(exp, Some(f))
       case exp: AST.Stmt.Match => transpileMatch(exp, Some(f))
       case exp: AST.Stmt.Return => transpileStmt(exp)
