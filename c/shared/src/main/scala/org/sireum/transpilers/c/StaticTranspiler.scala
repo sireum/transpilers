@@ -699,7 +699,9 @@ import StaticTranspiler._
     }
     val ast =
       ts.typeHierarchy.typeMap.get(indexType.asInstanceOf[AST.Typed.Name].ids).get.asInstanceOf[TypeInfo.SubZ].ast
-    if (ast.isZeroIndex) {
+    if (ast.isIndex) {
+      return (ast.min, ast.max - ast.min + 1)
+    } else if (ast.isZeroIndex) {
       if (ast.hasMin && ast.hasMax) {
         val d = ast.max + 1
         return (z"0", if (d < size) d else size)
