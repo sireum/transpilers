@@ -398,6 +398,7 @@ import StaticTranspiler._
   var localRename: HashMap[String, ST] = HashMap.empty
   var nestedMethods: HashMap[QName, (B, AST.Stmt.Method, ISZ[ClosureVar])] = HashMap.empty
   var additionalMethodImpls: ISZ[ST] = ISZ()
+  var sizesMap: HashMap[AST.Typed.Name, Z] = HashMap.empty
 
   def transpile(rep: Reporter): StaticTranspiler.Result = {
 
@@ -551,6 +552,7 @@ import StaticTranspiler._
       r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
       )
+      r = r + ISZ[String]("sizes.txt") ~> sizesConfig(sizesMap)
     }
 
     def work(): Unit = {
@@ -688,40 +690,47 @@ import StaticTranspiler._
   }
 
   @pure def minIndexMaxElementSize(t: AST.Typed.Name): (Z, Z) = {
-    val indexType = t.args(0)
-    val size: Z = config.customArraySizes.get(t) match {
-      case Some(n) => n
-      case _ =>
-        val t2: AST.Typed.Name =
-          if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, t.args)
-          else AST.Typed.Name(AST.Typed.isName, t.args)
-        config.customArraySizes.get(t2) match {
-          case Some(n) => n
-          case _ => config.maxArraySize
-        }
-    }
-    if (indexType == AST.Typed.z) {
-      return (z"0", size)
-    }
-    val ast =
-      ts.typeHierarchy.typeMap.get(indexType.asInstanceOf[AST.Typed.Name].ids).get.asInstanceOf[TypeInfo.SubZ].ast
-    if (ast.isIndex) {
-      return (ast.min, ast.max - ast.min + 1)
-    } else if (ast.isZeroIndex) {
-      if (ast.hasMin && ast.hasMax) {
-        val d = ast.max + 1
-        return (z"0", if (d < size) d else size)
-      } else {
+    def compute: (Z, Z) = {
+      val indexType = t.args(0)
+      val size: Z = config.customArraySizes.get(t) match {
+        case Some(n) => n
+        case _ =>
+          val t2: AST.Typed.Name =
+            if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, t.args)
+            else AST.Typed.Name(AST.Typed.isName, t.args)
+          config.customArraySizes.get(t2) match {
+            case Some(n) => n
+            case _ => config.maxArraySize
+          }
+      }
+      if (indexType == AST.Typed.z) {
         return (z"0", size)
       }
-    } else {
-      if (ast.hasMax) {
-        val d = ast.max + -ast.min + 1
-        return (ast.min, if (d < size) d else size)
+      val ast =
+        ts.typeHierarchy.typeMap.get(indexType.asInstanceOf[AST.Typed.Name].ids).get.asInstanceOf[TypeInfo.SubZ].ast
+      if (ast.isIndex) {
+        return (ast.min, ast.max - ast.min + 1)
+      } else if (ast.isZeroIndex) {
+        if (ast.hasMin && ast.hasMax) {
+          val d = ast.max + 1
+          return (z"0", if (d < size) d else size)
+        } else {
+          return (z"0", size)
+        }
       } else {
-        return (ast.min, size)
+        if (ast.hasMax) {
+          val d = ast.max + -ast.min + 1
+          return (ast.min, if (d < size) d else size)
+        } else {
+          return (ast.min, size)
+        }
       }
     }
+    val p = compute
+    if (!sizesMap.contains(t)) {
+      sizesMap = sizesMap + t ~> p._2
+    }
+    return p
   }
 
   def getCompiled(key: QName): Compiled = {
