@@ -1002,7 +1002,7 @@ object StaticTemplate {
             |
             |$createHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "create", 0);
-            |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+            |  sfAssert((Z) size <= Max$name, "Insufficient maximum for $tpe elements.");
             |  intmax_t zize = (intmax_t) size;
             |  U8 d = (U8) (dflt ? -1 : 0);
             |  intmax_t n = zize / 8;
@@ -1027,7 +1027,7 @@ object StaticTemplate {
             |
             |$zreateHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "zreate", 0);
-            |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+            |  sfAssert((Z) size <= Max$name, "Insufficient maximum for $tpe elements.");
             |  intmax_t zize = (intmax_t) size;
             |  U8 d = (U8) (dflt ? -1 : 0);
             |  intmax_t n = zize / 8;
@@ -1196,7 +1196,7 @@ object StaticTemplate {
             |
             |$createHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "create", 0);
-            |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+            |  sfAssert((Z) size <= Max$name, "Insufficient maximum for $tpe elements.");
             |  $sizeType zize = ($sizeType) size;
             |  for ($sizeType i = 0; i < zize; i++) {
             |    result->value[i] = dflt;
@@ -1206,7 +1206,7 @@ object StaticTemplate {
             |
             |$zreateHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "zreate", 0);
-            |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+            |  sfAssert((Z) size <= Max$name, "Insufficient maximum for $tpe elements.");
             |  $sizeType zize = ($sizeType) size;
             |  for ($sizeType i = 0; i < zize; i++) {
             |    result->value[i] = dflt;
@@ -1327,7 +1327,7 @@ object StaticTemplate {
             |
             |$createHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "create", 0);
-            |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+            |  sfAssert((Z) size <= Max$name, "Insufficient maximum for $tpe elements.");
             |  $sizeType zize = ($sizeType) size;
             |  for ($sizeType i = 0; i < zize; i++) {
             |    Type_assign(&result->value[i], dflt, sizeof($elementType));
@@ -1337,7 +1337,7 @@ object StaticTemplate {
             |
             |$zreateHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "zreate", 0);
-            |  sfAssert(size <= Max$name, "Insufficient maximum for $tpe elements.");
+            |  sfAssert((Z) size <= Max$name, "Insufficient maximum for $tpe elements.");
             |  $sizeType zize = ($sizeType) size;
             |  for ($sizeType i = 0; i < zize; i++) {
             |    Type_assign(&result->value[i], dflt, sizeof($elementType));
