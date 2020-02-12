@@ -3006,6 +3006,9 @@ import StaticTranspiler._
     }
 
     def transVar(stmt: AST.Stmt.Var): Unit = {
+      if (stmt.isSpec) {
+        return
+      }
       if (!checkClosure(s"${if (stmt.isVal) "val" else "var"} ${stmt.id.value}", stmt.attr.typedOpt.get, stmt.posOpt)) {
         return
       }
@@ -3038,6 +3041,9 @@ import StaticTranspiler._
     }
 
     def transVarPattern(stmt: AST.Stmt.VarPattern): Unit = {
+      if (stmt.isSpec) {
+        return
+      }
       stmts = stmts ++ transpileLoc(stmt.posOpt)
       val t: AST.Typed = stmt.tipeOpt match {
         case Some(tipe) => tipe.typedOpt.get
