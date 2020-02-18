@@ -69,23 +69,6 @@ object TypeSpecializer {
 
   @datatype class Method(receiverOpt: Option[AST.Typed.Name], info: Info.Method)
 
-  @record class TypeSubstitutor(substMap: HashMap[String, AST.Typed]) extends AST.MTransformer {
-
-    override def preTyped(o: AST.Typed): AST.MTransformer.PreResult[AST.Typed] = {
-      o match {
-        case o: AST.Typed.TypeVar =>
-          substMap.get(o.id) match {
-            case Some(t) => return AST.MTransformer.PreResult(F, MSome(t))
-            case _ =>
-          }
-        case _ =>
-      }
-      val r = super.preTyped(o)
-      return r
-    }
-
-  }
-
   @datatype trait SMember {
     def receiverOpt: Option[AST.Typed.Name]
     def owner: QName
@@ -135,30 +118,6 @@ object TypeSpecializer {
     val r = ts.specialize()
     reporter.reports(ts.reporter.messages)
     return r
-  }
-
-  @pure def substMethod(m: Info.Method, substMap: HashMap[String, AST.Typed]): Info.Method = {
-    if (substMap.nonEmpty) {
-      val astOpt = TypeSubstitutor(substMap).transformStmt(m.ast)
-      astOpt match {
-        case MSome(newAst: AST.Stmt.Method) => return m(ast = newAst)
-        case _ => return m
-      }
-    } else {
-      return m
-    }
-  }
-
-  @pure def substAssignExp(ast: AST.AssignExp, substMap: HashMap[String, AST.Typed]): AST.AssignExp = {
-    if (substMap.nonEmpty) {
-      val astOpt = TypeSubstitutor(substMap).transformAssignExp(ast)
-      astOpt match {
-        case MSome(newAst) => return newAst
-        case _ => return ast
-      }
-    } else {
-      return ast
-    }
   }
 
 }
@@ -433,7 +392,7 @@ import TypeSpecializer._
         def subst(m: Info.Method, name: QName, typeParams: ISZ[AST.TypeParam]): Info.Method = {
           for (ancestor <- info.ancestors if ancestor.ids == name) {
             val sm = TypeChecker.buildTypeSubstMap(info.name, posOpt, typeParams, ancestor.args, reporter).get
-            return substMethod(m, sm)
+            return Info.substMethod(m, sm)
           }
           halt("Infeasible")
         }
@@ -477,7 +436,7 @@ import TypeSpecializer._
     val mFun = m.methodRes.tpeOpt.get
     val mSubstMapOpt = TypeChecker.unify(th, posOpt, TypeRelation.Equal, method.tpe, mFun, reporter)
     val substMap = combineSm(aSubstMapOpt.get, mSubstMapOpt.get)
-    return substMethod(m, substMap)
+    return Info.substMethod(m, substMap)
   }
 
   def addClassSVar(
@@ -540,7 +499,7 @@ import TypeSpecializer._
             val mType = info.methodType.tpe
             val substMapOpt = TypeChecker.unifyFun(tsKind, th, posOpt, TypeRelation.Equal, method.tpe, mType, reporter)
             substMapOpt match {
-              case Some(substMap) => workList = workList :+ Method(method.receiverOpt, substMethod(info, substMap))
+              case Some(substMap) => workList = workList :+ Method(method.receiverOpt, Info.substMethod(info, substMap))
               case _ =>
             }
           case _: Info.ExtMethod => extMethods = extMethods + method
@@ -619,7 +578,7 @@ import TypeSpecializer._
         case stmt: AST.Stmt.Var =>
           val vt = stmt.tipeOpt.get.typedOpt.get.subst(sm)
           addType(vt)
-          val ae = substAssignExp(stmt.initOpt.get, sm)
+          val ae = AST.Util.substAssignExp(stmt.initOpt.get, sm)
           vs = vs + stmt.id.value ~> ((stmt.isVal, vt, ae))
           transformAssignExp(ae)
         case _ =>
