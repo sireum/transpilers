@@ -646,6 +646,16 @@ import StaticTranspiler._
   def transpileAssignExp(exp: AST.AssignExp, f: (ST, ST, B) => ISZ[ST] @pure): Unit = {
     exp match {
       case exp: AST.Stmt.Expr =>
+        exp.exp match {
+          case invoke: AST.Exp.Invoke =>
+            invoke.attr.resOpt match {
+              case Some(AST.ResolvedInfo.BuiltIn(AST.ResolvedInfo.BuiltIn.Kind.Halt)) =>
+                stmts = stmts :+ abort
+                return
+              case _ =>
+            }
+          case _ =>
+        }
         val (rhs, shouldCopy) = transpileExp(exp.exp)
         stmts = stmts ++ f(rhs, typeDecl(exp.typedOpt.get), shouldCopy || !isImmutable(typeKind(exp.attr.typedOpt.get)))
       case exp: AST.Stmt.Block =>

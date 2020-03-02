@@ -145,6 +145,12 @@ class StaticTranspilerTest extends TestSuite {
                         |}
                         |assert(foo(4) == 5)""".stripMargin)
 
+    * - testWorksheet(
+      """val success: B = (1 * 2) match {
+        |  case 2 => T
+        |  case x => halt(s"Unexpected: '${x}'")
+        |}""".stripMargin)
+
     * - testWorksheet("""import org.sireum.U8._
                         |val hash = crypto.SHA3.sum256(ISZ())
                         |println(hash)
