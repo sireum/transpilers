@@ -650,7 +650,7 @@ import StaticTranspiler._
           case invoke: AST.Exp.Invoke =>
             invoke.attr.resOpt match {
               case Some(AST.ResolvedInfo.BuiltIn(AST.ResolvedInfo.BuiltIn.Kind.Halt)) =>
-                stmts = stmts :+ abort
+                transpileHalt(invoke)
                 return
               case _ =>
             }
@@ -2934,7 +2934,7 @@ import StaticTranspiler._
                 else
                   stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
                   |  $eTpe ${id.value} = ($eTpe) &($temp->value[$index]);
-                  |  ${(b, "\n")}                
+                  |  ${(b, "\n")}
                   |}"""
               case _ =>
                 return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
@@ -3004,6 +3004,14 @@ import StaticTranspiler._
           case _ => halt("Infeasible")
         }
     }
+  }
+
+  def transpileHalt(exp: AST.Exp.Invoke): Unit = {
+    stmts = stmts ++ transpileLoc(exp.posOpt)
+    val tmp = declString()
+    transToString(tmp, exp.args(0))
+    stmts = stmts :+ st"sfAbort($tmp->value);"
+    stmts = stmts :+ abort
   }
 
   def transpileStmt(statement: AST.Stmt): Unit = {
@@ -3271,14 +3279,6 @@ import StaticTranspiler._
       stmts = stmts :+ st"cflush($trueLit);"
     }
 
-    def transHalt(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(statement.posOpt)
-      val tmp = declString()
-      transToString(tmp, exp.args(0))
-      stmts = stmts :+ st"sfAbort($tmp->value);"
-      stmts = stmts :+ abort
-    }
-
     def isBuiltInStmt(exp: AST.Exp.Invoke): B = {
       exp.attr.resOpt match {
         case Some(AST.ResolvedInfo.BuiltIn(kind)) =>
@@ -3386,7 +3386,7 @@ import StaticTranspiler._
                 case AST.ResolvedInfo.BuiltIn.Kind.AssertMsg => transAssert(exp)
                 case AST.ResolvedInfo.BuiltIn.Kind.Assume => transAssume(exp)
                 case AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg => transAssume(exp)
-                case AST.ResolvedInfo.BuiltIn.Kind.Halt => transHalt(exp)
+                case AST.ResolvedInfo.BuiltIn.Kind.Halt => transpileHalt(exp)
                 case kind =>
                   stmts = stmts :+ empty
                   stmts = stmts :+ st"#ifndef SIREUM_NO_PRINT"
