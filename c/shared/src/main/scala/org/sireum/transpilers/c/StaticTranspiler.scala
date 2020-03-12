@@ -1591,10 +1591,6 @@ import StaticTranspiler._
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryAnd => "__and"
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryOr => "__or"
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryXor => "__xor"
-                case AST.ResolvedInfo.BuiltIn.Kind.BinaryAppend => "__append"
-                case AST.ResolvedInfo.BuiltIn.Kind.BinaryPrepend => "__prepend"
-                case AST.ResolvedInfo.BuiltIn.Kind.BinaryAppendAll => "__appendall"
-                case AST.ResolvedInfo.BuiltIn.Kind.BinaryRemoveAll => "__removeall"
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryMapsTo =>
                   val (left, _) = transpileExp(exp.left)
                   val (right, _) = transpileExp(exp.right)
