@@ -113,35 +113,6 @@ object StaticTemplate {
     "while"
   )
 
-  val symbolCharMap: HashMap[C, String] = HashMap ++ ISZ(
-    '+' ~> "__plus",
-    '-' ~> "__minus",
-    '*' ~> "__star",
-    '/' ~> "__slash",
-    '%' ~> "__percent",
-    '>' ~> "__gt",
-    '<' ~> "__lt",
-    '=' ~> "__eq",
-    '!' ~> "__bang",
-    '~' ~> "__tilde",
-    '@' ~> "__at",
-    '#' ~> "__pound",
-    '$' ~> "__dollar",
-    '^' ~> "__hat",
-    '(' ~> "__lparen",
-    ')' ~> "__rparen",
-    '{' ~> "__lbrace",
-    '}' ~> "__rbrace",
-    '[' ~> "__lbracket",
-    ']' ~> "__rbracket",
-    ':' ~> "__colon",
-    ';' ~> "__semi",
-    '.' ~> "__dot",
-    '?' ~> "__q",
-    '\\' ~> "__bslash",
-    ',' ~> "__comma",
-  )
-
   @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[(String, ST, ST, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
@@ -560,7 +531,7 @@ object StaticTemplate {
           |
           |  t_args.size = ($iszSizeType) size;
           |
-          |  return (int) ${mangleName(owner)}_$id(SF &t_args);
+          |  return (int) ${AST.Util.mangleName(owner)}_$id(SF &t_args);
           |}"""
     } else {
       st"""#include <all.h>
@@ -589,7 +560,7 @@ object StaticTemplate {
           |
           |  t_args.size = ($iszSizeType) size;
           |
-          |  return (int) ${mangleName(owner)}_$id(SF &t_args);
+          |  return (int) ${AST.Util.mangleName(owner)}_$id(SF &t_args);
           |}"""
     }
     return r
@@ -1458,7 +1429,7 @@ object StaticTemplate {
   }
 
   @pure def elementName(owner: QName, id: String): ST = {
-    return st"${mangleName(owner)}_${enumId(id)}"
+    return st"${AST.Util.mangleName(owner :+ "Type")}_${enumId(id)}"
   }
 
   @pure def enum(
@@ -1469,7 +1440,7 @@ object StaticTemplate {
                   optElementTypeOpt: Option[(ST, ST, ST)],
                   iszElementTypeOpt: Option[ST]
                 ): Compiled = {
-    val mangledName = mangleName(name)
+    val mangledName = AST.Util.mangleName(name)
 
     @pure def enumCase(element: String): ST = {
       val r = st"""case ${mangledName}_${enumId(element)}: String_assign(result, string("$element")); return;"""
@@ -1643,7 +1614,7 @@ object StaticTemplate {
                   maxOpt: Option[Z],
                   optionTypeOpt: Option[(ST, ST, ST)]
                 ): Compiled = {
-    val mangledName = mangleName(name)
+    val mangledName = AST.Util.mangleName(name)
     val cType = st"${if (isUnsigned) "u" else ""}int${bitWidth}_t"
     val cTypeUp = st"${if (isUnsigned) "U" else ""}INT$bitWidth"
     val pr = st"PRI${if (isUnsigned) if (isBitVector) "X" else "u" else "d"}$bitWidth"
@@ -1906,7 +1877,7 @@ object StaticTemplate {
                       min: ST,
                       max: ST
                     ): (ST, ST) = {
-    val mangledName = mangleName(name)
+    val mangledName = AST.Util.mangleName(name)
     val header = st"void ${mangledName}_apply($optName result, String s)"
     val base: ST = if (hasBase) st", 0" else st""
     val rangeCheck: ST = if (hasRange) st" && $min <= n && n <= $max" else st""
@@ -2165,73 +2136,23 @@ object StaticTemplate {
   }
 
   @pure def localId(id: String): ST = {
-    return if (keywords.contains(id)) st"l_$id" else encodeName(id)
+    return if (keywords.contains(id)) st"l_$id" else AST.Util.encodeId(id)
   }
 
   @pure def methodId(id: String): ST = {
     if (keywords.contains(id)) {
       return st"m_$id"
     } else {
-      return encodeName(id)
+      return AST.Util.encodeId(id)
     }
   }
 
   @pure def fieldId(id: String): ST = {
-    return if (keywords.contains(id)) st"f_$id" else encodeName(id)
+    return if (keywords.contains(id)) st"f_$id" else AST.Util.encodeId(id)
   }
 
   @pure def enumId(id: String): ST = {
-    return if (keywords.contains(id)) st"E_$id" else encodeName(id)
-  }
-
-  @pure def mangleName(ids: QName): ST = {
-    val r: ST =
-      ids.size match {
-        case z"0" => st"top"
-        case z"1" => st"top_${ids(0)}"
-        case _ => st"${(AST.Typed.short(ids).map(encodeName _), "_")}"
-      }
-    return r
-  }
-
-  @pure def encodeName(id: String): ST = {
-    id match {
-      case AST.Exp.BinaryOp.Add => return st"_add"
-      case AST.Exp.BinaryOp.Sub => return st"_sub"
-      case AST.Exp.BinaryOp.Mul => return st"_mul"
-      case AST.Exp.BinaryOp.Div => return st"_div"
-      case AST.Exp.BinaryOp.Rem => return st"_rem"
-      case AST.Exp.BinaryOp.Eq => return st"_eq"
-      case AST.Exp.BinaryOp.Ne => return st"_ne"
-      case AST.Exp.BinaryOp.Shl => return st"_lt"
-      case AST.Exp.BinaryOp.Shr => return st"_le"
-      case AST.Exp.BinaryOp.Ushr => return st"_gt"
-      case AST.Exp.BinaryOp.Lt => return st"_ge"
-      case AST.Exp.BinaryOp.Le => return st"_shl"
-      case AST.Exp.BinaryOp.Gt => return st"_shr"
-      case AST.Exp.BinaryOp.Ge => return st"_ushr"
-      case AST.Exp.BinaryOp.And => return st"_and"
-      case AST.Exp.BinaryOp.Or => return st"_or"
-      case AST.Exp.BinaryOp.Xor => return st"_xor"
-      case AST.Exp.BinaryOp.Append => return st"_append"
-      case AST.Exp.BinaryOp.Prepend => return st"_prepend"
-      case AST.Exp.BinaryOp.AppendAll => return st"_appendAll"
-      case AST.Exp.BinaryOp.RemoveAll => return st"_removeAll"
-      case _ =>
-        val cis = conversions.String.toCis(id)
-        if (ops.ISZOps(cis).exists((c: C) => symbolCharMap.contains(c))) {
-          var r = ISZ[String]()
-          for (c <- cis) {
-            symbolCharMap.get(c) match {
-              case Some(s) => r = r :+ s
-              case _ => r = r :+ s"$c"
-            }
-          }
-          return st"$r"
-        } else {
-          return st"$id"
-        }
-    }
+    return if (keywords.contains(id)) st"E_$id" else AST.Util.encodeId(id)
   }
 
   @pure def typeName(t: AST.Typed): QName = {

@@ -188,7 +188,7 @@ object StaticTranspiler {
           val to = sops.substring(5, id.size)
           return compiled(
             header = compiled.header :+
-              st"""inline $to ${mangleName(method.owner)}_toRaw$to(STACK_FRAME_SF $from n) {
+              st"""inline $to ${AST.Util.mangleName(method.owner)}_toRaw$to(STACK_FRAME_SF $from n) {
                   |  union {
                   |    $from from;
                   |    $to to;
@@ -196,16 +196,16 @@ object StaticTranspiler {
                   |  temp.from = n;
                   |  return temp.to;
                   |}""",
-            impl = compiled.impl :+ st"$to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
+            impl = compiled.impl :+ st"$to ${AST.Util.mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
           )
         } else if (sops.startsWith("to")) {
           val to = sops.substring(2, id.size)
           return compiled(
             header = compiled.header :+
-              st"""inline $to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n) {
+              st"""inline $to ${AST.Util.mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n) {
                   |  return ($to) n;
                   |}""",
-            impl = compiled.impl :+ st"$to ${mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
+            impl = compiled.impl :+ st"$to ${AST.Util.mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
           )
         }
       }
@@ -466,7 +466,7 @@ import StaticTranspiler._
       val oInfo = ts.typeHierarchy.nameMap.get(name).get.asInstanceOf[Info.Object]
       var vs = ISZ[(TypeKind.Type, String, ST, ST, B)]()
       stmts = ISZ()
-      val mangledName = mangleName(name)
+      val mangledName = AST.Util.mangleName(name)
       for (stmt <- oInfo.ast.stmts) {
         stmt match {
           case stmt: AST.Stmt.Var if vars.contains(stmt.id.value) =>
@@ -518,7 +518,7 @@ import StaticTranspiler._
 
       val typeNames: ISZ[(String, ST, ST, ST)] = {
         var tn: ISZ[(String, ST, ST, ST)] = ISZ(
-          (AST.Typed.string.string, st"${mangleName(AST.Typed.stringName)}", st"String",
+          (AST.Typed.string.string, st"${AST.Util.mangleName(AST.Typed.stringName)}", st"String",
             if (config.stableTypeId) stableId(AST.Typed.string) else st"0")
         )
         var i = 1
@@ -750,37 +750,16 @@ import StaticTranspiler._
     }
   }
 
-  @pure def fprintWidth(t: AST.Typed, width: Z): ST = {
-    val max: Z = if (0 < width && width <= 64) width else 64
-    val bytes = ops.ISZOps(crypto.SHA3.sum512(conversions.String.toU8is(t.string))).take(max)
-    var cs = ISZ[C]()
-    for (b <- bytes) {
-      val c = conversions.U32.toC(conversions.U8.toU32(b))
-      cs = cs :+ ops.COps.hex2c((c >>> '\u0004') & '\u000F')
-      cs = cs :+ ops.COps.hex2c(c & '\u000F')
-    }
-    return st"$cs"
-  }
-
   @pure def stableId(t: AST.Typed): ST = {
-    return st"0x${fprintWidth(t, 4)}"
+    return st"0x${AST.Util.stableTypeSig(t, 4)}"
   }
 
   @pure def fprint(t: AST.Typed): ST = {
-    return fprintWidth(t, config.fprintWidth)
+    return AST.Util.stableTypeSig(t, config.fprintWidth)
   }
 
   @pure def fingerprint(t: AST.Typed): (ST, B) = {
-    t match {
-      case t: AST.Typed.Name =>
-        ts.typeHierarchy.typeMap.get(t.ids).get match {
-          case _: TypeInfo.Enum => return (mangleName(ops.ISZOps(t.ids).dropRight(1)), F)
-          case _ => return if (t.args.isEmpty) (mangleName(t.ids), F) else (st"${mangleName(t.ids)}_${fprint(t)}", T)
-        }
-      case t: AST.Typed.Tuple => return (st"Tuple${t.args.size}_${fprint(t)}", T)
-      case t: AST.Typed.Fun => return (st"Fun${t.args.size}_${fprint(t)}", T)
-      case _ => halt(s"Infeasible: $t")
-    }
+    return AST.Util.stableTypeId(t, config.fprintWidth)
   }
 
   def genTypeNames(): Unit = {
@@ -851,10 +830,10 @@ import StaticTranspiler._
       compiledMap = compiledMap + key ~> newValue
     }
     def genEnum(t: AST.Typed.Name): ST = {
-      val name = ops.ISZOps(t.ids).dropRight(1)
-      val mangledName = mangleName(name)
+      val name = t.ids
+      val mangledName = AST.Util.mangleName(name)
       typeNameMap = typeNameMap + t ~> mangledName
-      val info = ts.typeHierarchy.nameMap.get(name).get.asInstanceOf[Info.Enum]
+      val info = ts.typeHierarchy.nameMap.get(ops.ISZOps(name).dropRight(1)).get.asInstanceOf[Info.Enum]
       val elements = info.elements.keys
       val elementType = info.elementTypedOpt.get
       val optionElementType = AST.Typed.Name(optionName, ISZ(elementType))
@@ -881,7 +860,7 @@ import StaticTranspiler._
     }
     def genSubZ(t: AST.Typed.Name): Unit = {
       val name = t.ids
-      val mangledName = mangleName(name)
+      val mangledName = AST.Util.mangleName(name)
       typeNameMap = typeNameMap + t ~> mangledName
       val info = ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.SubZ]
       val optionType = AST.Typed.Name(optionName, ISZ(t))
@@ -1409,7 +1388,7 @@ import StaticTranspiler._
     val info: TypeInfo.SubZ = ts.typeHierarchy.typeMap.get(tname).get.asInstanceOf[TypeInfo.SubZ]
     val n = Z(value).get
     checkBitWidth(posOpt, n, info.ast.bitWidth, !info.ast.isSigned)
-    return st"${mangleName(tname)}_C($n)"
+    return st"${AST.Util.mangleName(tname)}_C($n)"
   }
 
   def transObjectMethodInvoke(
@@ -1491,7 +1470,7 @@ import StaticTranspiler._
           } else {
             val shouldCopy = !res.isVal && !isImmutable(typeKind(exp.typedOpt.get))
             if (res.isInObject) {
-              return (st"${mangleName(res.owner)}_${res.id}(SF_LAST)", shouldCopy)
+              return (st"${AST.Util.mangleName(res.owner)}_${res.id}(SF_LAST)", shouldCopy)
             } else {
               val t = currReceiverOpt.get
               return (st"${transpileType(t)}_${fieldId(res.id)}_(this)", shouldCopy)
@@ -1542,7 +1521,7 @@ import StaticTranspiler._
                 return r
             }
           }
-        case res: AST.ResolvedInfo.EnumElement => return (st"${mangleName(res.owner)}_${enumId(res.name)}", F)
+        case res: AST.ResolvedInfo.EnumElement => return (elementName(res.owner, res.name), F)
         case res => halt(s"Infeasible: $res")
       }
     }
@@ -1661,7 +1640,7 @@ import StaticTranspiler._
               case _ => halt("Infeasible")
             }
             val (e, shouldCopy) = transpileExp(exp.exp)
-            return (st"${mangleName(tname)}$op($e)", shouldCopy)
+            return (st"${AST.Util.mangleName(tname)}$op($e)", shouldCopy)
           }
         case res: AST.ResolvedInfo.Method =>
           val (receiver, _) = transpileExp(exp.exp)
@@ -1711,12 +1690,12 @@ import StaticTranspiler._
               val iszType = transpileType(expType(select))
               val temp = freshTempName()
               stmts = stmts :+ st"DeclNew$iszType($temp);"
-              stmts = stmts :+ st"${mangleName(owner)}_elements(&$temp);"
+              stmts = stmts :+ st"${AST.Util.mangleName(owner :+ "Type")}_elements(&$temp);"
               return (st"(&$temp)", F)
             case AST.ResolvedInfo.BuiltIn.Kind.EnumNumOfElements =>
               val owner = expType(select.receiverOpt.get).asInstanceOf[AST.Typed.Enum].name
               val temp = freshTempName()
-              stmts = stmts :+ st"Z $temp = ${mangleName(owner)}_numOfElements();"
+              stmts = stmts :+ st"Z $temp = ${AST.Util.mangleName(owner :+ "Type")}_numOfElements();"
               return (temp, F)
             case AST.ResolvedInfo.BuiltIn.Kind.AsInstanceOf =>
               val (e, shouldCopy) = transpileExp(select.receiverOpt.get)
@@ -1776,7 +1755,7 @@ import StaticTranspiler._
           if (res.isInObject) {
             val varInfo = ts.typeHierarchy.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
             val shouldCopy = !varInfo.ast.isVal && !isImmutable(typeKind(varInfo.ast.attr.typedOpt.get))
-            return (st"${mangleName(res.owner)}_${res.id}(SF_LAST)", shouldCopy)
+            return (st"${AST.Util.mangleName(res.owner)}_${res.id}(SF_LAST)", shouldCopy)
           } else {
             val receiver = select.receiverOpt.get
             return transSelectVar(select.typedOpt.get, receiver, res)
@@ -2038,7 +2017,7 @@ import StaticTranspiler._
                 val tpe = transpileType(expType(invoke))
                 val temp = freshTempName()
                 stmts = stmts :+ st"DeclNew$tpe($temp);"
-                stmts = stmts :+ st"${mangleName(name)}_apply(&$temp, $e);"
+                stmts = stmts :+ st"${AST.Util.mangleName(name)}_apply(&$temp, $e);"
                 return st"(&$temp)"
               }
               res.owner :+ res.id match {
@@ -2629,12 +2608,12 @@ import StaticTranspiler._
             stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${localId(res.id)})) return F;"
           case res: AST.ResolvedInfo.Var =>
             if (res.isInObject) {
-              stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}(SF_LAST))) return F;"
+              stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${AST.Util.mangleName(res.owner)}_${res.id}(SF_LAST))) return F;"
             } else {
-              stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${res.id}_(this))) return F;"
+              stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${AST.Util.mangleName(res.owner)}_${res.id}_(this))) return F;"
             }
           case res: AST.ResolvedInfo.EnumElement =>
-            stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${mangleName(res.owner)}_${enumId(res.name)})) return F;"
+            stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${AST.Util.mangleName(res.owner)}_${enumId(res.name)})) return F;"
           case res => halt(s"Infeasible: $res")
         }
       case _: AST.Pattern.SeqWildcard => // skip
@@ -2731,8 +2710,8 @@ import StaticTranspiler._
           }
       }
       val fname: ST = cas.pattern.posOpt match {
-        case Some(pos) => mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}") ++ tfprint)
-        case _ => mangleName(context ++ ISZ("extract", freshTempName().render) ++ tfprint)
+        case Some(pos) => AST.Util.mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}") ++ tfprint)
+        case _ => AST.Util.mangleName(context ++ ISZ("extract", freshTempName().render) ++ tfprint)
       }
       val parameters: ST = if (params.isEmpty) st"" else st", ${(params, ", ")}"
       val arguments: ST = if (args.isEmpty) st"" else st", ${(args, ", ")}"
@@ -3092,8 +3071,8 @@ import StaticTranspiler._
         case _ => ISZ()
       }
       val fname: ST = stmt.pattern.posOpt match {
-        case Some(pos) => mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}") ++ tfprint)
-        case _ => mangleName(context ++ ISZ("extract", freshTempName().render) ++ tfprint)
+        case Some(pos) => AST.Util.mangleName(context ++ ISZ("extract", s"${pos.beginLine}", s"${pos.beginColumn}") ++ tfprint)
+        case _ => AST.Util.mangleName(context ++ ISZ("extract", freshTempName().render) ++ tfprint)
       }
       val parameters: ST = if (params.isEmpty) st"" else st", ${(params, ", ")}"
       val arguments: ST = if (args.isEmpty) st"" else st", ${(args, ", ")}"
@@ -3141,7 +3120,7 @@ import StaticTranspiler._
               }
             case res: AST.ResolvedInfo.Var =>
               if (res.isInObject) {
-                val name = mangleName(res.owner :+ res.id)
+                val name = AST.Util.mangleName(res.owner :+ res.id)
                 transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);"))
               } else {
                 val t = currReceiverOpt.get
@@ -3155,7 +3134,7 @@ import StaticTranspiler._
         case lhs: AST.Exp.Select =>
           val res = lhs.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Var]
           if (res.isInObject) {
-            val name = mangleName(res.owner :+ res.id)
+            val name = AST.Util.mangleName(res.owner :+ res.id)
             transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);"))
           } else {
             val receiver = lhs.receiverOpt.get
@@ -3577,19 +3556,23 @@ import StaticTranspiler._
   @pure def methodName(
     receiverTypeOpt: Option[AST.Typed.Name],
     isInObject: B,
-    owner: QName,
+    mowner: QName,
     id: String,
     noTypeParams: B,
     t: AST.Typed.Fun
   ): ST = {
+    val owner: ISZ[String] = ts.typeHierarchy.nameMap.get(mowner) match {
+      case Some(_: Info.Enum) => mowner :+ "Type"
+      case _ => mowner
+    }
     val r: ST =
       if (isInObject) {
         val ids: QName = ts.forwarding.get(owner) match {
           case Some(o) => o
           case _ => owner
         }
-        if (noTypeParams) st"${mangleName(ids)}_${methodId(id)}"
-        else st"${mangleName(ids)}_${methodId(id)}_${fprint(t)}"
+        if (noTypeParams) st"${AST.Util.mangleName(ids)}_${methodId(id)}"
+        else st"${AST.Util.mangleName(ids)}_${methodId(id)}_${fprint(t)}"
       } else if (sNameSet.contains(owner)) {
         st"${transpileType(receiverTypeOpt.get)}_${methodId(id)}"
       } else if (noTypeParams) {
@@ -3601,13 +3584,13 @@ import StaticTranspiler._
           case _ =>
             receiverTypeOpt match {
               case Some(receiverType) => st"${transpileType(receiverType)}_${methodId(id)}_"
-              case _ => st"${mangleName(owner)}_${methodId(id)}"
+              case _ => st"${AST.Util.mangleName(owner)}_${methodId(id)}"
             }
         }
       } else {
         receiverTypeOpt match {
           case Some(receiverType) => st"${transpileType(receiverType)}_${methodId(id)}_${fprint(t)}_"
-          case _ => st"${mangleName(owner)}_${methodId(id)}_${fprint(t)}"
+          case _ => st"${AST.Util.mangleName(owner)}_${methodId(id)}_${fprint(t)}"
         }
       }
     return r
