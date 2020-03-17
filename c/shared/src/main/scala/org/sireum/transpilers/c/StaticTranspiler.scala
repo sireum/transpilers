@@ -767,7 +767,7 @@ import StaticTranspiler._
       val (top, tname): (B, QName) = t match {
         case t: AST.Typed.Name =>
           ts.typeHierarchy.typeMap.get(t.ids).get match {
-            case _: TypeInfo.Enum => (t.ids.size == 1, ops.ISZOps(t.ids).dropRight(1))
+            case _: TypeInfo.Enum => (t.ids.size == 1, t.ids)
             case _ => (t.ids.size == 1, compiledKeyName(t))
           }
         case t: AST.Typed.Tuple => (F, compiledKeyName(t))
@@ -2613,7 +2613,7 @@ import StaticTranspiler._
               stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${AST.Util.mangleName(res.owner)}_${res.id}_(this))) return F;"
             }
           case res: AST.ResolvedInfo.EnumElement =>
-            stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${AST.Util.mangleName(res.owner)}_${enumId(res.name)})) return F;"
+            stmts = stmts :+ st"if (!${transpileType(t)}__eq($exp, ${AST.Util.mangleName(res.owner :+ "Type")}_${enumId(res.name)})) return F;"
           case res => halt(s"Infeasible: $res")
         }
       case _: AST.Pattern.SeqWildcard => // skip
