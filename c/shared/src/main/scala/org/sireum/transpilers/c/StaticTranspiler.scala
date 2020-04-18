@@ -367,13 +367,9 @@ object StaticTranspiler {
     "S16",
     "S32",
     "S64",
-    "U8",
-    "U16",
-    "U32",
-    "U64",
     "F32",
     "F64"
-  )
+  ) ++ (for (i <- 1 to 64) yield s"U$i")
 }
 
 import StaticTranspiler._
