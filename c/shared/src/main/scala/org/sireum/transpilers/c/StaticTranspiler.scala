@@ -1419,8 +1419,13 @@ import StaticTranspiler._
         args = args :+ st"(${transpileType(cv.t)}) $id"
       }
     }
-    if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
+    if (retType == AST.Typed.unit) {
       return if (args.isEmpty) st"$name(SF_LAST)" else st"$name(SF ${(args, ", ")})"
+    } else if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
+      val temp = freshTempName()
+      val tpe = transpileType(retType)
+      stmts = stmts :+ st"$tpe $temp = ${if (args.isEmpty) st"$name(SF_LAST)" else st"$name(SF ${(args, ", ")})"};"
+      return st"$temp"
     } else {
       val temp = freshTempName()
       val tpe = transpileType(retType)
@@ -1803,8 +1808,13 @@ import StaticTranspiler._
           args = args :+ st"(${transpileType(cv.t)}) $lid"
         }
       }
-      if (isScalar(typeKind(retType)) || retType == AST.Typed.unit) {
+      if (retType == AST.Typed.unit) {
         return (st"$name(SF $receiver${commaArgs(args)})", F)
+      } else if (isScalar(typeKind(retType))) {
+        val temp = freshTempName()
+        val tpe = transpileType(retType)
+        stmts = stmts :+ st"$tpe $temp = ${st"$name(SF $receiver${commaArgs(args)})"};"
+        return (st"$temp", F)
       } else {
         val temp = freshTempName()
         val tpe = transpileType(retType)
@@ -2792,7 +2802,8 @@ import StaticTranspiler._
     val b: ISZ[ST] = eg.condOpt match {
       case Some(cond) =>
         val (c, _) = transpileExp(cond)
-        ISZ(st"""if ($c) {
+        ISZ(st"""${(stmts, "\n")}
+        |if ($c) {
         |  ${(body, "\n")}
         |}""")
       case _ => body
