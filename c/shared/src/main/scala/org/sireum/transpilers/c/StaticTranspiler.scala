@@ -1332,8 +1332,7 @@ import StaticTranspiler._
   }
 
   def transpileLitString(posOpt: Option[Position], s: String): ST = {
-    val value = escapeString(posOpt, s)
-    return st"""string("$value")"""
+    return st"""string("$s")"""
   }
 
   def transpileLit(lit: AST.Lit): ST = {
