@@ -1220,14 +1220,11 @@ object StaticTemplate {
             |  $sizeType size = this->size;
             |  if (size > 0) {
             |    $elementType *value = this->value;
-            |    String space = string(" ");
-            |    String_cprint(space, isOut);
             |    ${elementTypePtr}_cprint(value[0], isOut);
             |    for ($sizeType i = 1; i < size; i++) {
             |      String_cprint(string(", "), isOut);
             |      ${elementTypePtr}_cprint(value[i], isOut);
             |    }
-            |    String_cprint(space, isOut);
             |  }
             |  String_cprint(string("]"), isOut);
             |  #endif
@@ -1239,14 +1236,11 @@ object StaticTemplate {
             |  $sizeType size = this->size;
             |  if (size > 0) {
             |    $elementType *value = this->value;
-            |    String space = string(" ");
-            |    String_string_(SF result, space);
             |    ${elementTypePtr}_string_(SF result, value[0]);
             |    for ($sizeType i = 1; i < size; i++) {
             |      String_string_(SF result, string(", "));
             |      ${elementTypePtr}_string_(SF result, value[i]);
             |    }
-            |    String_string_(SF result, space);
             |  }
             |  String_string_(SF result, string("]"));
             |}
@@ -1352,14 +1346,11 @@ object StaticTemplate {
             |  $sizeType size = this->size;
             |  if (size > 0) {
             |    $elementType *value = this->value;
-            |    String space = string(" ");
-            |    String_cprint(space, isOut);
             |    ${elementTypePtr}_cprint(&value[0], isOut);
             |    for ($sizeType i = 1; i < size; i++) {
             |      String_cprint(string(", "), isOut);
             |      ${elementTypePtr}_cprint(&value[i], isOut);
             |    }
-            |    String_cprint(space, isOut);
             |  }
             |  String_cprint(string("]"), isOut);
             |  #endif
@@ -1371,14 +1362,11 @@ object StaticTemplate {
             |  $sizeType size = this->size;
             |  if (size > 0) {
             |    $elementType *value = this->value;
-            |    String space = string(" ");
-            |    String_string_(SF result, space);
             |    ${elementTypePtr}_string_(SF result, ($elementTypePtr) &(value[0]));
             |    for ($sizeType i = 1; i < size; i++) {
             |      String_string_(SF result, string(", "));
             |      ${elementTypePtr}_string_(SF result, ($elementTypePtr) &(value[i]));
             |    }
-            |    String_string_(SF result, space);
             |  }
             |  String_string_(SF result, string("]"));
             |}
