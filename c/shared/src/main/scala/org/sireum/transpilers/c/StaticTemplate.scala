@@ -405,8 +405,10 @@ object StaticTemplate {
 
   @pure def sizesConfig(sizesMap: HashMap[AST.Typed.Name, Z]): ST = {
     @strictpure def toST(t: AST.Typed.Name): String =
-      if (t.ids == AST.Typed.isName) s"IS[${t.args(0)}, ${t.args(1)}]"
-      else s"IS[${t.args(0)}, ${t.args(1)}]"
+      if (t.ids == AST.Typed.isName)
+        if (t.args(0) == AST.Typed.z) s"ISZ[${t.args(1)}]" else s"IS[${t.args(0)}, ${t.args(1)}]"
+      else
+        if (t.args(0) == AST.Typed.z) s"MSZ[${t.args(1)}]" else s"MS[${t.args(0)}, ${t.args(1)}]"
     val sts: ISZ[ST] = for (e <- ops.ISZOps(sizesMap.entries.map((p: (AST.Typed.Name, Z)) => (toST(p._1), p._2))).
       sortWith((p1: (String, Z), p2: (String, Z)) => p1._1 <= p2._1)) yield st"${e._1}=${e._2}"
     return st"${(sts, ";\n")}"
