@@ -196,7 +196,7 @@ object StaticTranspiler {
                   |  temp.from = n;
                   |  return temp.to;
                   |}""",
-            impl = compiled.impl :+ st"$to ${AST.Util.mangleName(method.owner)}_to$to(STACK_FRAME_SF $from n);"
+            impl = compiled.impl :+ st"$to ${AST.Util.mangleName(method.owner)}_toRaw$to(STACK_FRAME_SF $from n);"
           )
         } else if (sops.startsWith("to")) {
           val to = sops.substring(2, id.size)
