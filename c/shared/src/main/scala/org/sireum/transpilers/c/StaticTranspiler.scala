@@ -1534,14 +1534,45 @@ import StaticTranspiler._
               val (left, _) = transpileExp(exp.left)
               val (right, _) = transpileExp(exp.right)
               return (st"(!($left) || $right)", F)
+            case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondImply =>
+              val temp = freshTempName()
+              val (left, _) = transpileExp(exp.left)
+              stmts = stmts :+ st"B $temp = T;"
+              val oldStmts = stmts
+              stmts = ISZ()
+              val (right, _) = transpileExp(exp.right)
+              stmts = oldStmts :+
+                st"""if ($left) {
+                    |  ${(stmts, "\n")}
+                    |  $temp = $right;
+                    |}"""
+              return (st"$temp", F)
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondAnd =>
+              val temp = freshTempName()
+              stmts = stmts :+ st"B $temp = F;"
               val (left, _) = transpileExp(exp.left)
+              val oldStmts = stmts
+              stmts = ISZ()
               val (right, _) = transpileExp(exp.right)
-              return (st"($left && $right)", F)
+              stmts = oldStmts :+
+                st"""if ($left) {
+                    |  ${(stmts, "\n")}
+                    |  $temp = $right;
+                    |}"""
+              return (st"$temp", F)
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryCondOr =>
+              val temp = freshTempName()
+              stmts = stmts :+ st"B $temp = T;"
               val (left, _) = transpileExp(exp.left)
+              val oldStmts = stmts
+              stmts = ISZ()
               val (right, _) = transpileExp(exp.right)
-              return (st"($left || $right)", F)
+              stmts = oldStmts :+
+                st"""if (!$left) {
+                    |  ${(stmts, "\n")}
+                    |  $temp = $right;
+                    |}"""
+              return (st"$temp", F)
             case AST.ResolvedInfo.BuiltIn.Kind.BinaryMapsTo =>
               val (left, _) = transpileExp(exp.left)
               val (right, _) = transpileExp(exp.right)
