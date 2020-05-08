@@ -1572,7 +1572,7 @@ object StaticTemplate {
     val pr = st"PRI${if (isUnsigned) if (isBitVector) "X" else "u" else "d"}$bitWidth"
     val min: ST = minOpt match {
       case Some(m) => st"${mangledName}_C($m)"
-      case _ => if (isUnsigned) st"0" else st"${cTypeUp}_MIN"
+      case _ => if (isUnsigned) st"${mangledName}_C(0)" else st"${cTypeUp}_MIN"
     }
     val max: ST = maxOpt match {
       case Some(m) => st"${mangledName}_C($m)"
@@ -1678,7 +1678,7 @@ object StaticTemplate {
           |
           |#define ${mangledName}_C(n) ${cTypeUp}_C(n)
           |
-          |#define ${mangledName}_Min ${cTypeUp}_MIN
+          |#define ${mangledName}_Min ${if (isUnsigned) st"${cTypeUp}_C(0)" else st"${cTypeUp}_MIN"}
           |#define ${mangledName}_Max ${cTypeUp}_MAX
           |
           |#define ${mangledName}_F "%$hex" $pr """""
