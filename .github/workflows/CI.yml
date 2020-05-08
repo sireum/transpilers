@@ -49,7 +49,7 @@ jobs:
         shell: cmd
         run: |
           set COURSIER_CACHE=%GITHUB_WORKSPACE%\cache\coursier
-          set PATH=%PATH%;C:\tools\cygwin\bin;C:\tools\cygwin\usr\bin
+          set PATH=C:\tools\cygwin\bin;C:\tools\cygwin\usr\bin;%PATH%
           cd /d %GITHUB_WORKSPACE%
           git submodule update --init --recursive
           bin\build.cmd test
