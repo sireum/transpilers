@@ -1062,7 +1062,7 @@ object StaticTemplate {
             |  Type_assign(result, this, sizeof(struct $name));
             |  result->size = ($sizeType) (thisSize + otherSize);
             |  for ($sizeType i = 0; i < otherSize; i++)
-            |    ${name}_up(result, thisSize + i, ${name}_at(other, i + 1));
+            |    ${name}_up(result, thisSize + i, ${name}_at(other, i));
             |}
             |
             |$removeHeader {
