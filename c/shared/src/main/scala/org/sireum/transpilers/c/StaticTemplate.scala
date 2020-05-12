@@ -156,10 +156,6 @@ object StaticTemplate {
           |#define string(v) ((String) &((struct { TYPE type; Z size; C value[sizeof(v)]; }) { TString, Z_C(sizeof (v) - 1), v }))
           |#define DeclNewString(x) struct StaticString x = { .type = TString }
           |
-          |static inline Z String_size_(STACK_FRAME_SF String this) {
-          |  return this->size;
-          |}
-          |
           |#endif"""
     return r
   }

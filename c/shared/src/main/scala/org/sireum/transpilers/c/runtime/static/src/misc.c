@@ -29,6 +29,7 @@ B _F(STACK_FRAME_ONLY);
 void String_assign(String dest, String src);
 B String__eq(String this, String other);
 B String__ne(String this, String other);
+Z String_size_(STACK_FRAME_SF String this);
 
 void String__append(STACK_FRAME_SF String dest, String src) {
   Z srcSize = src->size;

@@ -54,6 +54,10 @@ inline B String__ne(String this, String other) {
   return !String__eq(this, other);
 }
 
+inline Z String_size_(STACK_FRAME_SF String this) {
+  return this->size;
+}
+
 void String__append(STACK_FRAME_SF String dest, String src);
 
 #ifdef SIREUM_NO_PRINT
