@@ -968,6 +968,8 @@ object StaticTemplate {
             |$upImpl
             |$indexType ${name}_size(STACK_FRAME $name this);
             |Z ${name}_zize(STACK_FRAME $name this);
+            |B ${name}_isEmpty(STACK_FRAME $name this);
+            |B ${name}_nonEmpty(STACK_FRAME $name this);
             |
             |$eqHeader {
             |  intmax_t size = this->size;
