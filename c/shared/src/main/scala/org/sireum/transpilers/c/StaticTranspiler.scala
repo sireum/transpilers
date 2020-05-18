@@ -2348,6 +2348,7 @@ import StaticTranspiler._
       case _: AST.Exp.OldVal => halt("Infeasible")
       case _: AST.Exp.Result => halt("Infeasible")
       case _: AST.Exp.StateSeq => halt("Infeasible")
+      case _: AST.Exp.LoopIndex => halt("Infeasible")
     }
   }
 
