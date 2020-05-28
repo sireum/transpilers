@@ -1,6 +1,6 @@
 // #Sireum
 /*
- Copyright (c) 2019, Robby, Kansas State University
+ Copyright (c) 2020, Robby, Kansas State University
  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
@@ -344,7 +344,6 @@ object StaticTemplate {
           |  to_hex("$stackSize" stack_size)
           |  set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size -Wl,$${stack_size}")
           |  add_compile_options("$$<$$<CONFIG:Release>:-Oz>")
-          |  add_compile_options("$$<$$<CONFIG:Release>:-fmerge-all-constants>")
           |elseif ("$${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
           |  if (WIN32 OR MINGW OR MSYS OR CYGWIN)
           |    to_hex("$stackSize" stack_size)
@@ -352,8 +351,6 @@ object StaticTemplate {
           |  endif()
           |  add_compile_options(-fstack-usage)
           |  add_compile_options("$$<$$<CONFIG:Release>:-Os>")
-          |  add_compile_options("$$<$$<CONFIG:Release>:-fconserve-stack>")
-          |  add_compile_options("$$<$$<CONFIG:Release>:-fmerge-constants>")
           |endif()
           |
           |option(BOUND_CHECK
