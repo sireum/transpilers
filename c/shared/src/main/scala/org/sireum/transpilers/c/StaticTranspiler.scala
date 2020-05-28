@@ -1,6 +1,6 @@
 // #Sireum
 /*
- Copyright (c) 2019, Robby, Kansas State University
+ Copyright (c) 2020, Robby, Kansas State University
  All rights reserved.
 
  Redistribution and use in source and binary forms, with or without
@@ -463,6 +463,8 @@ import StaticTranspiler._
       var vs = ISZ[(TypeKind.Type, String, ST, ST, B)]()
       stmts = ISZ()
       val mangledName = AST.Util.mangleName(name)
+      var initHeaders = ISZ[ST]()
+      var initImpls = ISZ[ST]()
       for (stmt <- oInfo.ast.stmts) {
         stmt match {
           case stmt: AST.Stmt.Var if vars.contains(stmt.id.value) =>
@@ -474,6 +476,9 @@ import StaticTranspiler._
               case Some(e) => AST.Stmt.Expr(e, AST.TypedAttr(e.posOpt, e.typedOpt))
               case _ => stmt.initOpt.get
             }
+            val varMangledName = AST.Util.mangleName(name ++ ISZ[String]("init", id))
+            val oldStmts2 = stmts
+            stmts = ISZ()
             transpileAssignExp(
               init,
               (rhs, rhsT, _) => ISZ(
@@ -481,6 +486,16 @@ import StaticTranspiler._
                 else st"Type_assign(&_${mangledName}_$id, $rhs, sizeof($rhsT));"
               )
             )
+            initHeaders = initHeaders :+ st"void $varMangledName(STACK_FRAME_ONLY);"
+            initImpls = initImpls :+
+              st"""void $varMangledName(STACK_FRAME_ONLY) {
+                  |  #ifdef SIREUM_LOC
+                  |  StackFrame sf = caller;
+                  |  #endif
+                  |  sfUpdateLoc(${stmt.posOpt.get.beginLine});
+                  |  ${(stmts, "\n")}
+                  |};"""
+            stmts = oldStmts2 :+ st"$varMangledName(SF_LAST);"
           case _ =>
         }
       }
@@ -489,7 +504,8 @@ import StaticTranspiler._
       currReceiverOpt = oldCurrReceiverOpt
       stmts = oldStmts
       nextTempNum = oldNextTempNum
-      compiledMap = compiledMap + name ~> newValue
+      compiledMap = compiledMap + name ~>
+        newValue(header = newValue.header ++ initHeaders, impl = newValue.impl ++ initImpls)
     }
 
     def genFiles(): Unit = {
@@ -622,11 +638,17 @@ import StaticTranspiler._
     for (v <- nt.vars.entries) {
       val (id, (_, ct, init)) = v
       val kind = typeKind(ct)
+      val oldStmts2 = stmts
+      stmts = ISZ(st"sfUpdateLoc(${init.asStmt.posOpt.get.beginLine});")
       if (isScalar(kind)) {
         transpileAssignExp(init, (rhs, _, _) => ISZ(st"this->$id = $rhs;"))
       } else {
         transpileAssignExp(init, (rhs, rhsT, _) => ISZ(st"Type_assign(&this->$id, $rhs, sizeof($rhsT));"))
       }
+      stmts = oldStmts2 :+
+        st"""{
+            |  ${(stmts, "\n")}
+            |}"""
     }
 
     val uri =
