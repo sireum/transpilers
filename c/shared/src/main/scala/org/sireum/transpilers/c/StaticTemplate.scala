@@ -318,7 +318,43 @@ object StaticTemplate {
           |
           |add_compile_options(-Werror)
           |
-          |add_compile_options("$$<$$<CONFIG:Release>:-O2>")
+          |function(to_hex DEC HEX)
+          |  while(DEC GREATER 0)
+          |    math(EXPR _val "$${DEC} % 16")
+          |    math(EXPR DEC "$${DEC} / 16")
+          |    if(_val EQUAL 10)
+          |      set(_val "A")
+          |    elseif(_val EQUAL 11)
+          |      set(_val "B")
+          |    elseif(_val EQUAL 12)
+          |      set(_val "C")
+          |    elseif(_val EQUAL 13)
+          |      set(_val "D")
+          |    elseif(_val EQUAL 14)
+          |      set(_val "E")
+          |    elseif(_val EQUAL 15)
+          |      set(_val "F")
+          |    endif()
+          |    set(_res "$${_val}$${_res}")
+          |  endwhile()
+          |  set($${HEX} "0x$${_res}" PARENT_SCOPE)
+          |endfunction()
+          |
+          |if ("$${CMAKE_CXX_COMPILER_ID}" MATCHES "(C|c?)lang")
+          |  to_hex("$stackSize" stack_size)
+          |  set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size -Wl,$${stack_size}")
+          |  add_compile_options("$$<$$<CONFIG:Release>:-Oz>")
+          |  add_compile_options("$$<$$<CONFIG:Release>:-fmerge-all-constants>")
+          |elseif ("$${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
+          |  if (WIN32 OR MINGW OR MSYS OR CYGWIN)
+          |    to_hex("$stackSize" stack_size)
+          |    set(CMAKE_EXE_LINKER_FLAGS "-Wl,--stack,$${stack_size}")
+          |  endif()
+          |  add_compile_options(-fstack-usage)
+          |  add_compile_options("$$<$$<CONFIG:Release>:-Os>")
+          |  add_compile_options("$$<$$<CONFIG:Release>:-fconserve-stack>")
+          |  add_compile_options("$$<$$<CONFIG:Release>:-fmerge-constants>")
+          |endif()
           |
           |option(BOUND_CHECK
           |  "Build the program with sequence bound checking."
@@ -358,39 +394,7 @@ object StaticTemplate {
           |target_include_directories($project
           |        ${(for (d <- includeDirs(filess)) yield st"PUBLIC $d", "\n")})
           |
-          |${(mains, "\n\n")}
-          |
-          |
-          |function(to_hex DEC HEX)
-          |  while(DEC GREATER 0)
-          |    math(EXPR _val "$${DEC} % 16")
-          |    math(EXPR DEC "$${DEC} / 16")
-          |    if(_val EQUAL 10)
-          |      set(_val "A")
-          |    elseif(_val EQUAL 11)
-          |      set(_val "B")
-          |    elseif(_val EQUAL 12)
-          |      set(_val "C")
-          |    elseif(_val EQUAL 13)
-          |      set(_val "D")
-          |    elseif(_val EQUAL 14)
-          |      set(_val "E")
-          |    elseif(_val EQUAL 15)
-          |      set(_val "F")
-          |    endif()
-          |    set(_res "$${_val}$${_res}")
-          |  endwhile()
-          |  set($${HEX} "0x$${_res}" PARENT_SCOPE)
-          |endfunction()
-          |
-          |to_hex("$stackSize" stack_size)
-          |if ("$${CMAKE_CXX_COMPILER_ID}" MATCHES "(C|c?)lang")
-          |  set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size -Wl,$${stack_size}")
-          |elseif ("$${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-          |  if (WIN32 OR MINGW OR MSYS OR CYGWIN)
-          |    set(CMAKE_EXE_LINKER_FLAGS "-Wl,--stack,$${stack_size}")
-          |  endif()
-          |endif()"""
+          |${(mains, "\n\n")}"""
     return r
   }
 
