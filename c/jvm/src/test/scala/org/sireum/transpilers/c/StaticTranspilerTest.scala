@@ -432,6 +432,7 @@ class StaticTranspilerTest extends TestSuite {
       stackSize = "16 * 1024 * 1024",
       libOnly = F,
       stableTypeId = F,
+      cmakeIncludes = ISZ()
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)

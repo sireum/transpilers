@@ -271,7 +271,8 @@ object StaticTemplate {
     return r
   }
 
-  @pure def cmake(libOnly: B, project: String, stackSize: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName]): ST = {
+  @pure def cmake(libOnly: B, project: String, stackSize: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName],
+                  includes: ISZ[String]): ST = {
     val mainFs = HashSet ++ mainFilenames
 
     @pure def cSource(fs: QName): B = {
@@ -384,6 +385,8 @@ object StaticTemplate {
           |if(WITH_LOC)
           |  add_definitions(-DSIREUM_LOC)
           |endif(WITH_LOC)
+          |
+          |${(includes, "\n\n")}
           |
           |add_library($project STATIC
           |        ${(files(filess), "\n")})

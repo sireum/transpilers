@@ -100,7 +100,8 @@ class StaticTranspilerRcTest extends TestSuite {
       forLoopOpt = forLoopOpt,
       stackSize = "16 * 1024 * 1024",
       libOnly = F,
-      stableTypeId = T
+      stableTypeId = T,
+      cmakeIncludes = ISZ()
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)
