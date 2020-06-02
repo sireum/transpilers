@@ -2408,7 +2408,13 @@ import StaticTranspiler._
   }
 
   def transpileIf(stmt: AST.Stmt.If, fOpt: Option[(ST, ST, B) => ISZ[ST] @pure]): Unit = {
-    val (cond, _) = transpileExp(stmt.cond)
+    val tmp = freshTempName()
+    def condH(): Unit = {
+      val (cond, _) = transpileExp(stmt.cond)
+      stmts = stmts :+ st"$tmp = $cond;"
+    }
+    stmts = stmts :+ st"B $tmp;"
+    transWrapBlock(condH _)
     val oldStmts = stmts
     stmts = ISZ()
     fOpt match {
@@ -2425,7 +2431,7 @@ import StaticTranspiler._
     }
     if (stmt.elseBody.stmts.isEmpty) {
       stmts = oldStmts :+
-        st"""if ($cond) {
+        st"""if ($tmp) {
         |  ${(stmts, "\n")}
         |}"""
     } else {
@@ -2444,7 +2450,7 @@ import StaticTranspiler._
           }
       }
       stmts = oldStmts :+
-        st"""if ($cond) {
+        st"""if ($tmp) {
         |  ${(tstmts, "\n")}
         |} else {
         |  ${(stmts, "\n")}
@@ -2810,17 +2816,25 @@ import StaticTranspiler._
       }
       localRename = oldLocalRename
     }
+    val oldStmts = stmts
+    stmts = ISZ()
     val (e, shouldCopy): (ST, B) = stmt.exp match {
       case e: AST.Exp.Select if isNativeRes(e.attr.resOpt.get) => val r = transpileExp(e.receiverOpt.get); r
       case _ => val r = transpileExp(stmt.exp); r
     }
+    val expStmts = stmts
+    stmts = oldStmts
     val kind = typeKind(t)
     val tmp: ST = if (isScalar(kind) || !shouldCopy) {
-      stmts = stmts :+ st"$tpe $temp = $e;"
+      stmts = stmts ++ expStmts :+ st"$tpe $temp = $e;"
       temp
     } else {
       stmts = stmts :+ st"DeclNew$tpe($temp);"
-      stmts = stmts :+ st"Type_assign(&$temp, $e, sizeof(${typeDecl(t)}));"
+      stmts = stmts :+
+        st"""{
+            |  ${(expStmts, "\n")}
+            |  Type_assign(&$temp, $e, sizeof(${typeDecl(t)}));
+            |}"""
       st"(($tpe) &$temp)"
     }
     val handled: ST = stmt.exp.posOpt match {
@@ -2866,26 +2880,39 @@ import StaticTranspiler._
     stmts = ISZ()
     eg.range match {
       case range: AST.EnumGen.Range.Step =>
-        val (start, _) = transpileExp(range.start)
-        val (end, _) = transpileExp(range.end)
-        val (by, byE): (ST, Either[Z, ST]) = range.byOpt match {
-          case Some(byExp) =>
-            byExp match {
-              case byExp: AST.Exp.LitZ => val v = byExp.value; (st"$v", Either.Left(v))
-              case _ => val (v, _) = transpileExp(byExp); (v, Either.Right(v))
-            }
-          case _ => (st"1", Either.Left(1))
-        }
         val id: ST = eg.idOpt match {
           case Some(x) => st"${x.value}"
           case _ => freshTempName()
         }
         val tpe = transpileType(expType(range.start))
-        stmts = stmts :+ st"$tpe $id = $start;"
+        def startH(): Unit = {
+          val (start, _) = transpileExp(range.start)
+          stmts = stmts :+ st"$id = $start;"
+        }
+        stmts = stmts :+ st"$tpe $id;"
+        transWrapBlock(startH _)
         val endTemp = freshTempName()
-        stmts = stmts :+ st"$tpe $endTemp = $end;"
+        def endH(): Unit = {
+          val (end, _) = transpileExp(range.end)
+          stmts = stmts :+ st"$endTemp = $end;"
+        }
+        stmts = stmts :+ st"$tpe $endTemp;"
+        transWrapBlock(endH _)
         val byTemp = freshTempName()
-        stmts = stmts :+ st"Z $byTemp = $by;"
+        def byH(): Either[Z, ST] = {
+          val (by, byE): (ST, Either[Z, ST]) = range.byOpt match {
+            case Some(byExp) =>
+              byExp match {
+                case byExp: AST.Exp.LitZ => val v = byExp.value; (st"$v", Either.Left(v))
+                case _ => val (v, _) = transpileExp(byExp); (v, Either.Right(v))
+              }
+            case _ => (st"1", Either.Left(1))
+          }
+          stmts = stmts :+ st"$byTemp = (Z) $by;"
+          return byE
+        }
+        stmts = stmts :+ st"Z $byTemp;"
+        val byE = transWrapBlock(byH _)
         val pos =
           st"""while ($id ${if (range.isInclusive) "<=" else "<"} $endTemp) {
           |  ${(b ++ transpileLoc(range.attr.posOpt), "\n")}
@@ -2955,100 +2982,117 @@ import StaticTranspiler._
         val index = freshTempName()
         val (minIndex, maxElements) = minIndexMaxElementSize(t)
         val indexType = arraySizeType(maxElements)
-        val (e, _) = transpileExp(normExp)
-        stmts = stmts :+ st"$tpe $temp = $e;"
-        stmts = stmts :+ st"$indexType $size = ($e)->size;"
-        (isIndices, isReverse) match {
-          case (F, F) =>
-            eg.idOpt match {
-              case Some(id) =>
-                val eTpe = transpileType(et)
-                return if (isScalar(typeKind(et)))
-                  stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                  |  $eTpe ${id.value} = $temp->value[$index];
-                  |  ${(b, "\n")}
-                  |}"""
-                else
-                  stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                  |  $eTpe ${id.value} = ($eTpe) &($temp->value[$index]);
-                  |  ${(b, "\n")}
-                  |}"""
-              case _ =>
-                return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                |  ${(b, "\n")}
-                |}"""
-            }
-          case (F, T) =>
-            eg.idOpt match {
-              case Some(id) =>
-                val eTpe = transpileType(et)
-                return if (isScalar(typeKind(et)))
-                  stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                  |  $eTpe ${id.value} = $temp->value[$index];
-                  |  ${(b, "\n")}
-                  |}"""
-                else
-                  stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                  |  $eTpe ${id.value} = ($eTpe) &($temp->value[$index]);
-                  |  ${(b, "\n")}
-                  |}"""
-              case _ =>
-                return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                |  ${(b, "\n")}
-                |}"""
-            }
-          case (T, F) =>
-            eg.idOpt match {
-              case Some(id) =>
-                val iTpe = transpileType(it)
-                if (minIndex == z"0") {
+        def enumGenSH(): ISZ[ST] = {
+          val (e, _) = transpileExp(normExp)
+          stmts = stmts :+ st"$tpe $temp = $e;"
+          stmts = stmts :+ st"$indexType $size = ($e)->size;"
+          (isIndices, isReverse) match {
+            case (F, F) =>
+              eg.idOpt match {
+                case Some(id) =>
+                  val eTpe = transpileType(et)
+                  return if (isScalar(typeKind(et)))
+                    stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                    |  $eTpe ${id.value} = $temp->value[$index];
+                    |  ${(b, "\n")}
+                    |}"""
+                  else
+                    stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                    |  $eTpe ${id.value} = ($eTpe) &($temp->value[$index]);
+                    |  ${(b, "\n")}
+                    |}"""
+                case _ =>
                   return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                  |  $iTpe ${id.value} = ($iTpe) $index;
                   |  ${(b, "\n")}
                   |}"""
+              }
+            case (F, T) =>
+              eg.idOpt match {
+                case Some(id) =>
+                  val eTpe = transpileType(et)
+                  return if (isScalar(typeKind(et)))
+                    stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                    |  $eTpe ${id.value} = $temp->value[$index];
+                    |  ${(b, "\n")}
+                    |}"""
+                  else
+                    stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                    |  $eTpe ${id.value} = ($eTpe) &($temp->value[$index]);
+                    |  ${(b, "\n")}
+                    |}"""
+                case _ =>
+                  return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                  |  ${(b, "\n")}
+                  |}"""
+              }
+            case (T, F) =>
+              eg.idOpt match {
+                case Some(id) =>
+                  val iTpe = transpileType(it)
+                  if (minIndex == z"0") {
+                    return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                    |  $iTpe ${id.value} = ($iTpe) $index;
+                    |  ${(b, "\n")}
+                    |}"""
 
-                } else {
+                  } else {
+                    return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
+                    |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
+                    |  ${(b, "\n")}
+                    |}"""
+                  }
+                case _ =>
                   return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                  |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
                   |  ${(b, "\n")}
                   |}"""
-                }
-              case _ =>
-                return stmts :+ st"""for ($indexType $index = 0; $index < $size; $index++) {
-                |  ${(b, "\n")}
-                |}"""
-            }
-          case (T, T) =>
-            eg.idOpt match {
-              case Some(id) =>
-                val iTpe = transpileType(it)
-                if (minIndex == z"0") {
+              }
+            case (T, T) =>
+              eg.idOpt match {
+                case Some(id) =>
+                  val iTpe = transpileType(it)
+                  if (minIndex == z"0") {
+                    return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                    |  $iTpe ${id.value} = ($iTpe) $index;
+                    |  ${(b, "\n")}
+                    |}"""
+                  } else {
+                    return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
+                    |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
+                    |  ${(b, "\n")}
+                    |}"""
+                  }
+                case _ =>
                   return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                  |  $iTpe ${id.value} = ($iTpe) $index;
                   |  ${(b, "\n")}
                   |}"""
-                } else {
-                  return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                  |  $iTpe ${id.value} = ($iTpe) ((intmax_t) $index + $minIndex);
-                  |  ${(b, "\n")}
-                  |}"""
-                }
-              case _ =>
-                return stmts :+ st"""for ($indexType $index = $size - 1; $index >= 0; $index--) {
-                |  ${(b, "\n")}
-                |}"""
-            }
-          case _ => halt("Infeasible")
-        }
+              }
+            case _ => halt("Infeasible")
+          }
+      }
+        return transWrapBlock(enumGenSH _)
     }
   }
 
   def transpileHalt(exp: AST.Exp.Invoke): Unit = {
+    def transpileHaltH(): Unit = {
+      val tmp = declString()
+      transToString(tmp, exp.args(0))
+      stmts = stmts :+ st"sfAbort($tmp->value);"
+      stmts = stmts :+ abort
+    }
     stmts = stmts ++ transpileLoc(exp.posOpt)
-    val tmp = declString()
-    transToString(tmp, exp.args(0))
-    stmts = stmts :+ st"sfAbort($tmp->value);"
-    stmts = stmts :+ abort
+    transWrapBlock(transpileHaltH _)
+  }
+
+  def transWrapBlock[T](f: () => T): T = {
+    val oldStmts = stmts
+    stmts = ISZ()
+    val r = f()
+    stmts = oldStmts :+
+      st"""{
+          |  ${(stmts, "\n")}
+          |}"""
+    return r
   }
 
   def transpileStmt(statement: AST.Stmt): Unit = {
@@ -3077,21 +3121,27 @@ import StaticTranspiler._
       val tpe = transpileType(t)
       val scalar = isScalar(typeKind(t))
       if (scalar) {
-        if (init.isInstanceOf[AST.Stmt.Expr]) {
-          transpileAssignExp(init, (rhs, _, _) => ISZ(st"$tpe $local = $rhs;"))
-        } else {
-          stmts = stmts :+ st"$tpe $local;"
-          transpileAssignExp(init, (rhs, _, _) => ISZ(st"$local = $rhs;"))
-        }
-      } else {
-        stmts = stmts :+ st"DeclNew$tpe(_$local);"
         stmts = stmts :+ st"$tpe $local;"
-        transpileAssignExp(init, (rhs, rhsT, shouldCopy) =>
-          if (shouldCopy) ISZ(
-            st"$local = ($tpe) &_$local;",
-            st"Type_assign($local, $rhs, sizeof($rhsT));"
-          ) else ISZ(st"$local = ($tpe) $rhs;")
+        transWrapBlock(() => transpileAssignExp(init, (rhs, _, _) => ISZ(st"$local = $rhs;")))
+      } else {
+        val oldStmts = stmts
+        stmts = ISZ()
+        var copy = F
+        transpileAssignExp(init, (rhs, rhsT, shouldCopy) => {
+            copy = shouldCopy || !stmt.isVal
+            if (copy) ISZ(st"Type_assign($local, $rhs, sizeof($rhsT));")
+            else ISZ(st"$local = ($tpe) $rhs;")
+          }
         )
+        if (copy) {
+          stmts = oldStmts ++ ISZ(st"DeclNew$tpe(_$local);", st"$tpe $local = ($tpe) &_$local;") :+
+            st"""{
+                |  ${(stmts, "\n")}
+                |}"""
+        } else {
+          stmts = st"$tpe $local;" +: stmts
+          stmts = oldStmts ++ stmts
+        }
       }
     }
 
@@ -3110,21 +3160,27 @@ import StaticTranspiler._
       val temp = freshTempName()
       val tpe = transpileType(t)
       if (isScalar(typeKind(t))) {
-        if (stmt.init.isInstanceOf[AST.Stmt.Expr]) {
-          transpileAssignExp(stmt.init, (rhs, _, _) => ISZ(st"$tpe $temp = $rhs;"))
-        } else {
-          stmts = stmts :+ st"$tpe $temp;"
-          transpileAssignExp(stmt.init, (rhs, _, _) => ISZ(st"$temp = $rhs;"))
-        }
-      } else {
-        stmts = stmts :+ st"DeclNew$tpe(_$temp);"
         stmts = stmts :+ st"$tpe $temp;"
-        transpileAssignExp(stmt.init, (rhs, rhsT, shouldCopy) =>
-          if (shouldCopy) ISZ(
-            st"$temp = ($tpe) &_$temp;",
-            st"Type_assign($temp, $rhs, sizeof($rhsT));"
-          ) else ISZ(st"$temp = ($tpe) $rhs;")
+        transWrapBlock(() => transpileAssignExp(stmt.init, (rhs, _, _) => ISZ(st"$temp = $rhs;")))
+      } else {
+        val oldStmts = stmts
+        stmts = ISZ()
+        var copy = F
+        transpileAssignExp(stmt.init, (rhs, rhsT, shouldCopy) => {
+          copy = shouldCopy || !stmt.isVal
+          if (copy) ISZ(st"Type_assign($temp, $rhs, sizeof($rhsT));")
+          else ISZ(st"$temp = ($tpe) $rhs;")
+        }
         )
+        if (copy) {
+          stmts = oldStmts ++ ISZ(st"DeclNew$tpe(_$temp);", st"$tpe $temp = ($tpe) &_$temp;;") :+
+            st"""{
+                |  ${(stmts, "\n")}
+                |}"""
+        } else {
+          stmts = st"$tpe $temp;" +: stmts
+          stmts = oldStmts ++ stmts
+        }
       }
       val (declStmts, params, args, _, _) = declPatternVarParamArgs(F, stmt.pattern)
       val tfprint: ISZ[String] = t match {
@@ -3154,166 +3210,191 @@ import StaticTranspiler._
     }
 
     def transAssign(stmt: AST.Stmt.Assign): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
-      stmt.lhs match {
-        case lhs: AST.Exp.Ident =>
-          lhs.attr.resOpt.get match {
-            case res: AST.ResolvedInfo.LocalVar =>
-              val id = localId(lhs.id.value)
-              res.scope match {
-                case AST.ResolvedInfo.LocalVar.Scope.Closure =>
-                  val t = expType(stmt.lhs)
-                  val kind = typeKind(t)
-                  if (isScalar(kind)) {
-                    transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"*$id = $rhs;"))
-                  } else {
-                    transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));"))
-                  }
-                case scope =>
-                  val t = expType(stmt.lhs)
-                  transpileAssignExp(stmt.rhs, (rhs, _, shouldCopy) =>
-                    if (isScalar(typeKind(t)) || (!shouldCopy && scope == AST.ResolvedInfo.LocalVar.Scope.Current))
-                      ISZ(st"$id = $rhs;")
-                    else ISZ(
-                      st"$id = &_$id;",
-                      st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));"
+      def transAssignH(): Unit = {
+        stmt.lhs match {
+          case lhs: AST.Exp.Ident =>
+            lhs.attr.resOpt.get match {
+              case res: AST.ResolvedInfo.LocalVar =>
+                val id = localId(lhs.id.value)
+                res.scope match {
+                  case AST.ResolvedInfo.LocalVar.Scope.Closure =>
+                    val t = expType(stmt.lhs)
+                    val kind = typeKind(t)
+                    if (isScalar(kind)) {
+                      transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"*$id = $rhs;"))
+                    } else {
+                      transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));"))
+                    }
+                  case scope =>
+                    val t = expType(stmt.lhs)
+                    transpileAssignExp(stmt.rhs, (rhs, _, shouldCopy) =>
+                      if (isScalar(typeKind(t)))
+                        ISZ(st"$id = $rhs;")
+                      else ISZ(
+                        st"Type_assign($id, $rhs, sizeof(${typeDecl(t)}));"
+                      )
                     )
+                }
+              case res: AST.ResolvedInfo.Var =>
+                if (res.isInObject) {
+                  val name = AST.Util.mangleName(res.owner :+ res.id)
+                  transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);"))
+                } else {
+                  val t = currReceiverOpt.get
+                  transpileAssignExp(
+                    stmt.rhs,
+                    (rhs, _, _) => ISZ(st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);")
                   )
-              }
-            case res: AST.ResolvedInfo.Var =>
-              if (res.isInObject) {
-                val name = AST.Util.mangleName(res.owner :+ res.id)
-                transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);"))
-              } else {
-                val t = currReceiverOpt.get
-                transpileAssignExp(
-                  stmt.rhs,
-                  (rhs, _, _) => ISZ(st"${transpileType(t)}_${fieldId(res.id)}_a(this, (${transpileType(expType(lhs))}) $rhs);")
-                )
-              }
-            case _ => halt("Infeasible")
-          }
-        case lhs: AST.Exp.Select =>
-          val res = lhs.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Var]
-          if (res.isInObject) {
-            val name = AST.Util.mangleName(res.owner :+ res.id)
-            transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);"))
-          } else {
-            val receiver = lhs.receiverOpt.get
-            val t = expType(receiver)
-            val (rcv, _) = transpileExp(receiver)
-            transpileAssignExp(
-              stmt.rhs,
-              (rhs, _, _) => ISZ(st"${transpileType(t)}_${fieldId(res.id)}_a($rcv, (${transpileType(expType(lhs))}) $rhs);")
-            )
-          }
-        case lhs: AST.Exp.Invoke =>
-          val (receiverType, receiver): (AST.Typed.Name, ST) = lhs.receiverOpt match {
-            case Some(rcv) => val (r, _) = transpileExp(rcv); (expType(rcv).asInstanceOf[AST.Typed.Name], r)
-            case _ => val (r, _) = transpileExp(lhs.ident); (expType(lhs.ident).asInstanceOf[AST.Typed.Name], r)
-          }
-          val (index, _) = transpileExp(lhs.args(0))
-          transpileAssignExp(stmt.rhs, (rhs, _, _) =>
-            ISZ(st"${transpileType(receiverType)}_up($receiver, $index, (${transpileType(expType(lhs))}) $rhs);"))
-        case _ => halt("Infeasible")
+                }
+              case _ => halt("Infeasible")
+            }
+          case lhs: AST.Exp.Select =>
+            val res = lhs.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.Var]
+            if (res.isInObject) {
+              val name = AST.Util.mangleName(res.owner :+ res.id)
+              transpileAssignExp(stmt.rhs, (rhs, _, _) => ISZ(st"${name}_a(SF (${transpileType(expType(lhs))}) $rhs);"))
+            } else {
+              val receiver = lhs.receiverOpt.get
+              val t = expType(receiver)
+              val (rcv, _) = transpileExp(receiver)
+              transpileAssignExp(
+                stmt.rhs,
+                (rhs, _, _) => ISZ(st"${transpileType(t)}_${fieldId(res.id)}_a($rcv, (${transpileType(expType(lhs))}) $rhs);")
+              )
+            }
+          case lhs: AST.Exp.Invoke =>
+            val (receiverType, receiver): (AST.Typed.Name, ST) = lhs.receiverOpt match {
+              case Some(rcv) => val (r, _) = transpileExp(rcv); (expType(rcv).asInstanceOf[AST.Typed.Name], r)
+              case _ => val (r, _) = transpileExp(lhs.ident); (expType(lhs.ident).asInstanceOf[AST.Typed.Name], r)
+            }
+            val (index, _) = transpileExp(lhs.args(0))
+            transpileAssignExp(stmt.rhs, (rhs, _, _) =>
+              ISZ(st"${transpileType(receiverType)}_up($receiver, $index, (${transpileType(expType(lhs))}) $rhs);"))
+          case _ => halt("Infeasible")
+        }
       }
-
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      transWrapBlock(transAssignH _)
     }
 
     def transAssert(exp: AST.Exp.Invoke): Unit = {
+      def transAssertH(): Unit = {
+        val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
+          case AST.ResolvedInfo.BuiltIn(k) => k
+          case _ => halt("Infeasible")
+        }
+        val (cond, _) = transpileExp(exp.args(0))
+        if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assert) {
+          stmts = stmts :+ st"""if (!($cond)) { sfAbort("Assertion failure"); }"""
+        } else {
+          assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssertMsg)
+          val oldStmts = stmts
+          stmts = ISZ()
+          val (s, _) = transpileExp(exp.args(1))
+          stmts = oldStmts :+
+            st"""if (!($cond)) {
+            |  ${(stmts, "\n")}
+            |  sfAbort(($s)->value);
+            |}"""
+        }
+      }
       stmts = stmts ++ transpileLoc(statement.posOpt)
-      val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
-        case AST.ResolvedInfo.BuiltIn(k) => k
-        case _ => halt("Infeasible")
-      }
-      val (cond, _) = transpileExp(exp.args(0))
-      if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assert) {
-        stmts = stmts :+ st"""if (!($cond)) { sfAbort("Assertion failure"); }"""
-      } else {
-        assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssertMsg)
-        val oldStmts = stmts
-        stmts = ISZ()
-        val (s, _) = transpileExp(exp.args(1))
-        stmts = oldStmts :+
-          st"""if (!($cond)) {
-          |  ${(stmts, "\n")}
-          |  sfAbort(($s)->value);
-          |}"""
-      }
+      transWrapBlock(transAssertH _)
     }
 
     def transAssume(exp: AST.Exp.Invoke): Unit = {
+      def transAssumeH(): Unit = {
+        val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
+          case AST.ResolvedInfo.BuiltIn(k) => k
+          case _ => halt("Infeasible")
+        }
+        val (cond, _) = transpileExp(exp.args(0))
+        if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assume) {
+          stmts = stmts :+ st"""if (!($cond)) { sfAbort("Assumption does not hold"); }"""
+        } else {
+          assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg)
+          val oldStmts = stmts
+          stmts = ISZ()
+          val (s, _) = transpileExp(exp.args(1))
+          stmts = oldStmts :+
+            st"""if (!($cond)) {
+            |  ${(stmts, "\n")}
+            |  sfAbort(($s)->value);
+            |}"""
+        }
+      }
       stmts = stmts ++ transpileLoc(statement.posOpt)
-      val kind: AST.ResolvedInfo.BuiltIn.Kind.Type = exp.attr.resOpt.get match {
-        case AST.ResolvedInfo.BuiltIn(k) => k
-        case _ => halt("Infeasible")
-      }
-      val (cond, _) = transpileExp(exp.args(0))
-      if (kind == AST.ResolvedInfo.BuiltIn.Kind.Assume) {
-        stmts = stmts :+ st"""if (!($cond)) { sfAbort("Assumption does not hold"); }"""
-      } else {
-        assert(kind == AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg)
-        val oldStmts = stmts
-        stmts = ISZ()
-        val (s, _) = transpileExp(exp.args(1))
-        stmts = oldStmts :+
-          st"""if (!($cond)) {
-          |  ${(stmts, "\n")}
-          |  sfAbort(($s)->value);
-          |}"""
-      }
+      transWrapBlock(transAssumeH _)
     }
 
     def transCprint(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(statement.posOpt)
-      val (t, _) = transpileExp(exp.args(0))
-      for (i <- z"1" until exp.args.size) {
-        transPrintH(t, exp.args(i))
+      def transCprintH(): Unit = {
+        val (t, _) = transpileExp(exp.args(0))
+        for (i <- z"1" until exp.args.size) {
+          transPrintH(t, exp.args(i))
+        }
       }
+      stmts = stmts ++ transpileLoc(statement.posOpt)
+      transWrapBlock(transCprintH _)
     }
 
     def transCprintln(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(statement.posOpt)
-      val (t, _) = transpileExp(exp.args(0))
-      val t2 = freshTempName()
-      stmts = stmts :+ st"B $t2 = $t;"
-      for (i <- z"1" until exp.args.size) {
-        transPrintH(t2, exp.args(i))
+      def transCprintlnH(): Unit = {
+        val (t, _) = transpileExp(exp.args(0))
+        val t2 = freshTempName()
+        stmts = stmts :+ st"B $t2 = $t;"
+        for (i <- z"1" until exp.args.size) {
+          transPrintH(t2, exp.args(i))
+        }
+        stmts = stmts :+ st"cprintln($t2);"
+        stmts = stmts :+ st"cflush($t2);"
       }
-      stmts = stmts :+ st"cprintln($t2);"
-      stmts = stmts :+ st"cflush($t2);"
+      stmts = stmts ++ transpileLoc(statement.posOpt)
+      transWrapBlock(transCprintlnH _)
     }
 
     def transEprint(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(statement.posOpt)
-      for (i <- z"0" until exp.args.size) {
-        transPrintH(falseLit, exp.args(i))
+      def transEprintH(): Unit = {
+        for (i <- z"0" until exp.args.size) {
+          transPrintH(falseLit, exp.args(i))
+        }
       }
+      stmts = stmts ++ transpileLoc(statement.posOpt)
+      transWrapBlock(transEprintH _)
     }
 
     def transEprintln(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(statement.posOpt)
-      for (i <- z"0" until exp.args.size) {
-        transPrintH(falseLit, exp.args(i))
+      def transEprintlnH(): Unit = {
+        for (i <- z"0" until exp.args.size) {
+          transPrintH(falseLit, exp.args(i))
+        }
+        stmts = stmts :+ st"cprintln($falseLit);"
+        stmts = stmts :+ st"cflush($falseLit);"
       }
-      stmts = stmts :+ st"cprintln($falseLit);"
-      stmts = stmts :+ st"cflush($falseLit);"
+      stmts = stmts ++ transpileLoc(statement.posOpt)
+      transWrapBlock(transEprintlnH _)
     }
 
     def transPrint(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(statement.posOpt)
-      for (i <- z"0" until exp.args.size) {
-        transPrintH(trueLit, exp.args(i))
+      def transPrintI(): Unit = {
+        for (i <- z"0" until exp.args.size) {
+          transPrintH(trueLit, exp.args(i))
+        }
       }
+      stmts = stmts ++ transpileLoc(statement.posOpt)
+      transWrapBlock(transPrintI _)
     }
 
     def transPrintln(exp: AST.Exp.Invoke): Unit = {
-      stmts = stmts ++ transpileLoc(statement.posOpt)
-      for (i <- z"0" until exp.args.size) {
-        transPrintH(trueLit, exp.args(i))
+      def transPrintlnH(): Unit = {
+        for (i <- z"0" until exp.args.size) {
+          transPrintH(trueLit, exp.args(i))
+        }
+        stmts = stmts :+ st"cprintln($trueLit);"
+        stmts = stmts :+ st"cflush($trueLit);"
       }
-      stmts = stmts :+ st"cprintln($trueLit);"
-      stmts = stmts :+ st"cflush($trueLit);"
+      stmts = stmts ++ transpileLoc(statement.posOpt)
+      transWrapBlock(transPrintlnH _)
     }
 
     def isBuiltInStmt(exp: AST.Exp.Invoke): B = {
@@ -3338,8 +3419,6 @@ import StaticTranspiler._
     }
 
     def transpileWhile(stmt: AST.Stmt.While): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
-      val (cond, _) = transpileExp(stmt.cond)
       val tmp: String = stmt.posOpt match {
         case Some(pos) => s"t_${pos.beginLine}_${pos.beginColumn}"
         case _ =>
@@ -3349,7 +3428,13 @@ import StaticTranspiler._
           }
           s"t__$h"
       }
-      stmts = stmts :+ st"B $tmp = $cond;"
+      def transCondH(): Unit = {
+        val (cond, _) = transpileExp(stmt.cond)
+        stmts = stmts :+ st"$tmp = $cond;"
+      }
+      stmts = stmts ++ transpileLoc(stmt.posOpt)
+      stmts = stmts :+ st"B $tmp;"
+      transWrapBlock(transCondH _)
       val oldStmts = stmts
       stmts = ISZ()
       for (stmt <- stmt.body.stmts) {
@@ -3441,14 +3526,17 @@ import StaticTranspiler._
               }
             } else {
               stmts = stmts ++ transpileLoc(stmt.posOpt)
-              val (e, _) = transpileExp(exp)
-              val t = expType(exp)
-              if (t == AST.Typed.unit) {
-                stmts = stmts :+ st"$e;"
-              } else {
-                val temp = freshTempName()
-                stmts = stmts :+ st"${transpileType(t)} $temp = $e;"
+              def exprH(): Unit = {
+                val (e, _) = transpileExp(exp)
+                val t = expType(exp)
+                if (t == AST.Typed.unit) {
+                  stmts = stmts :+ st"$e;"
+                } else {
+                  val temp = freshTempName()
+                  stmts = stmts :+ st"${transpileType(t)} $temp = $e;"
+                }
               }
+              transWrapBlock(exprH _)
             }
           case exp => halt(s"Infeasible: $exp")
         }
