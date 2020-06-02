@@ -118,7 +118,9 @@ object StaticTemplate {
       st"""#ifndef SIREUM_GEN_TYPE_H
           |#define SIREUM_GEN_TYPE_H
           |
-          |#include <memory.h>
+          |#ifdef __cplusplus
+          |extern "C" {
+          |#endif
           |#include <stackframe.h>
           |
           |typedef enum {
@@ -156,6 +158,10 @@ object StaticTemplate {
           |#define string(v) ((String) &((struct { TYPE type; Z size; C value[sizeof(v)]; }) { TString, Z_C(sizeof (v) - 1), v }))
           |#define DeclNewString(x) struct StaticString x = { .type = TString }
           |
+          |#ifdef __cplusplus
+          |}
+          |#endif
+          |
           |#endif"""
     return r
   }
@@ -164,6 +170,10 @@ object StaticTemplate {
     val r =
       st"""#ifndef SIREUM_GEN_H
           |#define SIREUM_GEN_H
+          |
+          |#ifdef __cplusplus
+          |extern "C" {
+          |#endif
           |
           |#include <misc.h>
           |${(for (name <- ops.ISZOps(names).sortWith(qnameLt _)) yield st"#include <type-${(name, "_")}.h>", "\n")}
@@ -178,6 +188,10 @@ object StaticTemplate {
           |
           |size_t sizeOf(Type t);
           |void Type_assign(void *dest, void *src, size_t destSize);
+          |
+          |#ifdef __cplusplus
+          |}
+          |#endif
           |
           |#endif"""
     return r
@@ -221,10 +235,18 @@ object StaticTemplate {
       st"""#ifndef SIREUM_ALL_H
           |#define SIREUM_ALL_H
           |
+          |#ifdef __cplusplus
+          |extern "C" {
+          |#endif
+          |
           |#include <types.h>
           |${(for (name <- ops.ISZOps(names).sortWith(qnameLt _)) yield st"#include <${(name, "_")}.h>", "\n")}
           |
           |${(entries, "\n")}
+          |
+          |#ifdef __cplusplus
+          |}
+          |#endif
           |
           |#endif"""
     return r
@@ -233,7 +255,6 @@ object StaticTemplate {
   @pure def allC(typeNames: ISZ[(String, ST, ST, ST)], entries: ISZ[ST]): ST = {
     val r =
       st"""#include <all.h>
-          |#include <errno.h>
           |
           |B Type__eq(void *t1, void *t2) {
           |  TYPE type = ((Type) t1)->type;
@@ -370,6 +391,14 @@ object StaticTemplate {
           |  add_definitions(-DSIREUM_RANGE_CHECK)
           |endif(RANGE_CHECK)
           |
+          |option(NO_STDIO
+          |  "Do not include stdio.h (only printf is available and all output to stdout)."
+          |  OFF)
+          |
+          |if(NO_STDIO)
+          |  add_definitions(-DSIREUM_NO_STDIO)
+          |endif(NO_STDIO)
+          |
           |option(NO_PRINT
           |  "Build the program without console output."
           |  OFF)
@@ -446,17 +475,35 @@ object StaticTemplate {
       r = r :+ ((dir :+ tHeaderFilename,
         st"""#ifndef SIREUM_TYPE_H_$filename
             |#define SIREUM_TYPE_H_$filename
+            |
+            |#ifdef __cplusplus
+            |extern "C" {
+            |#endif
+            |
             |#include <misc.h>
             |
             |${(comp.typeHeader, "\n\n")}
+            |
+            |#ifdef __cplusplus
+            |}
+            |#endif
             |
             |#endif"""))
       r = r :+ ((dir :+ headerFilename,
         st"""#ifndef SIREUM_H_$filename
             |#define SIREUM_H_$filename
+            |
+            |#ifdef __cplusplus
+            |extern "C" {
+            |#endif
+            |
             |#include <types.h>
             |
             |${(comp.header, "\n\n")}
+            |
+            |#ifdef __cplusplus
+            |}
+            |#endif
             |
             |#endif"""))
       if (comp.impl.nonEmpty) {
@@ -499,7 +546,7 @@ object StaticTemplate {
                   iszSizeType: String,
                   atExit: ISZ[ST]
                 ): ST = {
-    val r: ST = if (atExit.nonEmpty) {
+    val r: ST = /* if (atExit.nonEmpty) {
       st"""#include <all.h>
           |#include <signal.h>
           |
@@ -538,9 +585,8 @@ object StaticTemplate {
           |
           |  return (int) ${AST.Util.mangleName(owner)}_$id(SF &t_args);
           |}"""
-    } else {
+    } else */ {
       st"""#include <all.h>
-          |#include <string.h>
           |
           |int main(int argc, char *argv[]) {
           |  DeclNewStackFrame(NULL, "$filename", "${dotName(owner)}", "<App>", 0);
@@ -1809,11 +1855,11 @@ object StaticTemplate {
     return compiled(
       typeHeader = compiled.typeHeader :+ typeHeader,
       header = compiled.header :+
-        st"""#include <assert.h>
+        st"""#include <lib.h>
             |
             |${(header, ";\n")};""",
       impl = compiled.impl :+
-        st"""#include <errno.h>
+        st"""#include <lib.h>
             |
             |${(impl, "\n\n")}"""
     )
