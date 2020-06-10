@@ -76,7 +76,7 @@ object cli {
       OptGroup(name = "CMake", opts = ISZ(
         Opt(name = "cmakeIncludes", longKey = "cmake-includes", shortKey = None(),
           tpe = Type.Path(T, None()),
-          description = "Files to embed in generated CMakeLists.txt"),
+          description = "Files to embed in generated CMakeLists.txt (can optionally use a preceeding - or + to indicate before/after library/app definitions; defaults to -)"),
         Opt(name = "exts", longKey = "exts", shortKey = Some('e'),
           tpe = Type.Path(T, None()),
           description = "Extension directory or file paths"),

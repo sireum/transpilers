@@ -293,7 +293,7 @@ object StaticTemplate {
   }
 
   @pure def cmake(libOnly: B, project: String, stackSize: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName],
-                  includes: ISZ[String]): ST = {
+                  includes: ISZ[String], plusIncludes: ISZ[String]): ST = {
     val mainFs = HashSet ++ mainFilenames
 
     @pure def cSource(fs: QName): B = {
@@ -423,7 +423,9 @@ object StaticTemplate {
           |target_include_directories($project
           |        ${(for (d <- includeDirs(filess)) yield st"PUBLIC $d", "\n")})
           |
-          |${(mains, "\n\n")}"""
+          |${(mains, "\n\n")}
+          |
+          |${(plusIncludes, "\n\n")}"""
     return r
   }
 
