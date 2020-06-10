@@ -79,7 +79,7 @@ class StaticTranspilerRcTest extends TestSuite {
       }
 
     val extKey = Vector("ext", "ext.c")
-    val extFile = StaticTranspiler.ExtFile(extKey.mkString("/"), map(extKey))
+    val extFile = StaticTranspiler.ExtFile(ISZ(), extKey.mkString("/"), map(extKey))
 
     val config = StaticTranspiler.Config(
       projectName = "sha3",

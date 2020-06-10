@@ -38,7 +38,7 @@ object StaticTranspiler {
 
   type SubstMap = HashMap[String, AST.Typed]
 
-  @datatype class ExtFile(uri: String, content: String)
+  @datatype class ExtFile(rel: ISZ[String], uri: String, content: String)
 
   @datatype class Config(
                           projectName: String,
@@ -547,7 +547,7 @@ import StaticTranspiler._
       }
 
       for (ext <- config.exts) {
-        rExt = rExt + ISZ[String]("ext", filename(Some(ext.uri), "")) ~> ext
+        rExt = rExt + ("ext" +: ext.rel :+ filename(Some(ext.uri), "")) ~> ext
       }
 
       r = r + ISZ[String](runtimeDir, "type-composite.h") ~> typeCompositeH(

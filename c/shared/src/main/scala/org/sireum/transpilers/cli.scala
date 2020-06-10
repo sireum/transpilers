@@ -79,7 +79,7 @@ object cli {
           description = "Files to embed in generated CMakeLists.txt"),
         Opt(name = "exts", longKey = "exts", shortKey = Some('e'),
           tpe = Type.Path(T, None()),
-          description = "Extension file paths"),
+          description = "Extension directory or file paths"),
         Opt(name = "libOnly", longKey = "lib-only", shortKey = Some('l'),
           tpe = Type.Flag(F),
           description = "Only generate library definition in CMake file"),
