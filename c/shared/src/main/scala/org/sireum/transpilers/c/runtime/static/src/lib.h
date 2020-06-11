@@ -6,13 +6,28 @@ extern "C" {
 #endif
 
 #include <stddef.h>
-#include <errno.h>
+// #define size_t intmax_t
 
+#include <stdbool.h>
+/*
 #define bool _Bool
 #define true 1
 #define false 0
+*/
 
-void assert(int expression);
+#include <errno.h>
+//extern int errno;
+
+#include <assert.h>
+//void assert(int expression);
+
+#include <stdio.h>
+/*
+int printf(const char *, ...);
+#define fprintf(file, format, ...) printf(format, ##__VA_ARGS__)
+#define fflush(file)
+int snprintf(char *, size_t, const char *, ...);
+*/
 
 int memcmp(const void *str1, const void *str2, size_t n);
 void *memcpy(void *dest, const void * src, size_t n);
@@ -28,15 +43,6 @@ unsigned long long strtoull(const char *str, char **endptr, int base);
 double fmod(double x, double y);
 long double fmodl(long double x, long double y);
 float fmodf(float x, float y);
-
-#ifdef SIREUM_NO_STDIO
-int printf(const char *, ...);
-#define fprintf(file, format, ...) printf(format, ##__VA_ARGS__)
-#define fflush(file)
-int snprintf(char *, size_t, const char *, ...);
-#else
-#include <stdio.h>
-#endif
 
 void exit(int status);
 void abort(void);

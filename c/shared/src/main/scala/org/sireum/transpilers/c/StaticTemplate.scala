@@ -391,14 +391,6 @@ object StaticTemplate {
           |  add_definitions(-DSIREUM_RANGE_CHECK)
           |endif(RANGE_CHECK)
           |
-          |option(NO_STDIO
-          |  "Do not include stdio.h (only printf is available and all output to stdout)."
-          |  OFF)
-          |
-          |if(NO_STDIO)
-          |  add_definitions(-DSIREUM_NO_STDIO)
-          |endif(NO_STDIO)
-          |
           |option(NO_PRINT
           |  "Build the program without console output."
           |  OFF)
