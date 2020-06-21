@@ -332,7 +332,7 @@ object StaticTemplate {
     val mains: ISZ[ST] = if (libOnly) ISZ[ST]() else for (f <- mainFilenames) yield target(f)
 
     val r =
-      st"""cmake_minimum_required(VERSION 3.6.2)
+      st"""cmake_minimum_required(VERSION 3.5.1)
           |
           |project($project)
           |
