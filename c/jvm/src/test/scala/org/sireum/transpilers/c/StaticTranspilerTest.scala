@@ -397,6 +397,14 @@ class StaticTranspilerTest extends TestSuite {
         |
         |foo(Some(4))""".stripMargin)
 
+    * - testWorksheet(
+      """var n = 0
+        |for (i <- 0 until 10; j <- 0 until 2) {
+        |  n = n + 1
+        |}
+        |println(n)
+        |assert(n == 20)""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {
