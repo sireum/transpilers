@@ -705,8 +705,7 @@ object StaticTemplate {
           |
           |inline $name ${name}__as(STACK_FRAME void *this) {
           |  if (${name}__is(CALLER this)) return ($name) this;
-          |  fprintf(stderr, "Invalid case from %s to $tpe.", TYPE_string_(this));
-          |  sfAbortImpl(CALLER "");
+          |  sfAbortImpl(CALLER "Invalid cast to $tpe.");
           |  $abort
           |}"""
 

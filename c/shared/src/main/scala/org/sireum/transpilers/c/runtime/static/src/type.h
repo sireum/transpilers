@@ -25,7 +25,7 @@ inline B B__ne(B b1, B b2) {
 }
 
 inline B B__complement(B b) {
-  return (B) ~b;
+  return (B) !b;
 }
 
 inline B B__and(B b1, B b2) {
