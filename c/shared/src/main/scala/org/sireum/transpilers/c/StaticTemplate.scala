@@ -1668,6 +1668,7 @@ object StaticTemplate {
             case z"16" => "uint16_t"
             case z"32" => "uint32_t"
             case z"64" => "uint64_t"
+            case _ => halt("Infeasible")
           }
           (
             st"""
@@ -1742,6 +1743,7 @@ object StaticTemplate {
         case z"16" => if (isUnsigned) (0, 65535) else (-32768, 32767)
         case z"32" => if (isUnsigned) (0, 4294967295L) else (-2147483648, 2147483647)
         case z"64" => if (isUnsigned) (0, z"18,446,744,073,709,551,615") else (-9223372036854775808L, 9223372036854775807L)
+        case _ => halt("Infeasible")
       }
       if (minOpt.getOrElse(bitMin) == bitMin && maxOpt.getOrElse(bitMax) == bitMax) {
         header = header :+ st"#define ${mangledName}_range(n) n"

@@ -1961,6 +1961,7 @@ import StaticTranspiler._
         val t: AST.Typed.Name = invoke.ident.typedOpt.get match {
           case it: AST.Typed.Name => it
           case it: AST.Typed.Method if it.tpe.isByName => it.tpe.ret.asInstanceOf[AST.Typed.Name]
+          case _ => halt("Infeasible")
         }
         val (receiver, _) = transReceiver()
         val arg = invoke.args(0)
@@ -1975,6 +1976,7 @@ import StaticTranspiler._
         val t: AST.Typed.Name = invoke.ident.typedOpt.get match {
           case it: AST.Typed.Name => it
           case it: AST.Typed.Method if it.tpe.isByName => it.tpe.ret.asInstanceOf[AST.Typed.Name]
+          case _ => halt("Infeasible")
         }
         val tpe = transpileType(t)
         val etpe = transpileType(t.args(1))
