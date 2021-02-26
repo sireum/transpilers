@@ -64,7 +64,7 @@ class StaticTranspilerRcTest extends TestSuite {
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
       Parser(map(Vector(uri)))
-        .parseTopUnit[AST.TopUnit.Program](allowSireum = F, isWorksheet = T, isDiet = F, Some(uri), reporter) match {
+        .parseTopUnit[AST.TopUnit.Program](isWorksheet = T, isDiet = F, Some(uri), reporter) match {
         case Some(program) if !reporter.hasIssue =>
           val p = FrontEnd.checkWorksheet(Some(typeChecker.typeHierarchy), program, reporter)
           if (reporter.hasIssue) {
