@@ -72,11 +72,13 @@ object Module {
 
     final override def artifactName = s"$subUrl-c"
 
-    final override def deps = Seq(commonObject)
+    final override def deps = Seq(frontEndObject, commonObject)
 
     final override def ivyDeps = Agg.empty
 
     def commonObject: Common
+
+    def frontEndObject: CrossJvmJsPublish
   }
 
 }

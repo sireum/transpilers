@@ -36,6 +36,8 @@ val test = "test"
 
 val alir = "alir"
 
+val frontend = "slang-frontend"
+
 val transpilers = "transpilers"
 val common = "common"
 val c = "c"
@@ -54,7 +56,7 @@ val (cShared, cJvm) = moduleSharedJvm(
   baseDir = homeDir / c,
   sharedDeps = ISZ(commonShared.id),
   sharedIvyDeps = ISZ(),
-  jvmDeps = ISZ(library, test),
+  jvmDeps = ISZ(library, test, frontend),
   jvmIvyDeps = ISZ()
 )
 
