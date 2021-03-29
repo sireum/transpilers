@@ -60,4 +60,4 @@ val (cShared, cJvm) = moduleSharedJvm(
 
 val project = Project.empty + commonShared + cShared + cJvm
 
-println(JSON.fromProject(project, T))
+projectCli(Os.cliArgs, project)
