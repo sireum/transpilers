@@ -32,7 +32,6 @@ import org.sireum.project.ProjectUtil._
 import org.sireum.project.{JSON, Project}
 
 val library = "library"
-val test = "test"
 
 val alir = "alir"
 
@@ -56,7 +55,7 @@ val (cShared, cJvm) = moduleSharedJvm(
   baseDir = homeDir / c,
   sharedDeps = ISZ(commonShared.id),
   sharedIvyDeps = ISZ(),
-  jvmDeps = ISZ(library, test, frontend),
+  jvmDeps = ISZ(library, frontend),
   jvmIvyDeps = ISZ()
 )
 
