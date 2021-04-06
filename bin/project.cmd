@@ -32,20 +32,32 @@ val c = "c"
 
 val homeDir = Os.slashDir.up.canon
 
-val commonShared = moduleShared(
+val commonShared = moduleSharedPub(
   id = s"$transpilers-$common",
   baseDir = homeDir / common,
   sharedDeps = ISZ(alir),
-  sharedIvyDeps = ISZ()
+  sharedIvyDeps = ISZ(),
+  pubOpt = pub(
+    desc = "Slang Transpilers Common Library",
+    url = "github.com/sireum/transpilers",
+    licenses = org.sireum.project.ProjectUtil.bsd2,
+    devs = ISZ(robby)
+  )
 )
 
-val (cShared, cJvm) = moduleSharedJvm(
+val (cShared, cJvm) = moduleSharedJvmPub(
   baseId = s"$transpilers-$c",
   baseDir = homeDir / c,
   sharedDeps = ISZ(commonShared.id),
   sharedIvyDeps = ISZ(),
   jvmDeps = ISZ(library, frontend),
-  jvmIvyDeps = ISZ()
+  jvmIvyDeps = ISZ(),
+  pubOpt = pub(
+    desc = "Slang-to-C Transpiler",
+    url = "github.com/sireum/transpilers",
+    licenses = org.sireum.project.ProjectUtil.bsd2,
+    devs = ISZ(robby)
+  )
 )
 
 val project = Project.empty + commonShared + cShared + cJvm
