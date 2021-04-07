@@ -40,7 +40,7 @@ val commonShared = moduleSharedPub(
   pubOpt = pub(
     desc = "Slang Transpilers Common Library",
     url = "github.com/sireum/transpilers",
-    licenses = org.sireum.project.ProjectUtil.bsd2,
+    licenses = bsd2,
     devs = ISZ(robby)
   )
 )
@@ -55,7 +55,7 @@ val (cShared, cJvm) = moduleSharedJvmPub(
   pubOpt = pub(
     desc = "Slang-to-C Transpiler",
     url = "github.com/sireum/transpilers",
-    licenses = org.sireum.project.ProjectUtil.bsd2,
+    licenses = bsd2,
     devs = ISZ(robby)
   )
 )
