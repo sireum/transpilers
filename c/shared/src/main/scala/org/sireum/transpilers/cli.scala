@@ -37,6 +37,7 @@ object cli {
     description = "Slang Embedded to C transpiler",
     header = "Slang Embedded To C Transpiler",
     usage = "<option>* ( <slang-file> )*",
+    usageDescOpt = None(),
     opts = ISZ(
       Opt(name = "sourcepath", longKey = "sourcepath", shortKey = Some('s'),
         tpe = Type.Path(T, None()),
