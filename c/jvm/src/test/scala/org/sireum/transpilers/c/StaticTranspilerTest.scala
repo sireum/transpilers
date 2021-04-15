@@ -405,6 +405,20 @@ class StaticTranspilerTest extends TestSuite {
         |println(n)
         |assert(n == 20)""".stripMargin)
 
+    * - testWorksheet("""object Foo {
+                        |  var x: Z = 100
+                        |}
+                        |
+                        |object Bar {
+                        |  var y: Z = 200
+                        |}
+                        |
+                        |object Baz {
+                        |  def baz(): Unit = {
+                        |    Foo.x = Foo.x + Bar.y
+                        |  }
+                        |}""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {
