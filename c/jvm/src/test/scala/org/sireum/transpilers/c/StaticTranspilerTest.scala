@@ -406,18 +406,10 @@ class StaticTranspilerTest extends TestSuite {
         |assert(n == 20)""".stripMargin)
 
     * - testWorksheet("""object Foo {
-                        |  var x: Z = 100
+                        |  val connections: MS[Z, ISZ[Z]] = MSZ(ISZ(0))
                         |}
                         |
-                        |object Bar {
-                        |  var y: Z = 200
-                        |}
-                        |
-                        |object Baz {
-                        |  def baz(): Unit = {
-                        |    Foo.x = Foo.x + Bar.y
-                        |  }
-                        |}""".stripMargin)
+                        |val cs: ISZ[Z] = Foo.connections(0)""".stripMargin)
 
     * - testWorksheet(
       """val s1 = ISZ(1, 2, 3)
@@ -427,6 +419,7 @@ class StaticTranspilerTest extends TestSuite {
         |println(s"$s2.size = ${s2.size}")
         |println(s"$s3.size = ${s3.size}")
         |assert(s3 == ISZ(1, 2, 3, 4, 5))""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {

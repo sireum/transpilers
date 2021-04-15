@@ -1957,13 +1957,16 @@ import StaticTranspiler._
         }
       }
 
-      def transSSelect(name: QName): (ST, B) = {
+      def transSSelect(): (ST, B) = {
         val t: AST.Typed.Name = invoke.ident.typedOpt.get match {
           case it: AST.Typed.Name => it
           case it: AST.Typed.Method if it.tpe.isByName => it.tpe.ret.asInstanceOf[AST.Typed.Name]
           case _ => halt("Infeasible")
         }
-        val (receiver, _) = transReceiver()
+        val receiver: ST = invoke.ident.attr.resOpt.get match {
+          case res: AST.ResolvedInfo.Var if res.isInObject => transIdent(invoke.ident)._1
+          case _ => transReceiver()._1
+        }
         val arg = invoke.args(0)
         val tpe = transpileType(t)
         val et = t.args(1)
@@ -1972,7 +1975,7 @@ import StaticTranspiler._
         return (st"${tpe}_at($receiver, $e)", shouldCopy)
       }
 
-      def transSStore(name: QName): ST = {
+      def transSStore(): ST = {
         val t: AST.Typed.Name = invoke.ident.typedOpt.get match {
           case it: AST.Typed.Name => it
           case it: AST.Typed.Method if it.tpe.isByName => it.tpe.ret.asInstanceOf[AST.Typed.Name]
@@ -1981,7 +1984,10 @@ import StaticTranspiler._
         val tpe = transpileType(t)
         val etpe = transpileType(t.args(1))
         val temp = freshTempName()
-        val (receiver, _) = transReceiver()
+        val receiver: ST = invoke.ident.attr.resOpt.get match {
+          case res: AST.ResolvedInfo.Var if res.isInObject => transIdent(invoke.ident)._1
+          case _ => transReceiver()._1
+        }
         stmts = stmts :+ st"DeclNew$tpe($temp);"
         stmts = stmts :+ st"Type_assign(&$temp, $receiver, sizeof(struct $tpe));"
         val indexType = t.args(0)
@@ -2066,7 +2072,7 @@ import StaticTranspiler._
                           expType(invoke),
                           methodNameRes(None(), res),
                           invoke.args,
-                          ISZ(),
+                          ISZ()
                         )
                         return (r, F)
                     }
@@ -2156,8 +2162,8 @@ import StaticTranspiler._
             case AST.MethodMode.Copy => val r = transConstructor(res, expType(invoke), invoke.args); return (r, F)
             case AST.MethodMode.Extractor => halt(s"Infeasible: $res")
             case AST.MethodMode.ObjectConstructor => halt(s"Infeasible: $res")
-            case AST.MethodMode.Select => val r = transSSelect(res.owner :+ res.id); return r
-            case AST.MethodMode.Store => val r = transSStore(res.owner :+ res.id); return (r, F)
+            case AST.MethodMode.Select => val r = transSSelect(); return r
+            case AST.MethodMode.Store => val r = transSStore(); return (r, F)
           }
         case res: AST.ResolvedInfo.BuiltIn =>
           def enumInvoke(): ST = {
