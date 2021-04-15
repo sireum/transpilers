@@ -419,6 +419,14 @@ class StaticTranspilerTest extends TestSuite {
                         |  }
                         |}""".stripMargin)
 
+    * - testWorksheet(
+      """val s1 = ISZ(1, 2, 3)
+        |val s2 = ISZ(4, 5)
+        |val s3 = s1 ++ s2
+        |println(s"$s1.size = ${s1.size}")
+        |println(s"$s2.size = ${s2.size}")
+        |println(s"$s3.size = ${s3.size}")
+        |assert(s3 == ISZ(1, 2, 3, 4, 5))""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {

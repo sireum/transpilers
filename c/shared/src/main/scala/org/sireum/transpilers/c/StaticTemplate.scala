@@ -1189,7 +1189,7 @@ object StaticTemplate {
             |  Type_assign(result, this, sizeof(struct $name));
             |  result->size = ($sizeType) (thisSize + otherSize);
             |  for ($sizeType i = 0; i < otherSize; i++)
-            |    result->value[thisSize + i] = other->value[i + 1];
+            |    result->value[thisSize + i] = other->value[i];
             |}
             |
             |$removeHeader {
