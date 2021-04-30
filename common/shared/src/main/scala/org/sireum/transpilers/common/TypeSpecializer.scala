@@ -198,6 +198,7 @@ import TypeSpecializer._
           case _: AST.Stmt.Sig => F
           case _: AST.Stmt.Adt => F
           case _: AST.Stmt.ExtMethod => F
+          case _: AST.Stmt.JustMethod => F
           case _: AST.Stmt.Import => F
           case _: AST.Stmt.Method => F
           case _: AST.Stmt.Return => F
@@ -533,6 +534,7 @@ import TypeSpecializer._
         case AST.MethodMode.Copy => Some(expType.asInstanceOf[AST.Typed.Name])
         case AST.MethodMode.Extractor => None()
         case AST.MethodMode.Ext => None()
+        case AST.MethodMode.Just => None()
         case AST.MethodMode.Select =>
           val mFun = m.tpeOpt.get
           Some(

@@ -2079,6 +2079,7 @@ import StaticTranspiler._
                 }
               }
             case AST.MethodMode.Spec => halt(s"TODO: $res") // TODO
+            case AST.MethodMode.Just => halt(s"TODO: $res") // TODO
             case AST.MethodMode.Ext => val r = transExt(res, expType(invoke), invoke.args); return (r, F)
             case AST.MethodMode.Constructor =>
               def basicConstructor(name: QName): ST = {
@@ -3569,6 +3570,7 @@ import StaticTranspiler._
       case _: AST.Stmt.Object => // skip
       case _: AST.Stmt.SpecMethod => // skip
       case _: AST.Stmt.ExtMethod => // skip
+      case _: AST.Stmt.JustMethod => // skip
       case _: AST.Stmt.SpecVar => // skip
       case _: AST.Stmt.TypeAlias => // skip
       case _: AST.Stmt.Spec => // skip
