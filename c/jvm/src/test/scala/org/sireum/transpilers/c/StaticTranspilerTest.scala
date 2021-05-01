@@ -420,6 +420,11 @@ class StaticTranspilerTest extends TestSuite {
         |println(s"$s3.size = ${s3.size}")
         |assert(s3 == ISZ(1, 2, 3, 4, 5))""".stripMargin)
 
+    * - testWorksheet(
+      """@datatype class Foo(x: Z)
+        |val zMopt: MOption[Foo] = MSome(Foo(3))
+        |val MSome(foo) = zMopt
+        |assert(foo.x == 3)""".stripMargin)
   }
 
   def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {

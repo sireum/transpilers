@@ -1779,6 +1779,12 @@ import StaticTranspiler._
               stmts = stmts :+ st"DeclNewString($temp);"
               stmts = stmts :+ st"${transpileType(t)}_name_((String) &$temp, $e);"
               return (st"((String) &$temp)", F)
+            case AST.ResolvedInfo.BuiltIn.Kind.Min =>
+              val t = select.receiverOpt.get.typedOpt.get.asInstanceOf[AST.Typed.Object]
+              return (st"${AST.Util.mangleName(t.name)}_Min", F)
+            case AST.ResolvedInfo.BuiltIn.Kind.Max =>
+              val t = select.receiverOpt.get.typedOpt.get.asInstanceOf[AST.Typed.Object]
+              return (st"${AST.Util.mangleName(t.name)}_Max", F)
             case _ => halt(s"Unexpected: $res")
           }
         case res: AST.ResolvedInfo.Method =>
@@ -2477,7 +2483,7 @@ import StaticTranspiler._
     }
   }
 
-  def declPatternVarParamArgs(allowShadow: B, pat: AST.Pattern): (ISZ[ST], ISZ[ST], ISZ[ST], ISZ[ST], HashSet[String]) = {
+  def declPatternVarParamArgs(immutableRoot: B, allowShadow: B, pat: AST.Pattern): (ISZ[ST], ISZ[ST], ISZ[ST], ISZ[ST], HashSet[String]) = {
     var declStmts = ISZ[ST]()
     var params = ISZ[ST]()
     var args = ISZ[ST]()
@@ -2493,7 +2499,7 @@ import StaticTranspiler._
       val name = idPatternName(allowShadow, id)
       val kind = typeKind(t)
       val tpe = transpileType(t)
-      if (isImmutable(kind)) {
+      if (isImmutable(kind) && immutableRoot) {
         declStmts = declStmts :+ st"$tpe $name;"
       } else {
         declStmts = declStmts :+ st"DeclNew$tpe(_$name);"
@@ -2535,36 +2541,6 @@ import StaticTranspiler._
     return (declStmts, params, args, assigns, locals)
   }
 
-  def declPatternVars(allowShadow: B, pat: AST.Pattern): Unit = {
-    def declId(id: AST.Id, t: AST.Typed): Unit = {
-      val name = idPatternName(allowShadow, id)
-      val kind = typeKind(t)
-      val tpe = transpileType(t)
-      if (isImmutable(kind)) {
-        stmts = stmts :+ st"$tpe $name;"
-      } else {
-        stmts = stmts :+ st"DeclNew$tpe(_$name);"
-        stmts = stmts :+ st"$tpe $name = &_$name;"
-      }
-    }
-    pat match {
-      case _: AST.Pattern.Literal =>
-      case _: AST.Pattern.LitInterpolate =>
-      case _: AST.Pattern.Ref =>
-      case _: AST.Pattern.SeqWildcard =>
-      case _: AST.Pattern.Wildcard =>
-      case pat: AST.Pattern.VarBinding => declId(pat.id, pat.attr.typedOpt.get)
-      case pat: AST.Pattern.Structure =>
-        pat.idOpt match {
-          case Some(id) => declId(id, pat.attr.typedOpt.get)
-          case _ =>
-        }
-        for (p <- pat.patterns) {
-          declPatternVars(allowShadow, p)
-        }
-    }
-  }
-
   def transpilePattern(immutableParent: B, allowShadow: B, exp: ST, pattern: AST.Pattern): Unit = {
     def transTuplePattern(pat: AST.Pattern.Structure): Unit = {
       val oldStmts = stmts
@@ -2581,10 +2557,9 @@ import StaticTranspiler._
           stmts = stmts :+ st"$name = ($tpe) $exp;"
         case _ =>
       }
-      val immutable = isImmutable(kind)
       for (pi <- ops.ISZOps(pat.patterns).zip(pat.patterns.indices.map((n: Z) => n + 1))) {
         val (p, i) = pi
-        transpilePattern(immutable, allowShadow, st"${tpe}_$i($exp)", p)
+        transpilePattern(immutableParent, allowShadow, st"${tpe}_$i($exp)", p)
       }
       stmts = oldStmts ++ stmts
     }
@@ -2609,10 +2584,9 @@ import StaticTranspiler._
           stmts = stmts :+ st"$name = ($tpe) $exp;"
         case _ =>
       }
-      val immutable = isImmutable(typeKind(t))
       for (pi <- ops.ISZOps(pat.patterns).zip(pat.patterns.indices.map((n: Z) => n + 1))) {
         val (p, i) = pi
-        transpilePattern(immutable, allowShadow, st"${tpe}_at($exp, ${iTpe}_C($i))", p)
+        transpilePattern(immutableParent, allowShadow, st"${tpe}_at($exp, ${iTpe}_C($i))", p)
       }
       stmts = oldStmts ++ stmts
     }
@@ -2630,12 +2604,11 @@ import StaticTranspiler._
           stmts = stmts :+ st"$name = ($tpe) $exp;"
         case _ =>
       }
-      val immutable = isImmutable(typeKind(t))
       val e = st"${tpe}__as(SF $exp)"
       val adtInfo = ts.typeHierarchy.typeMap.get(t.ids).get.asInstanceOf[TypeInfo.Adt]
       for (idPattern <- ops.ISZOps(adtInfo.extractorTypeMap.keys).zip(pat.patterns)) {
         val (id, p) = idPattern
-        transpilePattern(immutable, allowShadow, st"${tpe}_${id}_($e)", p)
+        transpilePattern(immutableParent, allowShadow, st"${tpe}_${id}_($e)", p)
       }
       stmts = oldStmts ++ stmts
     }
@@ -2758,7 +2731,7 @@ import StaticTranspiler._
     def transCase(handled: ST, exp: ST, cas: AST.Case): Unit = {
       val oldLocalRename = localRename
       val oldStmts = stmts
-      var (declStmts, params, args, assigns, locals) = declPatternVarParamArgs(T, cas.pattern)
+      var (declStmts, params, args, assigns, locals) = declPatternVarParamArgs(immutable, T, cas.pattern)
       stmts = ISZ()
       transpilePattern(immutable, T, temp, cas.pattern)
       val patStmts = stmts
@@ -3192,7 +3165,8 @@ import StaticTranspiler._
           stmts = oldStmts ++ stmts
         }
       }
-      val (declStmts, params, args, _, _) = declPatternVarParamArgs(F, stmt.pattern)
+      val immutable = isImmutable(typeKind(t))
+      val (declStmts, params, args, _, _) = declPatternVarParamArgs(immutable, F, stmt.pattern)
       val tfprint: ISZ[String] = t match {
         case t: AST.Typed.Name if t.args.nonEmpty => ISZ(fprint(t).render)
         case t: AST.Typed.Tuple => ISZ(fprint(t).render)
@@ -3207,7 +3181,7 @@ import StaticTranspiler._
       val oldLocalRename = localRename
       val oldStmts = stmts
       stmts = ISZ()
-      transpilePattern(isImmutable(typeKind(t)), F, temp, stmt.pattern)
+      transpilePattern(immutable, F, temp, stmt.pattern)
       val patStmts = stmts
       additionalMethodImpls = additionalMethodImpls :+
         st"""static inline B $fname(STACK_FRAME_SF $tpe $temp$parameters) {
