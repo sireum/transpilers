@@ -829,7 +829,7 @@ import TypeSpecializer._
                 th.typeMap.get(t.ids).get match {
                   case ti: TypeInfo.Adt if ti.methods.contains("string") =>
                     val m = AST.ResolvedInfo.Method(F, AST.MethodMode.Method, ISZ(), t.ids, "string", ISZ(),
-                      Some(AST.Typed.Fun(F, T, ISZ(), AST.Typed.string)))
+                      Some(AST.Typed.Fun(F, T, ISZ(), AST.Typed.string)), ISZ(), ISZ())
                     addResolvedMethod(o.posOpt, m, Some(t), o.typedOpt.get)
                   case _ =>
                 }
