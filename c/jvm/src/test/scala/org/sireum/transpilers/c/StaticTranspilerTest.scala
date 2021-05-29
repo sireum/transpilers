@@ -122,7 +122,7 @@ class StaticTranspilerTest extends TestSuite {
                         |println(s2(0)(1 ~> "d"))
                         |val s3 = ZS.create(5, 1)
                         |println(s3)
-                        |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin)
+                        |println(s3(0 ~> 2, 4 ~> 10))""".stripMargin, 10, 10)
 
     * - testWorksheet("""var bs1 = ISZ[B](T, F, T)
                         |println(s"$bs1.size = ${bs1.size}")
@@ -293,9 +293,9 @@ class StaticTranspilerTest extends TestSuite {
 
     * - testWorksheet("""for (n <- ISZ("a", "b", "c")) {
                         |  println(n)
-                        |}""".stripMargin)
+                        |}""".stripMargin, 10, 10)
 
-    * - testWorksheet("""println(for (ss <- ISZ(ISZ("a", "b"), ISZ("c")); s <- ss) yield s"${s}1")""")
+    * - testWorksheet("""println(for (ss <- ISZ(ISZ("a", "b"), ISZ("c")); s <- ss) yield s"${s}1")""", 10, 10)
 
     * - testWorksheet("""import org.sireum.N._
                         |println(B("T"))
@@ -385,7 +385,7 @@ class StaticTranspilerTest extends TestSuite {
 
     * - testWorksheet("""var m = Map.empty[Z, Map[Z, Z]]
                         |m = m + 1 ~> Map.empty[Z, Z]
-                        |assert(m.get(1) == Some(Map.empty[Z, Z]))""".stripMargin)
+                        |assert(m.get(1) == Some(Map.empty[Z, Z]))""".stripMargin, 10, 10)
 
     * - testWorksheet(
       """def foo(opt: Option[Z]): Z = {
@@ -409,7 +409,7 @@ class StaticTranspilerTest extends TestSuite {
                         |  val connections: MS[Z, ISZ[Z]] = MSZ(ISZ(0))
                         |}
                         |
-                        |val cs: ISZ[Z] = Foo.connections(0)""".stripMargin)
+                        |val cs: ISZ[Z] = Foo.connections(0)""".stripMargin, 10, 10)
 
     * - testWorksheet(
       """val s1 = ISZ(1, 2, 3)
@@ -427,7 +427,7 @@ class StaticTranspilerTest extends TestSuite {
         |assert(foo.x == 3)""".stripMargin)
   }
 
-  def testWorksheet(input: Predef.String, size: Z = 100)(implicit line: sourcecode.Line): Unit = {
+  def testWorksheet(input: Predef.String, arraySize: Z = 100, stringSize: Z = 256)(implicit line: sourcecode.Line): Unit = {
     val reporter = Reporter.create
     val (th, p): (TypeHierarchy, AST.TopUnit.Program) =
       Parser(s"import org.sireum._\n$input")
@@ -449,8 +449,8 @@ class StaticTranspilerTest extends TestSuite {
       projectName = "main",
       fprintWidth = 3,
       defaultBitWidth = 64,
-      maxStringSize = 256,
-      maxArraySize = size,
+      maxStringSize = stringSize,
+      maxArraySize = arraySize,
       customArraySizes = HashMap.empty,
       customConstants = HashMap.empty,
       plugins = ISZ(NumberConversionsExtMethodPlugin()),
