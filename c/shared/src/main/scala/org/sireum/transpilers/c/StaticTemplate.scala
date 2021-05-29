@@ -113,7 +113,7 @@ object StaticTemplate {
     "while"
   )
 
-  @pure def typeCompositeH(stringMax: Z, isStringMax: Z, typeNames: ISZ[(String, ST, ST, ST)]): ST = {
+  @pure def typeCompositeH(stringMax: Z, typeNames: ISZ[(String, ST, ST, ST)]): ST = {
     val r =
       st"""#ifndef SIREUM_GEN_TYPE_H
           |#define SIREUM_GEN_TYPE_H
@@ -362,16 +362,25 @@ object StaticTemplate {
           |  set($${HEX} "0x$${_res}" PARENT_SCOPE)
           |endfunction()
           |
+          |if($$ENV{CC} MATCHES "^.*ccomp$$")
+          |  add_compile_options(-flongdouble)
+          |endif()
           |if ("$${CMAKE_CXX_COMPILER_ID}" MATCHES "(C|c?)lang")
           |  to_hex("$stackSize" stack_size)
           |  set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size -Wl,$${stack_size}")
-          |  add_compile_options("$$<$$<CONFIG:Release>:-Oz>")
+          |  if($$ENV{CC} MATCHES "^.*ccomp$$")
+          |    add_compile_options("$$<$$<CONFIG:Release>:-Os>")
+          |  else()
+          |    add_compile_options("$$<$$<CONFIG:Release>:-Oz>")
+          |  endif()
           |elseif ("$${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
           |  if (WIN32 OR MINGW OR MSYS OR CYGWIN)
           |    to_hex("$stackSize" stack_size)
           |    set(CMAKE_EXE_LINKER_FLAGS "-Wl,--stack,$${stack_size}")
           |  endif()
-          |  add_compile_options(-fstack-usage)
+          |  if(NOT $$ENV{CC} MATCHES "^.*ccomp$$")
+          |    add_compile_options(-fstack-usage)
+          |  endif()
           |  add_compile_options("$$<$$<CONFIG:Release>:-Os>")
           |endif()
           |
@@ -1495,7 +1504,7 @@ object StaticTemplate {
       case _ =>
     }
 
-    val numOfElementsHeader = st"Z ${mangledName}_numOfElements()"
+    val numOfElementsHeader = st"Z ${mangledName}_numOfElements(void)"
     header = header :+ numOfElementsHeader
     impl = impl :+
       st"""$numOfElementsHeader {

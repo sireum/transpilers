@@ -553,7 +553,6 @@ import StaticTranspiler._
 
       r = r + ISZ[String](runtimeDir, "type-composite.h") ~> typeCompositeH(
         config.maxStringSize,
-        minIndexMaxElementSize(iszStringType)._2,
         typeNames
       )
       val typeQNames = compiledMap.keys
@@ -772,7 +771,7 @@ import StaticTranspiler._
   }
 
   @pure def stableId(t: AST.Typed): ST = {
-    return st"0x${AST.Util.stableTypeSig(t, 4)}"
+    return st"(int) 0x${AST.Util.stableTypeSig(t, 4)}"
   }
 
   @pure def fprint(t: AST.Typed): ST = {
