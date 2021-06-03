@@ -1,6 +1,6 @@
 # Sireum Transpilers
 
-| [![Actions Status](https://github.com/sireum/transpilers/workflows/CI/badge.svg)](https://github.com/sireum/transpilers/actions) | [![Build Status](https://travis-ci.org/sireum/transpilers.svg?branch=master)](https://travis-ci.org/sireum/transpilers) | [![](https://jitpack.io/v/org.sireum/kekinian.svg)](https://jitpack.io/#org.sireum.kekinian/transpilers-c) |
+| [![Actions Status](https://github.com/sireum/transpilers/workflows/CI/badge.svg)](https://github.com/sireum/transpilers/actions) | [![Build Status](https://travis-ci.com/sireum/transpilers.svg?branch=master)](https://travis-ci.com/sireum/transpilers) | [![](https://jitpack.io/v/org.sireum/kekinian.svg)](https://jitpack.io/#org.sireum.kekinian/transpilers-c) |
 | :---: | :---: | :---: | 
 | <sub><sup>amd64: mac, linux, windows</sup></sub> | <sub><sup>aarch64: linux</sup></sub> | <sub><sup>maven package repository</sup></sub> |
 
