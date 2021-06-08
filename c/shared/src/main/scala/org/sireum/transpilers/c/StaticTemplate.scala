@@ -370,6 +370,8 @@ object StaticTemplate {
           |  set(CMAKE_EXE_LINKER_FLAGS "-Wl,-stack_size -Wl,$${stack_size}")
           |  if($$ENV{CC} MATCHES "^.*ccomp$$")
           |    add_compile_options("$$<$$<CONFIG:Release>:-Os>")
+          |    SET(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+          |    SET(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
           |  else()
           |    add_compile_options("$$<$$<CONFIG:Release>:-Oz>")
           |  endif()
