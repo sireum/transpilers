@@ -41,33 +41,33 @@ object TypeSpecializer {
 
   object EntryPoint {
 
-    @datatype class App(name: QName) extends EntryPoint
+    @datatype class App(val name: QName) extends EntryPoint
 
-    @datatype class Worksheet(program: AST.TopUnit.Program) extends EntryPoint
+    @datatype class Worksheet(val program: AST.TopUnit.Program) extends EntryPoint
 
   }
 
   @datatype class NamedType(
-    tpe: AST.Typed.Name,
-    @hidden constructorVars: Map[String, (B, B, AST.Typed)],
-    @hidden vars: Map[String, (B, AST.Typed, AST.AssignExp)]
+    val tpe: AST.Typed.Name,
+    @hidden val constructorVars: Map[String, (B, B, AST.Typed)],
+    @hidden val vars: Map[String, (B, AST.Typed, AST.AssignExp)]
   )
 
   @datatype class Result(
-    typeHierarchy: TypeHierarchy,
-    entryPoints: ISZ[EntryPoint],
-    nameTypes: HashSMap[QName, HashSSet[NamedType]],
-    otherTypes: HashSSet[AST.Typed],
-    objectVars: HashSMap[QName, HashSSet[String]],
-    traitMethods: HashSSet[SMethod],
-    methods: HashSMap[QName, HashSSet[Method]],
-    extMethods: HashSSet[SMethod],
-    forwarding: HashMap[QName, QName],
-    typeImpl: Poset[AST.Typed.Name],
-    callGraph: Graph[SMember, B]
+    val typeHierarchy: TypeHierarchy,
+    val entryPoints: ISZ[EntryPoint],
+    val nameTypes: HashSMap[QName, HashSSet[NamedType]],
+    val otherTypes: HashSSet[AST.Typed],
+    val objectVars: HashSMap[QName, HashSSet[String]],
+    val traitMethods: HashSSet[SMethod],
+    val methods: HashSMap[QName, HashSSet[Method]],
+    val extMethods: HashSSet[SMethod],
+    val forwarding: HashMap[QName, QName],
+    val typeImpl: Poset[AST.Typed.Name],
+    val callGraph: Graph[SMember, B]
   )
 
-  @datatype class Method(receiverOpt: Option[AST.Typed.Name], info: Info.Method)
+  @datatype class Method(val receiverOpt: Option[AST.Typed.Name], val info: Info.Method)
 
   @datatype trait SMember {
     def receiverOpt: Option[AST.Typed.Name]
@@ -89,7 +89,7 @@ object TypeSpecializer {
     val owner: QName,
     val id: String,
     val tpe: AST.Typed.Fun,
-    mode: AST.MethodMode.Type
+    val mode: AST.MethodMode.Type
   ) extends SMember {
     override def string: String = {
       val sep: String = if (receiverOpt.nonEmpty) "#" else "."
@@ -124,7 +124,7 @@ object TypeSpecializer {
 
 import TypeSpecializer._
 
-@record class TypeSpecializer(th: TypeHierarchy, eps: ISZ[EntryPoint], forwarding: HashMap[QName, QName])
+@record class TypeSpecializer(val th: TypeHierarchy, val eps: ISZ[EntryPoint], val forwarding: HashMap[QName, QName])
     extends AST.MTransformer {
   val reporter: Reporter = Reporter.create
   val methodRefinement: Poset[CallGraph.Node] = CallGraph.methodRefinements(th)

@@ -33,19 +33,19 @@ import org.sireum.message._
 object StaticTemplate {
 
   @enum object TypeKind {
-    'ImmutableTrait
-    'MutableTrait
-    'Immutable
-    'Mutable
-    'IS
-    'MS
-    'R
-    'Scalar64
-    'Scalar32
-    'Enum
-    'Scalar16
-    'Scalar8
-    'Scalar1
+    "ImmutableTrait"
+    "MutableTrait"
+    "Immutable"
+    "Mutable"
+    "IS"
+    "MS"
+    "R"
+    "Scalar64"
+    "Scalar32"
+    "Enum"
+    "Scalar16"
+    "Scalar8"
+    "Scalar1"
   }
 
   object Compiled {
@@ -54,9 +54,9 @@ object StaticTemplate {
     }
   }
 
-  @datatype class Compiled(typeHeader: ISZ[ST], header: ISZ[ST], impl: ISZ[ST], excludedImpl: ISZ[ST])
+  @datatype class Compiled(val typeHeader: ISZ[ST], val header: ISZ[ST], val impl: ISZ[ST], val excludedImpl: ISZ[ST])
 
-  @datatype class Vard(kind: TypeKind.Type, id: String, tpe: ST, tpePtr: ST, isVar: B, isHidden: B)
+  @datatype class Vard(val kind: TypeKind.Type, val id: String, val tpe: ST, val tpePtr: ST, val isVar: B, val isHidden: B)
 
   val sireumDir: String = "sireum"
   val libraryDir: String = "library"

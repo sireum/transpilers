@@ -38,26 +38,24 @@ object StaticTranspiler {
 
   type SubstMap = HashMap[String, AST.Typed]
 
-  @datatype class ExtFile(rel: ISZ[String], uri: String, content: String)
+  @datatype class ExtFile(val rel: ISZ[String], val uri: String, val content: String)
 
-  @datatype class Config(
-                          projectName: String,
-                          fprintWidth: Z,
-                          defaultBitWidth: Z,
-                          maxStringSize: Z,
-                          maxArraySize: Z,
-                          customArraySizes: HashMap[AST.Typed, Z],
-                          customConstants: HashMap[QName, AST.Exp],
-                          plugins: ISZ[Plugin],
-                          exts: ISZ[ExtFile],
-                          excludedNames: HashSet[QName],
-                          forLoopOpt: B,
-                          stackSize: String,
-                          libOnly: B,
-                          stableTypeId: B,
-                          cmakeIncludes: ISZ[String],
-                          cmakePlusIncludes: ISZ[String]
-  ) {
+  @datatype class Config(val projectName: String,
+                         val fprintWidth: Z,
+                         val defaultBitWidth: Z,
+                         val maxStringSize: Z,
+                         val maxArraySize: Z,
+                         val customArraySizes: HashMap[AST.Typed, Z],
+                         val customConstants: HashMap[QName, AST.Exp],
+                         val plugins: ISZ[Plugin],
+                         val exts: ISZ[ExtFile],
+                         val excludedNames: HashSet[QName],
+                         val forLoopOpt: B,
+                         val stackSize: String,
+                         val libOnly: B,
+                         val stableTypeId: B,
+                         val cmakeIncludes: ISZ[String],
+                         val cmakePlusIncludes: ISZ[String]) {
 
     @memoize def expPlugins: ISZ[ExpPlugin] = {
       var r = ISZ[ExpPlugin]()
@@ -97,7 +95,7 @@ object StaticTranspiler {
 
   }
 
-  @datatype class Result(files: HashSMap[QName, ST], extFiles: HashSMap[QName, ExtFile])
+  @datatype class Result(val files: HashSMap[QName, ST], val extFiles: HashSMap[QName, ExtFile])
 
   @sig trait Plugin
 
@@ -249,16 +247,16 @@ object StaticTranspiler {
     }
   }
 
-  @record class IdConstSub(id: String, const: Z) extends AST.MTransformer {
+  @record class IdConstSub(val id: String, val const: Z) extends AST.MTransformer {
     override def postExpIdent(o: AST.Exp.Ident): MOption[AST.Exp] = {
       return if (o.id.value == id) MSome(AST.Exp.LitZ(const, AST.Attr(o.posOpt)))
       else AST.MTransformer.PostResultExpIdent
     }
   }
 
-  @datatype class ClosureVar(context: QName, isVal: B, id: String, t: AST.Typed)
+  @datatype class ClosureVar(val context: QName, val isVal: B, val id: String, val t: AST.Typed)
 
-  @record class LocalClosureCollector(noTypeParam: B,
+  @record class LocalClosureCollector(val noTypeParam: B,
                                       var r: HashMap[QName, (B, AST.Stmt.Method, ISZ[ClosureVar])])
     extends AST.MTransformer {
     var stack: Stack[QName] = Stack.empty
@@ -305,7 +303,7 @@ object StaticTranspiler {
     }
   }
 
-  @datatype class LocalParamArgCollector(st: StaticTranspiler, locals: HashSet[String]) extends AST.Transformer.PrePost[(ISZ[ST], ISZ[ST])] {
+  @datatype class LocalParamArgCollector(val st: StaticTranspiler, val locals: HashSet[String]) extends AST.Transformer.PrePost[(ISZ[ST], ISZ[ST])] {
     @pure override def preResolvedAttr(ctx: (ISZ[ST], ISZ[ST]), o: AST.ResolvedAttr): AST.Transformer.PreResult[(ISZ[ST], ISZ[ST]), AST.ResolvedAttr] = {
       o.resOpt match {
         case Some(res: AST.ResolvedInfo.LocalVar) if !locals.contains(res.id) =>
@@ -376,7 +374,7 @@ object StaticTranspiler {
 
 import StaticTranspiler._
 
-@record class StaticTranspiler(config: Config, ts: TypeSpecializer.Result) {
+@record class StaticTranspiler(val config: Config, val ts: TypeSpecializer.Result) {
   val reporter: Reporter = Reporter.create
   var compiledMap: HashMap[QName, Compiled] = HashMap.empty
   var typeNameMap: HashMap[AST.Typed, ST] = HashMap.empty
