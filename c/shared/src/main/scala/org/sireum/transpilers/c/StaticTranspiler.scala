@@ -1112,12 +1112,17 @@ import StaticTranspiler._
       //return mInfo
       halt(s"Infeasible: $method of $receiver}")
     }
-    val receiver = method.receiverOpt.get
-    val info: Info.Method = ts.typeHierarchy.typeMap.get(receiver.ids).get match {
-      case inf: TypeInfo.Sig => inf.methods.get(method.id).get
+
+    val info: Info.Method = ts.typeHierarchy.typeMap.get(method.owner).get match {
+      case inf: TypeInfo.Sig =>
+        if (inf.ast.isExt) {
+          return
+        }
+        inf.methods.get(method.id).get
       case inf: TypeInfo.Adt => inf.methods.get(method.id).get
       case _ => halt("Infeasible")
     }
+    val receiver = method.receiverOpt.get
     val key = compiledKeyName(receiver)
     val value = getCompiled(key)
     val res = info.resOpt.get.asInstanceOf[AST.ResolvedInfo.Method]
