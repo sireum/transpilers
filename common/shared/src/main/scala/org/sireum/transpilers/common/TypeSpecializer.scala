@@ -891,4 +891,14 @@ import TypeSpecializer._
     }
   }
 
+  override def transformStmt(o: AST.Stmt): MOption[AST.Stmt] = {
+    o match {
+      case _: AST.Stmt.Spec => return MNone()
+      case _ => return super.transformStmt(o)
+    }
+  }
+
+  override def transformMethodContract(o: AST.MethodContract): MOption[AST.MethodContract] = {
+    return MNone()
+  }
 }
