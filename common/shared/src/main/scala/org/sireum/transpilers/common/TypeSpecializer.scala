@@ -224,7 +224,7 @@ import TypeSpecializer._
       var oldSeenSize = z"0"
       var oldTraitMethodsSize = z"0"
 
-      do {
+      while (workList.nonEmpty) {
 
         oldSeenSize = seen.size
         oldTraitMethodsSize = traitMethods.size
@@ -294,7 +294,7 @@ import TypeSpecializer._
           }
         }
 
-      } while (workList.nonEmpty)
+      }
     }
 
     addEntryPoints()
@@ -399,7 +399,7 @@ import TypeSpecializer._
         }
         var owners = ISZ(cm.owner)
         var found: Option[Info.Method] = None()
-        do {
+        while (owners.nonEmpty && found.isEmpty) {
           val curr = owners
           owners = ISZ()
           for (owner <- curr if found.isEmpty) {
@@ -427,7 +427,7 @@ import TypeSpecializer._
               case _ => halt("Infeasible")
             }
           }
-        } while (owners.nonEmpty && found.isEmpty)
+        }
         assert(found.nonEmpty, "Infeasible")
         found.get
       }
