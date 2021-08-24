@@ -901,4 +901,8 @@ import TypeSpecializer._
   override def transformMethodContract(o: AST.MethodContract): MOption[AST.MethodContract] = {
     return MNone()
   }
+
+  override def transformLoopContract(o: AST.LoopContract): MOption[AST.LoopContract] = {
+    return MNone()
+  }
 }
