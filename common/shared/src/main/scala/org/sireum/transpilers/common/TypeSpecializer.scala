@@ -224,8 +224,9 @@ import TypeSpecializer._
       var oldSeenSize = z"0"
       var oldTraitMethodsSize = z"0"
 
-      while (workList.nonEmpty) {
-
+      var first = T
+      while (workList.nonEmpty || first) {
+        first = F
         oldSeenSize = seen.size
         oldTraitMethodsSize = traitMethods.size
 
