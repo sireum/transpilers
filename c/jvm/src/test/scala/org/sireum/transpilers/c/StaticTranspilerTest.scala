@@ -433,7 +433,7 @@ class StaticTranspilerTest extends TestSuite {
       Parser(s"import org.sireum._\n$input")
         .parseTopUnit[AST.TopUnit.Program](isWorksheet = T, isDiet = F, None(), reporter) match {
         case Some(program) if !reporter.hasIssue =>
-          val p = FrontEnd.checkWorksheet(T, Some(typeChecker.typeHierarchy), program, reporter)
+          val p = FrontEnd.checkWorksheet(0, Some(typeChecker.typeHierarchy), program, reporter)
           if (reporter.hasIssue) {
             reporter.printMessages()
             assert(F)
