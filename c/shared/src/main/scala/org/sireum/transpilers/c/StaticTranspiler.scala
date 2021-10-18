@@ -303,13 +303,15 @@ object StaticTranspiler {
     }
   }
 
-  @datatype class LocalParamArgCollector(val st: StaticTranspiler, val locals: HashSet[String]) extends AST.Transformer.PrePost[(ISZ[ST], ISZ[ST])] {
+  @datatype class LocalParamArgCollector(val typeNameMap: HashMap[AST.Typed, ST],
+                                         val localRename: HashMap[String, ST],
+                                         val locals: HashSet[String]) extends AST.Transformer.PrePost[(ISZ[ST], ISZ[ST])] {
     @pure override def preResolvedAttr(ctx: (ISZ[ST], ISZ[ST]), o: AST.ResolvedAttr): AST.Transformer.PreResult[(ISZ[ST], ISZ[ST]), AST.ResolvedAttr] = {
       o.resOpt match {
         case Some(res: AST.ResolvedInfo.LocalVar) if !locals.contains(res.id) =>
           val (params, args) = ctx
-          val tpe = st.transpileType(o.typedOpt.get)
-          val id: ST = st.localRename.get(res.id) match {
+          val tpe = transpiledType(typeNameMap, o.typedOpt.get)
+          val id: ST =localRename.get(res.id) match {
             case Some(otherId) => otherId
             case _ => localId(res.id)
           }
@@ -352,7 +354,7 @@ object StaticTranspiler {
 
   val conversionsPkg: ISZ[String] = AST.Typed.sireumName :+ "conversions"
 
-  val scalarConversionObjects: HashSet[String] = HashSet ++ ISZ(
+  val scalarConversionObjects: HashSet[String] = HashSet ++ ISZ[String](
     "Z",
     "Z8",
     "Z16",
@@ -369,7 +371,9 @@ object StaticTranspiler {
     "S64",
     "F32",
     "F64"
-  ) ++ (for (i <- 1 to 64) yield s"U$i")
+  ) ++ (for (i <- z"1" to z"64") yield s"U$i")
+
+  @strictpure def transpiledType(typeNameMap: HashMap[AST.Typed, ST], tpe: AST.Typed): ST = st"${typeNameMap.get(tpe).get}"
 }
 
 import StaticTranspiler._
@@ -2741,7 +2745,7 @@ import StaticTranspiler._
       stmts = ISZ()
       val condOpt: Option[ST] = cas.condOpt match {
         case Some(c) =>
-          val tr = AST.Transformer(LocalParamArgCollector(this, locals))
+          val tr = AST.Transformer(LocalParamArgCollector(typeNameMap, localRename, locals))
           val (ps, as) = tr.transformExp((params, args), c).ctx
           params = ps
           args = as
@@ -3620,8 +3624,8 @@ import StaticTranspiler._
     allCEntries = allCEntries :+ impl
   }
 
-  @pure def transpileType(tpe: AST.Typed): ST = {
-    return st"${typeNameMap.get(tpe).get}"
+  def transpileType(tpe: AST.Typed): ST = {
+    return transpiledType(typeNameMap, tpe)
   }
 
   @pure def typeDecl(t: AST.Typed): ST = {
