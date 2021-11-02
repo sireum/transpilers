@@ -1391,7 +1391,7 @@ object StaticTemplate {
     return st"${AST.Util.mangleName(owner :+ "Type")}_${enumId(id)}"
   }
 
-  @pure def enum(
+  @pure def enumTemplate(
                   compiled: Compiled,
                   uri: String,
                   name: QName,

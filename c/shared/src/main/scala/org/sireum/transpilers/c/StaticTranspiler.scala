@@ -876,7 +876,7 @@ import StaticTranspiler._
       }
       val value = getCompiled(name)
       val newValue =
-        enum(value, filenameOfPosOpt(info.posOpt, ""), name, elements, optElementTypeOpt, iszElementTypeOpt)
+        enumTemplate(value, filenameOfPosOpt(info.posOpt, ""), name, elements, optElementTypeOpt, iszElementTypeOpt)
       compiledMap = compiledMap + name ~> newValue
       return mangledName
     }
