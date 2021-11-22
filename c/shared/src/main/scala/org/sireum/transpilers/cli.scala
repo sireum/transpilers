@@ -123,6 +123,16 @@ object cli {
           tpe = Type.Str(Some(','), None()),
           description = "Object forwarding, each in form of <name>=<name>, where <name> is a fully qualified name of an object"),
       )),
+      OptGroup(name = "Anvil", opts = ISZ(
+        Opt(name = "anvilTranspilerPass", longKey = "anvil-transpiler-pass", shortKey = None(),
+          tpe = Type.Choice("anvilExecutionPass", None(), ISZ("none", "first", "second")),
+          description = "Instructs the transpiler to run a particular Anvil transpiler pass with option."
+        ),
+        Opt(name = "anvilTranspilerContext", longKey = "anvil-transpiler-context", shortKey = None(),
+          tpe = Type.Str(Some(';'), None()),
+          description = "Additional information for the transpiler."
+        ),
+      )),
     )
   )
 
