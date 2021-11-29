@@ -40,6 +40,37 @@ object StaticTranspiler {
 
   @datatype class ExtFile(val rel: ISZ[String], val uri: String, val content: String)
 
+  @enum object AnvilMode {
+    'NOP
+    'PL
+    'PS
+  }
+
+  @sig sealed trait AnvilConfig {
+    def mode(): AnvilMode.Type
+  }
+
+  object AnvilConfig {
+
+    @datatype class NOP() extends AnvilConfig {
+      override def mode(): AnvilMode.Type = {
+        return AnvilMode.NOP
+      }
+    }
+
+    @datatype class PL() extends AnvilConfig {
+      override def mode(): AnvilMode.Type = {
+        return AnvilMode.PL
+      }
+    }
+
+    @datatype class PS() extends AnvilConfig {
+      override def mode(): AnvilMode.Type = {
+        return AnvilMode.PS
+      }
+    }
+  }
+
   @datatype class Config(val projectName: String,
                          val fprintWidth: Z,
                          val defaultBitWidth: Z,
@@ -55,7 +86,8 @@ object StaticTranspiler {
                          val libOnly: B,
                          val stableTypeId: B,
                          val cmakeIncludes: ISZ[String],
-                         val cmakePlusIncludes: ISZ[String]) {
+                         val cmakePlusIncludes: ISZ[String],
+                         val anvilConfig: AnvilConfig) {
 
     @memoize def expPlugins: ISZ[ExpPlugin] = {
       var r = ISZ[ExpPlugin]()
