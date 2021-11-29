@@ -29,6 +29,7 @@ import org.sireum._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol.Resolver._
 import org.sireum.message._
+import org.sireum.transpilers.common.TypeSpecializer
 
 object StaticTemplate {
 
@@ -432,6 +433,10 @@ object StaticTemplate {
           |
           |${(plusIncludes, "\n\n")}"""
     return r
+  }
+
+  @pure def anvilAcceleratedMethodConfig(method: TypeSpecializer.Method): ST = {
+    return st"${(method.info.methodRes.id +: method.info.methodRes.paramNames, "\n")}"
   }
 
   @pure def typeManglingMap(entries: ISZ[(String, String)]): ST = {

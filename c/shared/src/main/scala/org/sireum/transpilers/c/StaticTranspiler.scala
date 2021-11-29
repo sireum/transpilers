@@ -58,13 +58,14 @@ object StaticTranspiler {
       }
     }
 
-    @datatype class PL() extends AnvilConfig {
+    // param: topFunctionFilename: e.g. "anvil_top_function.txt"
+    @datatype class PL(val topFunctionFilename: String, val methodToAccelerate: Resolver.QName) extends AnvilConfig {
       override def mode(): AnvilMode.Type = {
         return AnvilMode.PL
       }
     }
 
-    @datatype class PS() extends AnvilConfig {
+    @datatype class PS(val methodToAccelerate: Resolver.QName) extends AnvilConfig {
       override def mode(): AnvilMode.Type = {
         return AnvilMode.PS
       }
@@ -606,7 +607,16 @@ import StaticTranspiler._
     def work(): Unit = {
       genTypeNames()
       for (ms <- ts.methods.values; m <- ms.elements) {
-        transpileMethod(m)
+        if (shouldAnvilAccelerate(m)) {
+          config.anvilConfig match {
+            case pl: AnvilConfig.PL => {
+              if (shouldAnvilAccelerate(m)) {
+                r = r + ISZ[String](pl.topFunctionFilename) ~> anvilAcceleratedMethodConfig(m)
+              }
+            }
+          }
+        }
+          transpileMethod(m)
       }
       for (p <- ts.objectVars.entries) {
         transpileObjectVars(p._1, p._2)
@@ -3916,4 +3926,18 @@ import StaticTranspiler._
     }
     return r
   }
+
+  def shouldAnvilAccelerate(method: TypeSpecializer.Method): B = {
+
+    @pure def checkName(name: Resolver.QName): B = {
+      return name == method.info.name
+    }
+
+    config.anvilConfig match {
+      case pl: AnvilConfig.PL => return checkName(pl.methodToAccelerate)
+      case ps: AnvilConfig.PS => return checkName(ps.methodToAccelerate)
+      case _: AnvilConfig.NOP => return F
+    }
+  }
+
 }
