@@ -304,8 +304,8 @@ object StaticTemplate {
     return r
   }
 
-  @pure def cmake(libOnly: B, project: String, stackSize: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName],
-                  includes: ISZ[String], plusIncludes: ISZ[String]): ST = {
+  @pure def cmake(anvilMode: AnvilMode.Type, libOnly: B, project: String, stackSize: String,
+                  mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName], includes: ISZ[String], plusIncludes: ISZ[String]): ST = {
     val mainFs = HashSet ++ mainFilenames
 
     @pure def cSource(fs: QName): B = {
@@ -350,7 +350,7 @@ object StaticTemplate {
           |
           |set(CMAKE_C_STANDARD 99)
           |
-          |add_compile_options(-Werror)
+          |${if (anvilMode != AnvilMode.NOP) "# " else ""}add_compile_options(-Werror)
           |
           |function(to_hex DEC HEX)
           |  while(DEC GREATER 0)

@@ -601,8 +601,8 @@ import StaticTranspiler._
       r = r + ISZ[String](runtimeDir, "all.h") ~> allH(typeQNames, allHEntries)
       r = r + ISZ[String](runtimeDir, "all.c") ~> allC(typeNames, allCEntries)
       r = r ++ compiled(compiledMap)
-      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.libOnly, config.projectName, config.stackSize,
-        cFilenames, r.keys ++ rExt.keys, config.cmakeIncludes, config.cmakePlusIncludes)
+      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.anvilConfig.mode(), config.libOnly, config.projectName,
+        config.stackSize, cFilenames, r.keys ++ rExt.keys, config.cmakeIncludes, config.cmakePlusIncludes)
       r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
       )
