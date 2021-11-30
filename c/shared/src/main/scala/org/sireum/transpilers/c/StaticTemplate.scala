@@ -435,6 +435,28 @@ object StaticTemplate {
     return r
   }
 
+  @pure def anvilIncludeDirsConfig(filess: ISZ[QName]): ST = {
+    @pure def hSource(fs: QName): B = {
+      val sops = ops.StringOps(fs(fs.size - 1))
+      return sops.endsWith(string".h")
+    }
+
+    @pure def includeDirs(fss: ISZ[QName]): ISZ[ST] = {
+      var r = HashSSet.empty[QName]
+      for (f <- fss) {
+        if (f.size == z"1") {
+          r = r + ISZ(string".")
+        } else {
+          r = r + ops.ISZOps(f).dropRight(1)
+        }
+      }
+      return for (f <- r.elements) yield st"${(f, string"/")}"
+    }
+
+    val rs: ISZ[ST] = includeDirs(filess.filter((fs: QName) => hSource(fs)))
+    return st"${(rs, "\n")}"
+  }
+
   @pure def anvilAcceleratedMethodConfig(method: TypeSpecializer.Method): ST = {
     return st"${(method.info.methodRes.id +: method.info.methodRes.paramNames, "\n")}"
   }
@@ -458,12 +480,12 @@ object StaticTemplate {
   @pure def anvilCFilesConfig(mainFilenames: ISZ[ISZ[String]], files: ISZ[QName]): ST = {
     @pure def cSource(fs: QName): B = {
       val sops = ops.StringOps(fs(fs.size - 1))
-      return sops.endsWith(".c") && !sops.endsWith("-excluded.c")
+      return sops.endsWith(string".c") && !sops.endsWith(string"-excluded.c")
     }
 
     val mainFs = HashSet ++ mainFilenames
     @pure def cfiles(fss: ISZ[QName]): ISZ[ST] = {
-      return for (f <- fss if !mainFs.contains(f) && cSource(f)) yield st"${(f, "/")}"
+      return for (f <- fss if !mainFs.contains(f) && cSource(f)) yield st"${(f, string"/")}"
     }
 
     val rs: ISZ[ST] = cfiles(files)
