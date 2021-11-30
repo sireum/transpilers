@@ -597,7 +597,7 @@ import StaticTranspiler._
       )
       val typeQNames = compiledMap.keys
       r = r + ISZ[String](runtimeDir, "types.h") ~> typesH(typeQNames, typeNames)
-      r = r + ISZ[String](runtimeDir, "types.c") ~> typesC(typeNames)
+      r = r + ISZ[String](runtimeDir, "types.c") ~> typesC(config.anvilConfig.mode(), typeNames)
       r = r + ISZ[String](runtimeDir, "all.h") ~> allH(typeQNames, allHEntries)
       r = r + ISZ[String](runtimeDir, "all.c") ~> allC(typeNames, allCEntries)
       r = r ++ compiled(compiledMap)

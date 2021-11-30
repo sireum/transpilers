@@ -29,6 +29,7 @@ import org.sireum._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol.Resolver._
 import org.sireum.message._
+import org.sireum.transpilers.c.StaticTranspiler.AnvilMode
 import org.sireum.transpilers.common.TypeSpecializer
 
 object StaticTemplate {
@@ -198,28 +199,38 @@ object StaticTemplate {
     return r
   }
 
-  @pure def typesC(typeNames: ISZ[(String, ST, ST, ST)]): ST = {
+  type StringSTSTST = (String, ST, ST, ST)
+
+  @pure def typesC(anvilMode: AnvilMode.Type, typeNames: ISZ[StringSTSTST]): ST = {
     val strings: ISZ[ST] = for (tn <- typeNames) yield st""""${tn._3}""""
+    def switchTemplate(initializer: String, mapper: StringSTSTST => ST, fallback: String): ST = {
+      return st"""TYPE type = $initializer;
+                 |switch (type) {
+                 |  ${(for (tn <- typeNames) yield st"case T${tn._2}: ${mapper(tn)}; // ${tn._1}", "\n")}
+                 |  default: $fallback;
+                 |}"""
+    }
+
+    // TODO: Using simulation implementation. After anvil method gen, call scalar and struct-specialized by default
     val r =
       st"""#include <types.h>
           |
           |size_t sizeOf(Type t) {
-          |  TYPE type = t->type;
-          |  switch (type) {
-          |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return sizeof(struct ${tn._2}); // ${tn._1}", "\n")}
-          |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
-          |  }
+          |  ${switchTemplate("t->type", (tn: StringSTSTST) => st"""return sizeof(struct ${tn._2})""", if (anvilMode == AnvilMode.PL) string"return 0" else string"fprintf(stderr, \"%s: %d\n\", \"Unexpected TYPE: \", type); exit(1)")}
           |}
           |
           |void Type_assign(void *dest, void *src, size_t destSize) {
           |  Type srcType = (Type) src;
-          |  if (srcType->type == TString) {
-          |    String_assign((String) dest, (String) src);
-          |    return;
-          |  }
-          |  size_t srcSize = sizeOf(srcType);
-          |  memcpy(dest, src, srcSize);
-          |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
+          | ${
+        if (anvilMode == AnvilMode.PL) switchTemplate(string"srcType->type", (tn: StringSTSTST) => st"""dest = (${tn._2}) src; return""", string"return")
+        else st"""if (srcType->type == TString) {
+                 |  String_assign((String) dest, (String) src);
+                 |  return;
+                 |}
+                 |size_t srcSize = sizeOf(srcType);
+                 |memcpy(dest, src, srcSize);
+                 |memset(((char *) dest) + srcSize, 0, destSize - srcSize);"""
+      }
           |}
           |
           |char *TYPE_string_(void *type) {
