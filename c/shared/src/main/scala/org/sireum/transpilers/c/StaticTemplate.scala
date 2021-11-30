@@ -455,6 +455,21 @@ object StaticTemplate {
     return st"${(sts, ";\n")}"
   }
 
+  @pure def anvilCFilesConfig(mainFilenames: ISZ[ISZ[String]], files: ISZ[QName]): ST = {
+    @pure def cSource(fs: QName): B = {
+      val sops = ops.StringOps(fs(fs.size - 1))
+      return sops.endsWith(".c") && !sops.endsWith("-excluded.c")
+    }
+
+    val mainFs = HashSet ++ mainFilenames
+    @pure def cfiles(fss: ISZ[QName]): ISZ[ST] = {
+      return for (f <- fss if !mainFs.contains(f) && cSource(f)) yield st"${(f, "/")}"
+    }
+
+    val rs: ISZ[ST] = cfiles(files)
+    return st"${(rs, "\n")}"
+  }
+
   @pure def qnameLt(qn1: QName, qn2: QName): B = {
     return st"$qn1".render < st"$qn2".render
   }

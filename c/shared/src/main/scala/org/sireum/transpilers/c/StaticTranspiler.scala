@@ -58,8 +58,9 @@ object StaticTranspiler {
       }
     }
 
+    // param: cfilesFilename: e.g. "anvil_cfiles.txt"
     // param: topFunctionFilename: e.g. "anvil_top_function.txt"
-    @datatype class PL(val topFunctionFilename: String, val methodToAccelerate: Resolver.QName) extends AnvilConfig {
+    @datatype class PL(val cfilesFilename: String, val topFunctionFilename: String, val methodToAccelerate: Resolver.QName) extends AnvilConfig {
       override def mode(): AnvilMode.Type = {
         return AnvilMode.PL
       }
@@ -602,6 +603,11 @@ import StaticTranspiler._
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
       )
       r = r + ISZ[String]("sizes.txt") ~> sizesConfig(sizesMap)
+      config.anvilConfig match {
+        case pl: AnvilConfig.PL => {
+          r = r + ISZ[String](pl.cfilesFilename) ~> anvilCFilesConfig(cFilenames, r.keys)
+        }
+      }
     }
 
     def work(): Unit = {
