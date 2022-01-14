@@ -2775,7 +2775,7 @@ import StaticTranspiler._
       condOpt match {
         case Some(cond) =>
           additionalMethodImpls = additionalMethodImpls :+
-            st"""static inline B $fname(STACK_FRAME_SF $tpe $temp$parameters) {
+            st"""inline B $fname(STACK_FRAME_SF $tpe $temp$parameters) {
                 |  ${(patStmts, "\n")}
                 |  ${(assigns, "\n")}
                 |  ${(condStmts, "\n")}
@@ -2791,7 +2791,7 @@ import StaticTranspiler._
             |}"""
         case _ =>
           additionalMethodImpls = additionalMethodImpls :+
-            st"""static inline B $fname(STACK_FRAME_SF $tpe $temp$parameters) {
+            st"""inline B $fname(STACK_FRAME_SF $tpe $temp$parameters) {
                 |  ${(patStmts, "\n")}
                 |  return T;
                 |}"""
@@ -3191,7 +3191,7 @@ import StaticTranspiler._
       transpilePattern(immutable, F, temp, stmt.pattern)
       val patStmts = stmts
       additionalMethodImpls = additionalMethodImpls :+
-        st"""static inline B $fname(STACK_FRAME_SF $tpe $temp$parameters) {
+        st"""inline B $fname(STACK_FRAME_SF $tpe $temp$parameters) {
             |  ${(patStmts, "\n")}
             |  return T;
             |}"""
