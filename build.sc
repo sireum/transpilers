@@ -26,7 +26,6 @@ import $file.runtime.Runtime
 import $file.slang.Slang
 import $file.alir.Alir
 import $file.Transpilers
-import ammonite.ops.up
 
 object runtime extends mill.Module {
 
@@ -74,7 +73,7 @@ object alir extends Alir.Module with runtime.testProvider {
 
 object transpilers extends mill.Module {
 
-  final override def millSourcePath = super.millSourcePath / up
+  final override def millSourcePath = super.millSourcePath / os.up
 
   object common extends Transpilers.Module.Common {
     override val alirObject = alir
