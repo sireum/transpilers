@@ -3,7 +3,7 @@ import org.sireum._
 
 object sha3 extends App {
   def main(args: ISZ[String]): Z = {
-    if (args.size == 0 || args.size > 2) {
+    if (args.isEmpty || args.size > 2) {
       printUsage()
       return 0
     }
