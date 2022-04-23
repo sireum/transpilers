@@ -216,7 +216,7 @@ object StaticTemplate {
       st"""#include <types.h>
           |
           |size_t sizeOf(Type t) {
-          |  ${switchTemplate("t->type", (tn: StringSTSTST) => st"""return sizeof(struct ${tn._2})""", if (anvilMode == AnvilMode.PL) string"return 0" else string"fprintf(stderr, \"%s: %d\n\", \"Unexpected TYPE: \", type); exit(1)")}
+          |  ${switchTemplate("t->type", (tn: StringSTSTST) => st"""return sizeof(struct ${tn._2})""", if (anvilMode == AnvilMode.PL) "return 0" else st"fprintf(stderr, ${"\""}%s: %d${"\\"}n${"\""}, ${"\""}Unexpected TYPE: ${"\""}, type); exit(1)".render)}
           |}
           |
           |void Type_assign(void *dest, void *src, size_t destSize) {
