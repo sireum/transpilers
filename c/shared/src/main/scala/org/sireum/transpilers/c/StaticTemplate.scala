@@ -29,6 +29,8 @@ import org.sireum._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol.Resolver._
 import org.sireum.message._
+import org.sireum.transpilers.c.StaticTranspiler.AnvilMode
+import org.sireum.transpilers.common.TypeSpecializer
 
 object StaticTemplate {
 
@@ -197,28 +199,38 @@ object StaticTemplate {
     return r
   }
 
-  @pure def typesC(typeNames: ISZ[(String, ST, ST, ST)]): ST = {
+  type StringSTSTST = (String, ST, ST, ST)
+
+  @pure def typesC(anvilMode: AnvilMode.Type, typeNames: ISZ[StringSTSTST]): ST = {
     val strings: ISZ[ST] = for (tn <- typeNames) yield st""""${tn._3}""""
+    def switchTemplate(initializer: String, mapper: StringSTSTST => ST, fallback: String): ST = {
+      return st"""TYPE type = $initializer;
+                 |switch (type) {
+                 |  ${(for (tn <- typeNames) yield st"case T${tn._2}: ${mapper(tn)}; // ${tn._1}", "\n")}
+                 |  default: $fallback;
+                 |}"""
+    }
+
+    // TODO: Using simulation implementation. After anvil method gen, call scalar and struct-specialized by default
     val r =
       st"""#include <types.h>
           |
           |size_t sizeOf(Type t) {
-          |  TYPE type = t->type;
-          |  switch (type) {
-          |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return sizeof(struct ${tn._2}); // ${tn._1}", "\n")}
-          |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
-          |  }
+          |  ${switchTemplate("t->type", (tn: StringSTSTST) => st"""return sizeof(struct ${tn._2})""", if (anvilMode == AnvilMode.PL) string"return 0" else string"fprintf(stderr, \"%s: %d\n\", \"Unexpected TYPE: \", type); exit(1)")}
           |}
           |
           |void Type_assign(void *dest, void *src, size_t destSize) {
           |  Type srcType = (Type) src;
-          |  if (srcType->type == TString) {
-          |    String_assign((String) dest, (String) src);
-          |    return;
-          |  }
-          |  size_t srcSize = sizeOf(srcType);
-          |  memcpy(dest, src, srcSize);
-          |  memset(((char *) dest) + srcSize, 0, destSize - srcSize);
+          | ${
+        if (anvilMode == AnvilMode.PL) switchTemplate(string"srcType->type", (tn: StringSTSTST) => st"""dest = (${tn._2}) src; return""", string"return")
+        else st"""if (srcType->type == TString) {
+                 |  String_assign((String) dest, (String) src);
+                 |  return;
+                 |}
+                 |size_t srcSize = sizeOf(srcType);
+                 |memcpy(dest, src, srcSize);
+                 |memset(((char *) dest) + srcSize, 0, destSize - srcSize);"""
+      }
           |}
           |
           |char *TYPE_string_(void *type) {
@@ -292,8 +304,8 @@ object StaticTemplate {
     return r
   }
 
-  @pure def cmake(libOnly: B, project: String, stackSize: String, mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName],
-                  includes: ISZ[String], plusIncludes: ISZ[String]): ST = {
+  @pure def cmake(anvilMode: AnvilMode.Type, libOnly: B, project: String, stackSize: String,
+                  mainFilenames: ISZ[ISZ[String]], filess: ISZ[QName], includes: ISZ[String], plusIncludes: ISZ[String]): ST = {
     val mainFs = HashSet ++ mainFilenames
 
     @pure def cSource(fs: QName): B = {
@@ -338,7 +350,7 @@ object StaticTemplate {
           |
           |set(CMAKE_C_STANDARD 99)
           |
-          |add_compile_options(-Werror)
+          |${if (anvilMode != AnvilMode.NOP) "# " else ""}add_compile_options(-Werror)
           |if($$ENV{CC} MATCHES "^.*ccomp$$")
           |  add_compile_options(-flongdouble)
           |endif()
@@ -432,6 +444,32 @@ object StaticTemplate {
     return r
   }
 
+  @pure def anvilIncludeDirsConfig(filess: ISZ[QName]): ST = {
+    @pure def hSource(fs: QName): B = {
+      val sops = ops.StringOps(fs(fs.size - 1))
+      return sops.endsWith(string".h")
+    }
+
+    @pure def includeDirs(fss: ISZ[QName]): ISZ[ST] = {
+      var r = HashSSet.empty[QName]
+      for (f <- fss) {
+        if (f.size == z"1") {
+          r = r + ISZ(string".")
+        } else {
+          r = r + ops.ISZOps(f).dropRight(1)
+        }
+      }
+      return for (f <- r.elements) yield st"${(f, string"/")}"
+    }
+
+    val rs: ISZ[ST] = includeDirs(filess.filter((fs: QName) => hSource(fs)))
+    return st"${(rs, "\n")}"
+  }
+
+  @pure def anvilAcceleratedMethodConfig(method: TypeSpecializer.Method): ST = {
+    return st"${(method.info.methodRes.id +: method.info.methodRes.paramNames, "\n")}"
+  }
+
   @pure def typeManglingMap(entries: ISZ[(String, String)]): ST = {
     val sortedEntries = ops.ISZOps(entries).sortWith((p1, p2) => p1._1 < p2._1)
     return st"${(for (p <- sortedEntries) yield st"${p._1}=${p._2}", "\n")}"
@@ -446,6 +484,21 @@ object StaticTemplate {
     val sts: ISZ[ST] = for (e <- ops.ISZOps(sizesMap.entries.map((p: (AST.Typed.Name, Z)) => (toST(p._1), p._2))).
       sortWith((p1: (String, Z), p2: (String, Z)) => p1._1 <= p2._1)) yield st"${e._1}=${e._2}"
     return st"${(sts, ";\n")}"
+  }
+
+  @pure def anvilCFilesConfig(mainFilenames: ISZ[ISZ[String]], files: ISZ[QName]): ST = {
+    @pure def cSource(fs: QName): B = {
+      val sops = ops.StringOps(fs(fs.size - 1))
+      return sops.endsWith(string".c") && !sops.endsWith(string"-excluded.c")
+    }
+
+    val mainFs = HashSet ++ mainFilenames
+    @pure def cfiles(fss: ISZ[QName]): ISZ[ST] = {
+      return for (f <- fss if !mainFs.contains(f) && cSource(f)) yield st"${(f, string"/")}"
+    }
+
+    val rs: ISZ[ST] = cfiles(files)
+    return st"${(rs, "\n")}"
   }
 
   @pure def qnameLt(qn1: QName, qn2: QName): B = {
