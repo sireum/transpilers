@@ -612,6 +612,8 @@ import StaticTranspiler._
           r = r + ISZ[String](pl.cfilesFilename) ~> anvilCFilesConfig(cFilenames, r.keys)
           r = r + ISZ[String](pl.includeDirsFilename) ~> anvilIncludeDirsConfig(r.keys) // notice no ext files
         }
+        case _: AnvilConfig.PS => { } // skip
+        case _: AnvilConfig.NOP => { } // always skip
       }
     }
 
@@ -625,6 +627,8 @@ import StaticTranspiler._
                 r = r + ISZ[String](pl.topFunctionFilename) ~> anvilAcceleratedMethodConfig(m)
               }
             }
+            case _: AnvilConfig.PS => { } // skip
+            case _: AnvilConfig.NOP => { } // always skip
           }
         }
           transpileMethod(m)
