@@ -461,7 +461,8 @@ class StaticTranspilerTest extends TestSuite {
       libOnly = F,
       stableTypeId = F,
       cmakeIncludes = ISZ(),
-      cmakePlusIncludes = ISZ()
+      cmakePlusIncludes = ISZ(),
+      anvilConfig = StaticTranspiler.AnvilConfig.NOP()
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)
