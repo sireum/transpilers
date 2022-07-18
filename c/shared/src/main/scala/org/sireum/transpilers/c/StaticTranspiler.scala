@@ -620,18 +620,25 @@ import StaticTranspiler._
     def work(): Unit = {
       genTypeNames()
       for (ms <- ts.methods.values; m <- ms.elements) {
-        if (shouldAnvilAccelerate(m)) {
-          config.anvilConfig match {
-            case pl: AnvilConfig.PL => {
-              if (shouldAnvilAccelerate(m)) {
-                r = r + ISZ[String](pl.topFunctionFilename) ~> anvilAcceleratedMethodConfig(m)
-              }
+        config.anvilConfig match {
+          case pl: AnvilConfig.PL => {
+            if (shouldAnvilAccelerate(m)) {
+              // write information about the hardware accelerated function to (filename) pl.topFunctionFilename
+              // this includes the c function name and parameter information
+              r = r + ISZ[String](pl.topFunctionFilename) ~> anvilAcceleratedMethodConfig(m)
             }
-            case _: AnvilConfig.PS => { } // skip
-            case _: AnvilConfig.NOP => { } // always skip
+            transpileMethod(m)
+          }
+          case _: AnvilConfig.PS => {
+            // do not transpile the hardware-accelerated target method
+            if (!shouldAnvilAccelerate(m)) {
+              transpileMethod(m)
+            }
+          }
+          case _: AnvilConfig.NOP => {
+            transpileMethod(m)
           }
         }
-          transpileMethod(m)
       }
       for (p <- ts.objectVars.entries) {
         transpileObjectVars(p._1, p._2)
