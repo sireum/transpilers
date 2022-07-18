@@ -467,7 +467,8 @@ object StaticTemplate {
   }
 
   @pure def anvilAcceleratedMethodConfig(method: TypeSpecializer.Method): ST = {
-    return st"${(method.info.methodRes.id +: method.info.methodRes.paramNames, "\n")}"
+    val cName: String = AST.Util.mangleName(method.info.name).render
+    return st"${(cName +: method.info.methodRes.paramNames, "\n")}"
   }
 
   @pure def typeManglingMap(entries: ISZ[(String, String)]): ST = {
