@@ -2452,6 +2452,8 @@ import StaticTranspiler._
       case _: AST.Exp.Result => halt("Infeasible")
       case _: AST.Exp.StateSeq => halt("Infeasible")
       case _: AST.Exp.LoopIndex => halt("Infeasible")
+      case _: AST.Exp.TypeCond => halt("Infeasible")
+      case _: AST.Exp.Sym => halt("Infeasible")
     }
   }
 
