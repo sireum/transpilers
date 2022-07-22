@@ -204,10 +204,24 @@ inline F32 F32__rem(F32 n1, F32 n2) {
 }
 
 inline B F32__eq(F32 n1, F32 n2) {
-  return (B) (n1 == n2);
+  union {
+    uint32_t iValue;
+    F32 fp;
+  } m1, m2;
+  m1.fp = n1;
+  m2.fp = n2;
+  return (B) (m1.iValue == m2.iValue);
 }
 
 inline B F32__ne(F32 n1, F32 n2) {
+  return !F32_eq(n1, n2);
+}
+
+inline B F32__fpeq(F32 n1, F32 n2) {
+  return (B) (n1 == n2);
+}
+
+inline B F32__fpne(F32 n1, F32 n2) {
   return (B) (n1 != n2);
 }
 
@@ -251,10 +265,24 @@ inline F64 F64__rem(F64 n1, F64 n2) {
 }
 
 inline B F64__eq(F64 n1, F64 n2) {
-  return (B) (n1 == n2);
+  union {
+    uint64_t iValue;
+    F64 fp;
+  } m1, m2;
+  m1.fp = n1;
+  m2.fp = n2;
+  return (B) (m1.iValue == m2.iValue);
 }
 
 inline B F64__ne(F64 n1, F64 n2) {
+  return !F64_eq(n1, n2);
+}
+
+inline B F64__fpeq(F64 n1, F64 n2) {
+  return (B) (n1 == n2);
+}
+
+inline B F64__fpne(F64 n1, F64 n2) {
   return (B) (n1 != n2);
 }
 
