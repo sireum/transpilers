@@ -214,7 +214,7 @@ inline B F32__eq(F32 n1, F32 n2) {
 }
 
 inline B F32__ne(F32 n1, F32 n2) {
-  return !F32_eq(n1, n2);
+  return !F32__eq(n1, n2);
 }
 
 inline B F32__fpeq(F32 n1, F32 n2) {
@@ -275,7 +275,7 @@ inline B F64__eq(F64 n1, F64 n2) {
 }
 
 inline B F64__ne(F64 n1, F64 n2) {
-  return !F64_eq(n1, n2);
+  return !F64__eq(n1, n2);
 }
 
 inline B F64__fpeq(F64 n1, F64 n2) {
