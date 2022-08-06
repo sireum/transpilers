@@ -1687,6 +1687,8 @@ import StaticTranspiler._
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryRem => "__rem"
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryEq => "__eq"
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryNe => "__ne"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryFpEq => "__fpeq"
+                case AST.ResolvedInfo.BuiltIn.Kind.BinaryFpNe => "__fpne"
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryLt => "__lt"
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryLe => "__le"
                 case AST.ResolvedInfo.BuiltIn.Kind.BinaryGt => "__gt"
