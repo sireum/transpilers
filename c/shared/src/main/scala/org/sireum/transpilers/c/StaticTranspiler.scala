@@ -2393,7 +2393,7 @@ import StaticTranspiler._
       case _: AST.Exp.QuantEach => halt("TODO") // TODO
       case _: AST.Exp.QuantType => halt("TODO") // TODO
       case _: AST.Exp.Input => halt("Infeasible")
-      case _: AST.Exp.OldVal => halt("Infeasible")
+      case _: AST.Exp.At => halt("Infeasible")
       case _: AST.Exp.Result => halt("Infeasible")
       case _: AST.Exp.StateSeq => halt("Infeasible")
       case _: AST.Exp.LoopIndex => halt("Infeasible")
