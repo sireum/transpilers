@@ -32,6 +32,16 @@ inline B String__ne(String this, String other) {
   return !String__eq(this, other);
 }
 
+inline B String__equiv(String this, String other) {
+  Z thisSize = this->size;
+  if (thisSize != other->size) return F;
+  return memcmp(this->value, other->value, (size_t) thisSize) == 0;
+}
+
+inline B String__inequiv(String this, String other) {
+  return !String__eq(this, other);
+}
+
 inline Z String_size_(STACK_FRAME_SF String this) {
   return this->size;
 }
@@ -94,6 +104,7 @@ void String_string_(STACK_FRAME String result, String this);
 void Type_string_(STACK_FRAME String result, void* this);
 void Type_cprint(void *this, B isOut);
 B Type__eq(void *t1, void *t2);
+B Type__equiv(void *t1, void *t2);
 
 #ifdef __cplusplus
 }

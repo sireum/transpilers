@@ -124,13 +124,7 @@ object StaticTemplate {
           |#include <stackframe.h>
           |
           |typedef enum {
-          |  ${
-        (
-          for (tn <- typeNames)
-            yield st"T${tn._2} = ${tn._4}, // ${tn._1}",
-          "\n"
-        )
-      }
+          |  ${(for (tn <- typeNames) yield st"T${tn._2} = ${tn._4}, // ${tn._1}", "\n")}
           |} TYPE;
           |
           |char *TYPE_string_(void *type);
@@ -265,6 +259,15 @@ object StaticTemplate {
           |  }
           |}
           |
+          |B Type__equiv(void *t1, void *t2) {
+          |  TYPE type = ((Type) t1)->type;
+          |  if (type != ((Type) t2)->type) return F;
+          |  switch (type) {
+          |    ${(for (tn <- typeNames) yield st"case T${tn._2}: return ${tn._2}__equiv((${tn._2}) t1, (${tn._2}) t2);", "\n")}
+          |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
+          |  }
+          |}
+          |
           |void Type_cprint(void *this, B isOut) {
           |  #ifndef SIREUM_NO_PRINT
           |  TYPE type = ((Type) this)->type;
@@ -278,12 +281,7 @@ object StaticTemplate {
           |void Type_string_(STACK_FRAME String result, void *this) {
           |  TYPE type = ((Type) this)->type;
           |  switch (type) {
-          |    ${
-        (
-          for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string_(CALLER result, (${tn._2}) this); return;",
-          "\n"
-        )
-      }
+          |    ${(for (tn <- typeNames) yield st"case T${tn._2}: ${tn._2}_string_(CALLER result, (${tn._2}) this); return;", "\n")}
           |    default: fprintf(stderr, "%s: %d\n", "Unexpected TYPE: ", type); exit(1);
           |  }
           |}
@@ -695,7 +693,13 @@ object StaticTemplate {
       st"""inline B ${name}__ne($name this, $name other) {
           |  return !${name}__eq(this, other);
           |}"""
+    val equivHeader = st"B ${name}__equiv($name this, $name other)"
+    val inequivHeader =
+      st"""inline B ${name}__inequiv($name this, $name other) {
+          |  return !${name}__equiv(this, other);
+          |}"""
     val neImpl = st"B ${name}__ne($name this, $name other);"
+    val inequivImpl = st"B ${name}__inequiv($name this, $name other);"
     val stringHeader = st"void ${name}_string_(STACK_FRAME String result, $name this)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
 
@@ -707,6 +711,8 @@ object StaticTemplate {
           |
           |$eqHeader;
           |$neHeader;
+          |$equivHeader;
+          |$inequivHeader;
           |$stringHeaderOpt
           |$cprintHeader;
           |
@@ -720,6 +726,7 @@ object StaticTemplate {
           |  $abort
           |}"""
 
+    var equivStmts = ISZ[ST]()
     var eqStmts = ISZ[ST]()
     var stringStmts = ISZ[ST]()
     var cprintStmts = ISZ[ST]()
@@ -738,12 +745,19 @@ object StaticTemplate {
       cprintStmts = cprintStmts :+ st"""String sep = string(", ");"""
     }
 
+    for (i <- varTypes.indices) {
+      val vd = varTypes(i)
+      val pre: ST = if (isScalar(vd.kind)) st"" else st"(${vd.tpePtr}) &"
+      equivStmts = equivStmts :+ st"if (${vd.tpePtr}__inequiv(${pre}this->${vd.id}, ${pre}other->${vd.id})) return F;"
+    }
+
     for (i <- constructorParamTypes.indices) {
       val vd = constructorParamTypes(i)
       val pre: ST = if (isScalar(vd.kind)) st"" else st"(${vd.tpePtr}) &"
       if (!vd.isHidden) {
         eqStmts = eqStmts :+ st"if (${vd.tpePtr}__ne(${pre}this->${vd.id}, ${pre}other->${vd.id})) return F;"
       }
+      equivStmts = equivStmts :+ st"if (${vd.tpePtr}__inequiv(${pre}this->${vd.id}, ${pre}other->${vd.id})) return F;"
       if (defaultString) {
         if (i > 0) {
           stringStmts = stringStmts :+ st"String_string_(SF result, sep);"
@@ -773,7 +787,13 @@ object StaticTemplate {
           |  return T;
           |}
           |
+          |$equivHeader {
+          |  ${(equivStmts, "\n")}
+          |  return T;
+          |}
+          |
           |$neImpl
+          |$inequivImpl
           |$stringImplOpt
           |
           |$cprintHeader {
@@ -809,6 +829,8 @@ object StaticTemplate {
           |
           |#define ${name}__eq(this, other) Type__eq(this, other)
           |#define ${name}__ne(this, other) (!Type__eq(this, other))
+          |#define ${name}__equiv(this, other) Type__equiv(this, other)
+          |#define ${name}__inequiv(this, other) (!Type__equiv(this, other))
           |#define ${name}_cprint(this, isOut) Type_cprint(this, isOut)
           |B ${name}__is(STACK_FRAME void *this);
           |$name ${name}__as(STACK_FRAME void *this);
@@ -964,6 +986,7 @@ object StaticTemplate {
           |
           |#define DeclNew$name(x) struct $name x = { .type = T$name }"""
     val eqHeader = st"B ${name}__eq($name this, $name other)"
+    val equivHeader = st"B ${name}__equiv($name this, $name other)"
     val createHeader = st"void ${name}_create(STACK_FRAME $name result, Z size, $elementTypePtr dflt)"
     val appendHeader = st"void ${name}__append(STACK_FRAME $name result, $name this, $elementTypePtr value)"
     val prependHeader = st"void ${name}__prepend(STACK_FRAME $name result, $name this, $elementTypePtr value)"
@@ -996,6 +1019,7 @@ object StaticTemplate {
           |}
           |
           |$eqHeader;
+          |$equivHeader;
           |$createHeader;
           |$appendHeader;
           |$prependHeader;
@@ -1007,6 +1031,9 @@ object StaticTemplate {
           |
           |inline B ${name}__ne($name this, $name other) {
           |  return !${name}__eq(this, other);
+          |}
+          |inline B ${name}__inequiv($name this, $name other) {
+          |  return !${name}__equiv(this, other);
           |}
           |$toOtherHeaderOpt"""
     val impl: ST =
@@ -1020,6 +1047,22 @@ object StaticTemplate {
             |B ${name}_nonEmpty(STACK_FRAME $name this);
             |
             |$eqHeader {
+            |  intmax_t size = this->size;
+            |  if (size != other->size) return F;
+            |  intmax_t n = size / 8;
+            |  for (intmax_t i = 0; i < n; i++) {
+            |    if (this->value[i] != other->value[i]) return F;
+            |  }
+            |  intmax_t m = size % 8;
+            |  U8 mask = 1;
+            |  for (intmax_t i = 0; i < m; i++) {
+            |    if ((this->value[n] & mask) != (other->value[n] & mask)) return F;
+            |    mask <<= 1;
+            |  }
+            |  return T;
+            |}
+            |
+            |$equivHeader {
             |  intmax_t size = this->size;
             |  if (size != other->size) return F;
             |  intmax_t n = size / 8;
@@ -1163,6 +1206,15 @@ object StaticTemplate {
             |  return T;
             |}
             |
+            |$equivHeader {
+            |  $sizeType size = this->size;
+            |  if (size != other->size) return F;
+            |  for ($sizeType i = 0; i < size; i++) {
+            |    if (${elementTypePtr}__inequiv(this->value[i], other->value[i])) return F;
+            |  }
+            |  return T;
+            |}
+            |
             |$createHeader {
             |  DeclNewStackFrame(caller, "$sName.scala", "org.sireum.$sName", "create", 0);
             |  sfAssert((Z) size <= Max$name, "Insufficient maximum for $tpe elements.");
@@ -1274,6 +1326,15 @@ object StaticTemplate {
             |  if (size != other->size) return F;
             |  for ($sizeType i = 0; i < size; i++) {
             |    if (${elementTypePtr}__ne(($elementTypePtr) &this->value[i], ($elementTypePtr) &other->value[i])) return F;
+            |  }
+            |  return T;
+            |}
+            |
+            |$equivHeader {
+            |  $sizeType size = this->size;
+            |  if (size != other->size) return F;
+            |  for ($sizeType i = 0; i < size; i++) {
+            |    if (${elementTypePtr}__inequiv(($elementTypePtr) &this->value[i], ($elementTypePtr) &other->value[i])) return F;
             |  }
             |  return T;
             |}
@@ -1432,6 +1493,14 @@ object StaticTemplate {
           |  return this != other;
           |}
           |
+          |inline B ${mangledName}__equiv($mangledName this, $mangledName other) {
+          |  return this == other;
+          |}
+          |
+          |inline B ${mangledName}__inequiv($mangledName this, $mangledName other) {
+          |  return this != other;
+          |}
+          |
           |inline Z ${mangledName}__ordinal($mangledName this) {
           |  return (Z) this;
           |}
@@ -1451,18 +1520,7 @@ object StaticTemplate {
         header = header :+ byNameHeader
         impl = impl :+
           st"""$byNameHeader {
-              |  ${
-            (
-              for (e <- elements)
-                yield
-                  st"""if (String__eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${
-                    elemName(
-                      e
-                    )
-                  } }), sizeof(union $optElementType));""",
-              "\nelse "
-            )
-          }
+              |  ${(for (e <- elements) yield st"""if (String__eq(s, string("$e"))) Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elemName(e)} }), sizeof(union $optElementType));""", "\nelse ")}
               |  else Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType));
               |}"""
 
@@ -1471,18 +1529,7 @@ object StaticTemplate {
         impl = impl :+
           st"""$byOrdinalHeader {
               |  switch (($mangledName) n) {
-              |    ${
-            (
-              for (e <- elements)
-                yield
-                  st"""case ${elemName(e)}: Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${
-                    elemName(
-                      e
-                    )
-                  } }), sizeof(union $optElementType)); return;""",
-              "\n"
-            )
-          }
+              |    ${(for (e <- elements) yield st"""case ${elemName(e)}: Type_assign(result, &((struct $someElementType) { .type = T$someElementType, .value = ${elemName(e)} }), sizeof(union $optElementType)); return;""", "\n")}
               |    default: Type_assign(result, &((struct $noneElementType) { .type = T$noneElementType }), sizeof(union $optElementType)); return;
               |  }
               |}"""
@@ -1496,12 +1543,7 @@ object StaticTemplate {
         impl = impl :+
           st"""$elementsHeader {
               |  result->size = Z_C(${elements.size});
-              |  ${
-            (
-              for (p <- ops.ISZOps(elements).zip(indices)) yield st"result->value[${p._2}] = ${elemName(p._1)};",
-              "\n"
-            )
-          }
+              |  ${(for (p <- ops.ISZOps(elements).zip(indices)) yield st"result->value[${p._2}] = ${elemName(p._1)};", "\n")}
               |}"""
       case _ =>
     }
@@ -1519,12 +1561,7 @@ object StaticTemplate {
       st"""$cprintHeader {
           |  #ifndef SIREUM_NO_PRINT
           |  switch (this) {
-          |    ${
-        (
-          for (e <- elements) yield st"""case ${elemName(e)}: String_cprint(string("$e"), isOut); return;""",
-          "\n"
-        )
-      }
+          |    ${(for (e <- elements) yield st"""case ${elemName(e)}: String_cprint(string("$e"), isOut); return;""", "\n")}
           |  }
           |  #endif
           |}"""
@@ -1535,12 +1572,7 @@ object StaticTemplate {
       st"""$stringHeader {
           |  DeclNewStackFrame(caller, "$uri", "$mangledName", "string", 0);
           |  switch (this) {
-          |    ${
-        (
-          for (e <- elements) yield st"""case ${elemName(e)}: String_string_(SF result, string("$e")); return;""",
-          "\n"
-        )
-      }
+          |    ${(for (e <- elements) yield st"""case ${elemName(e)}: String_string_(SF result, string("$e")); return;""", "\n")}
           |  }
           |}"""
     return compiled(
@@ -1553,6 +1585,8 @@ object StaticTemplate {
             |
             |B ${mangledName}__eq($mangledName this, $mangledName other);
             |B ${mangledName}__ne($mangledName this, $mangledName other);
+            |B ${mangledName}__equiv($mangledName this, $mangledName other);
+            |B ${mangledName}__inequiv($mangledName this, $mangledName other);
             |Z ${mangledName}__ordinal($mangledName this);
             |void ${mangledName}_name_(String result, $mangledName this);
             |
@@ -1754,6 +1788,14 @@ object StaticTemplate {
           |  return (B) (n1 != n2);
           |}
           |
+          |inline B ${mangledName}__equiv($mangledName n1, $mangledName n2) {
+          |  return (B) (n1 == n2);
+          |}
+          |
+          |inline B ${mangledName}__inequiv($mangledName n1, $mangledName n2) {
+          |  return (B) (n1 != n2);
+          |}
+          |
           |inline B ${mangledName}__lt($mangledName n1, $mangledName n2) {
           |  return (B) (n1 < n2);
           |}
@@ -1787,6 +1829,8 @@ object StaticTemplate {
           |$mangledName ${mangledName}__rem($mangledName n1, $mangledName n2);
           |B ${mangledName}__eq($mangledName n1, $mangledName n2);
           |B ${mangledName}__ne($mangledName n1, $mangledName n2);
+          |B ${mangledName}__equiv($mangledName n1, $mangledName n2);
+          |B ${mangledName}__inequiv($mangledName n1, $mangledName n2);
           |B ${mangledName}__lt($mangledName n1, $mangledName n2);
           |B ${mangledName}__le($mangledName n1, $mangledName n2);
           |B ${mangledName}__gt($mangledName n1, $mangledName n2);
@@ -1942,12 +1986,14 @@ object StaticTemplate {
       accessorImpls = accessorImpls :+ st"$tPtr ${name}_$index($name this);"
     }
     val eqHeader = st"B ${name}__eq($name this, $name other)"
+    val equivHeader = st"B ${name}__equiv($name this, $name other)"
     val cprintHeader = st"void ${name}_cprint($name this, B isOut)"
     val stringHeader = st"void ${name}_string_(STACK_FRAME String result, $name this)"
     val header =
       st"""// $tpe
           |$constructorHeader;
           |$eqHeader;
+          |$equivHeader;
           |$cprintHeader;
           |$stringHeader;
           |
@@ -1955,12 +2001,18 @@ object StaticTemplate {
           |
           |inline B ${name}__ne($name this, $name other) {
           |  return !${name}__eq(this, other);
+          |}
+          |
+          |inline B ${name}__inequiv($name this, $name other) {
+          |  return !${name}__equiv(this, other);
           |}"""
     var eqStmts = ISZ[ST]()
+    var equivStmts = ISZ[ST]()
     for (i <- cParamTypes.indices) {
       val t = cParamTypes(i)
       val amp: ST = if (isScalar(constructorParamTypes(i)._1)) st"" else st"($t) &"
       eqStmts = eqStmts :+ st"if (${t}__ne(${amp}this->_${i + 1}, ${amp}other->_${i + 1})) return F;"
+      equivStmts = equivStmts :+ st"if (${t}__inequiv(${amp}this->_${i + 1}, ${amp}other->_${i + 1})) return F;"
     }
     val impl =
       st"""// $tpe
@@ -1974,24 +2026,23 @@ object StaticTemplate {
           |  ${(constructorStmts, "\n")}
           |}
           |
-           |$eqHeader {
+          |$eqHeader {
           |  ${(eqStmts, "\n")}
           |  return T;
           |}
           |
+          |$equivHeader {
+          |  ${(equivStmts, "\n")}
+          |  return T;
+          |}
           |$cprintHeader {
           |  #ifndef SIREUM_NO_PRINT
           |  String sep = string(", ");
           |  String_cprint(string("("), isOut);
           |  ${cParamTypes(0)}_cprint(${if (isScalar(constructorParamTypes(0)._1)) "" else "&"}this->_1, isOut);
-          |  ${
-        (
-          for (i <- z"1" until size) yield
+          |  ${(for (i <- z"1" until size) yield
             st"""String_cprint(sep, isOut);
-                |${cParamTypes(i)}_cprint(${if (isScalar(constructorParamTypes(i)._1)) "" else "&"}this->_${i + 1}, isOut);""",
-          "\n"
-        )
-      }
+                |${cParamTypes(i)}_cprint(${if (isScalar(constructorParamTypes(i)._1)) "" else "&"}this->_${i + 1}, isOut);""", "\n")}
           |  String_cprint(string(")"), isOut);
           |  #endif
           |}
@@ -2004,18 +2055,9 @@ object StaticTemplate {
         if (isScalar(constructorParamTypes(0)._1)) ""
         else s"(${cParamTypes(0).render}) &"
       }this->_1);
-          |  ${
-        (
-          for (i <- z"1" until size)
-            yield
-              st"""String_string_(SF result, sep);
-                  |${cParamTypes(i)}_string_(SF result, ${
-                if (isScalar(constructorParamTypes(i)._1)) ""
-                else s"(${cParamTypes(i).render}) &"
-              }this->_${i + 1});""",
-          "\n"
-        )
-      }
+          |  ${(for (i <- z"1" until size) yield
+        st"""String_string_(SF result, sep);
+            |${cParamTypes(i)}_string_(SF result, ${if (isScalar(constructorParamTypes(i)._1)) "" else s"(${cParamTypes(i).render}) &"}this->_${i + 1});""", "\n")}
           |  String_string_(SF result, string(")"));
           |}"""
     return compiled(

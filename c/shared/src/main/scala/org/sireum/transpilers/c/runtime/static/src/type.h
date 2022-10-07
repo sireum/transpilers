@@ -24,6 +24,14 @@ inline B B__ne(B b1, B b2) {
   return b1 != b2;
 }
 
+inline B B__equiv(B b1, B b2) {
+  return b1 == b2;
+}
+
+inline B B__inequiv(B b1, B b2) {
+  return b1 != b2;
+}
+
 inline B B__complement(B b) {
   return (B) !b;
 }
@@ -76,6 +84,14 @@ inline B C__ne(C c1, C c2) {
   return (B) (c1 != c2);
 }
 
+inline B C__equiv(C c1, C c2) {
+  return (B) (c1 == c2);
+}
+
+inline B C__inequiv(C c1, C c2) {
+  return (B) (c1 != c2);
+}
+
 inline B C__lt(C c1, C c2) {
   return (B) (c1 < c2);
 }
@@ -125,6 +141,14 @@ inline B Z__eq(Z n1, Z n2) {
 }
 
 inline B Z__ne(Z n1, Z n2) {
+  return (B) (n1 != n2);
+}
+
+inline B Z__equiv(Z n1, Z n2) {
+  return (B) (n1 == n2);
+}
+
+inline B Z__inequiv(Z n1, Z n2) {
   return (B) (n1 != n2);
 }
 
@@ -217,6 +241,20 @@ inline B F32__ne(F32 n1, F32 n2) {
   return !F32__eq(n1, n2);
 }
 
+inline B F32__equiv(F32 n1, F32 n2) {
+  union {
+    uint32_t iValue;
+    F32 fp;
+  } m1, m2;
+  m1.fp = n1;
+  m2.fp = n2;
+  return (B) (m1.iValue == m2.iValue);
+}
+
+inline B F32__inequiv(F32 n1, F32 n2) {
+  return !F32__eq(n1, n2);
+}
+
 inline B F32__fpeq(F32 n1, F32 n2) {
   return (B) (n1 == n2);
 }
@@ -278,6 +316,20 @@ inline B F64__ne(F64 n1, F64 n2) {
   return !F64__eq(n1, n2);
 }
 
+inline B F64__equiv(F64 n1, F64 n2) {
+  union {
+    uint64_t iValue;
+    F64 fp;
+  } m1, m2;
+  m1.fp = n1;
+  m2.fp = n2;
+  return (B) (m1.iValue == m2.iValue);
+}
+
+inline B F64__inequiv(F64 n1, F64 n2) {
+  return !F64__eq(n1, n2);
+}
+
 inline B F64__fpeq(F64 n1, F64 n2) {
   return (B) (n1 == n2);
 }
@@ -330,6 +382,14 @@ inline B R__eq(R n1, R n2) {
 }
 
 inline B R__ne(R n1, R n2) {
+  return (B) (n1 != n2);
+}
+
+inline B R__equiv(R n1, R n2) {
+  return (B) (n1 == n2);
+}
+
+inline B R__inequiv(R n1, R n2) {
   return (B) (n1 != n2);
 }
 
