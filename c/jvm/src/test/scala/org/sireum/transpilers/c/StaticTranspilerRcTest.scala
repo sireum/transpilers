@@ -102,7 +102,8 @@ class StaticTranspilerRcTest extends TestSuite {
       libOnly = F,
       stableTypeId = T,
       cmakeIncludes = ISZ(),
-      cmakePlusIncludes = ISZ()
+      cmakePlusIncludes = ISZ(),
+      anvilConfig = StaticTranspiler.AnvilConfig.NOP()
     )
 
     PostTipeAttrChecker.checkNameTypeMaps(th.nameMap, th.typeMap, reporter)

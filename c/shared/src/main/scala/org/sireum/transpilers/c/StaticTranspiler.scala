@@ -40,6 +40,43 @@ object StaticTranspiler {
 
   @datatype class ExtFile(val rel: ISZ[String], val uri: String, val content: String)
 
+  @enum object AnvilMode {
+    'NOP
+    'PL
+    'PS
+  }
+
+  @sig sealed trait AnvilConfig {
+    def mode(): AnvilMode.Type
+  }
+
+  object AnvilConfig {
+
+    @datatype class NOP() extends AnvilConfig {
+      override def mode(): AnvilMode.Type = {
+        return AnvilMode.NOP
+      }
+    }
+
+    // param: cfilesFilename: e.g. "anvil_cfiles.txt"
+    // param: includeDirsFilename: e.g. "anvil_include_dirs.txt"
+    // param: topFunctionFilename: e.g. "anvil_top_function.txt"
+    @datatype class PL(val cfilesFilename: String,
+                       val includeDirsFilename: String,
+                       val topFunctionFilename: String,
+                       val methodToAccelerate: Resolver.QName) extends AnvilConfig {
+      override def mode(): AnvilMode.Type = {
+        return AnvilMode.PL
+      }
+    }
+
+    @datatype class PS(val methodToAccelerate: Resolver.QName) extends AnvilConfig {
+      override def mode(): AnvilMode.Type = {
+        return AnvilMode.PS
+      }
+    }
+  }
+
   @datatype class Config(val projectName: String,
                          val fprintWidth: Z,
                          val defaultBitWidth: Z,
@@ -55,7 +92,8 @@ object StaticTranspiler {
                          val libOnly: B,
                          val stableTypeId: B,
                          val cmakeIncludes: ISZ[String],
-                         val cmakePlusIncludes: ISZ[String]) {
+                         val cmakePlusIncludes: ISZ[String],
+                         val anvilConfig: AnvilConfig) {
 
     @memoize def expPlugins: ISZ[ExpPlugin] = {
       var r = ISZ[ExpPlugin]()
@@ -559,22 +597,48 @@ import StaticTranspiler._
       )
       val typeQNames = compiledMap.keys
       r = r + ISZ[String](runtimeDir, "types.h") ~> typesH(typeQNames, typeNames)
-      r = r + ISZ[String](runtimeDir, "types.c") ~> typesC(typeNames)
+      r = r + ISZ[String](runtimeDir, "types.c") ~> typesC(config.anvilConfig.mode(), typeNames)
       r = r + ISZ[String](runtimeDir, "all.h") ~> allH(typeQNames, allHEntries)
       r = r + ISZ[String](runtimeDir, "all.c") ~> allC(typeNames, allCEntries)
       r = r ++ compiled(compiledMap)
-      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.libOnly, config.projectName, config.stackSize,
-        cFilenames, r.keys ++ rExt.keys, config.cmakeIncludes, config.cmakePlusIncludes)
+      r = r + ISZ[String]("CMakeLists.txt") ~> cmake(config.anvilConfig.mode(), config.libOnly, config.projectName,
+        config.stackSize, cFilenames, r.keys ++ rExt.keys, config.cmakeIncludes, config.cmakePlusIncludes)
       r = r + ISZ[String]("typemap.properties") ~> typeManglingMap(
         for (e <- mangledTypeNameMap.entries) yield (e._1, e._2.string)
       )
       r = r + ISZ[String]("sizes.txt") ~> sizesConfig(sizesMap)
+      config.anvilConfig match {
+        case pl: AnvilConfig.PL => {
+          r = r + ISZ[String](pl.cfilesFilename) ~> anvilCFilesConfig(cFilenames, r.keys)
+          r = r + ISZ[String](pl.includeDirsFilename) ~> anvilIncludeDirsConfig(r.keys) // notice no ext files
+        }
+        case _: AnvilConfig.PS => { } // skip
+        case _: AnvilConfig.NOP => { } // always skip
+      }
     }
 
     def work(): Unit = {
       genTypeNames()
       for (ms <- ts.methods.values; m <- ms.elements) {
-        transpileMethod(m)
+        config.anvilConfig match {
+          case pl: AnvilConfig.PL => {
+            if (shouldAnvilAccelerate(m)) {
+              // write information about the hardware accelerated function to (filename) pl.topFunctionFilename
+              // this includes the c function name and parameter information
+              r = r + ISZ[String](pl.topFunctionFilename) ~> anvilAcceleratedMethodConfig(m)
+            }
+            transpileMethod(m)
+          }
+          case _: AnvilConfig.PS => {
+            // do not transpile the hardware-accelerated target method
+            if (!shouldAnvilAccelerate(m)) {
+              transpileMethod(m)
+            }
+          }
+          case _: AnvilConfig.NOP => {
+            transpileMethod(m)
+          }
+        }
       }
       for (p <- ts.objectVars.entries) {
         transpileObjectVars(p._1, p._2)
@@ -3890,4 +3954,18 @@ import StaticTranspiler._
     }
     return r
   }
+
+  def shouldAnvilAccelerate(method: TypeSpecializer.Method): B = {
+
+    @pure def checkName(name: Resolver.QName): B = {
+      return name == method.info.name
+    }
+
+    config.anvilConfig match {
+      case pl: AnvilConfig.PL => return checkName(pl.methodToAccelerate)
+      case ps: AnvilConfig.PS => return checkName(ps.methodToAccelerate)
+      case _: AnvilConfig.NOP => return F
+    }
+  }
+
 }
