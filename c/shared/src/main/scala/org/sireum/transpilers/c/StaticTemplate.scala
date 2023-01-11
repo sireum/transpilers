@@ -371,6 +371,8 @@ object StaticTemplate {
           |    SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
           |    SET(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
           |    SET(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+          |  else()
+          |    add_compile_options(-Dinline=static)
           |  endif()
           |  add_compile_options("$$<$$<CONFIG:Release>:-Os>")
           |elseif ("$${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
