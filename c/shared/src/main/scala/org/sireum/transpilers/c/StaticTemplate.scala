@@ -603,6 +603,8 @@ object StaticTemplate {
           |    sfAbort("Argument list too long.");
           |  }
           |
+          |  t_args.size = ($iszSizeType) size;
+          |
           |  for (int i = 0; i < size; i++) {
           |    char *arg = argv[i + 1];
           |    size_t argSize = strlen(arg);
@@ -613,8 +615,6 @@ object StaticTemplate {
           |    ${iszStringType}_at(&t_args, i)->size = (Z) argSize;
           |    memcpy(${iszStringType}_at(&t_args, i)->value, arg, argSize + 1);
           |  }
-          |
-          |  t_args.size = ($iszSizeType) size;
           |
           |  return (int) ${AST.Util.mangleName(owner)}_$id(SF &t_args);
           |}"""
