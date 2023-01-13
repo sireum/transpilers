@@ -176,8 +176,8 @@ object StaticTemplate {
           |#define STATIC_ASSERT static_assert
           |#define GLOBAL_STATIC_ASSERT(a, b, c) static_assert(b, c)
           |#else
-          |#define STATIC_ASSERT(pred, explanation); {char assert[1/(pred)];(void)assert;}
-          |#define GLOBAL_STATIC_ASSERT(unique, pred, explanation); namespace ASSERTION {char unique[1/(pred)];}
+          |#define STATIC_ASSERT(pred, explanation); {char assert=1/(pred);(void)assert;}
+          |#define GLOBAL_STATIC_ASSERT(unique, pred, explanation); namespace ASSERTION {char unique=1/(pred);}
           |#endif
           |
           |size_t sizeOf(Type t);
