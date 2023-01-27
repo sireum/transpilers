@@ -1596,16 +1596,16 @@ object StaticTemplate {
     )
   }
 
-  @pure def subz(
-                  compiled: Compiled,
-                  uri: String,
-                  name: QName,
-                  bitWidth: Z,
-                  isBitVector: B,
-                  isUnsigned: B,
-                  minOpt: Option[Z],
-                  maxOpt: Option[Z],
-                  optionTypeOpt: Option[(ST, ST, ST)]
+  @pure def subz(defaultBitWidth: Z,
+                 compiled: Compiled,
+                 uri: String,
+                 name: QName,
+                 bitWidth: Z,
+                 isBitVector: B,
+                 isUnsigned: B,
+                 minOpt: Option[Z],
+                 maxOpt: Option[Z],
+                 optionTypeOpt: Option[(ST, ST, ST)]
                 ): Compiled = {
     val mangledName = AST.Util.mangleName(name)
     val cType = st"${if (isUnsigned) "u" else ""}int${bitWidth}_t"
@@ -1739,14 +1739,16 @@ object StaticTemplate {
             |}"""
       impl = impl :+ st"$mangledName ${mangledName}_range($mangledName n);"
     }
+
+    @strictpure def minMax(width: Z): (Z, Z) = width match {
+      case z"8" => if (isUnsigned) (0, 255) else (-128, 127)
+      case z"16" => if (isUnsigned) (0, 65535) else (-32768, 32767)
+      case z"32" => if (isUnsigned) (0, 4294967295L) else (-2147483648, 2147483647)
+      case z"64" => if (isUnsigned) (0, z"18,446,744,073,709,551,615") else (-9223372036854775808L, 9223372036854775807L)
+      case _ => halt("Infeasible")
+    }
+    val (bitMin, bitMax): (Z, Z) = minMax(bitWidth)
     if (isBitVector) {
-      val (bitMin, bitMax): (Z, Z) = bitWidth match {
-        case z"8" => if (isUnsigned) (0, 255) else (-128, 127)
-        case z"16" => if (isUnsigned) (0, 65535) else (-32768, 32767)
-        case z"32" => if (isUnsigned) (0, 4294967295L) else (-2147483648, 2147483647)
-        case z"64" => if (isUnsigned) (0, z"18,446,744,073,709,551,615") else (-9223372036854775808L, 9223372036854775807L)
-        case _ => halt("Infeasible")
-      }
       if (minOpt.getOrElse(bitMin) == bitMin && maxOpt.getOrElse(bitMax) == bitMax) {
         header = header :+ st"#define ${mangledName}_range(n) n"
       } else {
@@ -1825,6 +1827,21 @@ object StaticTemplate {
           |#define ${mangledName}_cprint(this, isOut) { if (isOut) printf(${mangledName}_F, this); else fprintf(stderr, ${mangledName}_F, this); }
           |#endif
           |$stringHeader"""
+
+    val (defaultMin, defaultMax) = minMax(defaultBitWidth)
+    val toZRangeCheck: Option[ST] = if (defaultMin >= bitMin && defaultMax <= bitMax) Some(
+      st"""#ifdef SIREUM_RANGE_CHECK
+          |intmax_t min = Z_Min;
+          |intmax_t max = Z_Max;
+          |intmax_t n = this;
+          |sfAssert(min <= n && n <= max, "$mangledName.toZ range check failed");
+          |#endif"""
+    ) else None()
+    val fromZRangeCheck: Option[ST] = if (defaultMin >= bitMin && defaultMax <= bitMax) None() else Some(
+      st"""#ifdef SIREUM_RANGE_CHECK
+          |sfAssert($min <= n && n <= $max, "$mangledName.fromZ range check failed");
+          |#endif"""
+    )
     impl = impl :+
       st"""$mangledName ${mangledName}__plus($mangledName n);
           |$mangledName ${mangledName}__minus($mangledName n);
@@ -1844,13 +1861,12 @@ object StaticTemplate {
           |$shiftImpl
           |$toZHeader {
           |  DeclNewStackFrame(caller, "$uri", "${(name, ".")}", "toZ", 0);
+          |  $toZRangeCheck
           |  return (Z) this;
           |}
           |$fromZHeader {
           |  DeclNewStackFrame(caller, "$uri", "${(name, ".")}", "fromZ", 0);
-          |  #ifdef SIREUM_RANGE_CHECK
-          |  sfAssert($min <= n && n <= $max, "$mangledName.fromZ range check failed");
-          |  #endif
+          |  $fromZRangeCheck
           |  return ($mangledName) n;
           |}
           |

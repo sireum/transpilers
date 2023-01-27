@@ -43,6 +43,7 @@ class StaticTranspilerTest extends TestSuite {
 
     * - testWorksheet("""import org.sireum.N8._
                         |import org.sireum.S8._
+                        |import org.sireum.S64._
                         |import org.sireum.U8._
                         |import org.sireum.U16._
                         |import org.sireum.U32._
@@ -51,6 +52,7 @@ class StaticTranspilerTest extends TestSuite {
                         |assert(n8"4".toZ == 4)
                         |assert(N8.fromZ(n8"4".toZ) == n8"4")
                         |assert(S8.fromZ(s8"-1".toZ) == s8"-1")
+                        |assert(S64.fromZ(s64"-1".toZ) == s64"-1")
                         |assert(U64.fromZ(u32"1".toZ) == u64"1")
                         |assert(U8.fromZ(u16"1".toZ) == u8"1")""".stripMargin)
 
@@ -438,6 +440,7 @@ class StaticTranspilerTest extends TestSuite {
         |val zMopt: MOption[Foo] = MSome(Foo(3))
         |val MSome(foo) = zMopt
         |assert(foo.x == 3)""".stripMargin)
+
   }
 
   def testWorksheet(input: Predef.String, arraySize: Z = 100, stringSize: Z = 256)(implicit line: sourcecode.Line): Unit = {
@@ -511,7 +514,7 @@ class StaticTranspilerTest extends TestSuite {
 
     println()
     println("Running CMake ...")
-    Os.proc(ISZ("cmake", "-DCMAKE_BUILD_TYPE=Release", /* "-DWITH_LOC=on", */ ".")).at(resultDir).console.runCheck()
+    Os.proc(ISZ("cmake", "-DCMAKE_BUILD_TYPE=Release", "-DWITH_LOC=on", "-DRANGE_CHECK=on", ".")).at(resultDir).echo.console.runCheck()
 
     val ldir = dir / s"L${line.value}"
 

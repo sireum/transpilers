@@ -897,6 +897,7 @@ import StaticTranspiler._
       val ast = info.ast
       val bw = ast.bitWidth
       val newValue = subz(
+        config.defaultBitWidth,
         value,
         filenameOfPosOpt(info.posOpt, ""),
         name,
