@@ -44,7 +44,11 @@ float fmodf(float x, float y);
 void exit(int status);
 void abort(void);
 
+#ifdef SIREUM_NO_PRINT
+#define sassert(cond) if (!(cond)) { exit(-1); }
+#else
 #define sassert(cond) if (!(cond)) { fprintf(stderr, "Assertion failure"); exit(-1); }
+#endif
 
 #ifdef __cplusplus
 }
