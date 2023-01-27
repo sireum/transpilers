@@ -8,8 +8,8 @@ typedef int16_t Z;
 
 #define Z_C(n) INT16_C(n)
 
-#define Z_Min Z_C(INT16_MIN)
-#define Z_Max Z_C(INT16_MAX)
+#define Z_Min INT16_MIN
+#define Z_Max INT16_MAX
 
 #define Z_F "%" PRId16 ""
 
