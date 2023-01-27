@@ -41,6 +41,19 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
+    * - testWorksheet("""import org.sireum.N8._
+                        |import org.sireum.S8._
+                        |import org.sireum.U8._
+                        |import org.sireum.U16._
+                        |import org.sireum.U32._
+                        |import org.sireum.U64._
+                        |assert(C.fromZ('A'.toZ) == 'A')
+                        |assert(n8"4".toZ == 4)
+                        |assert(N8.fromZ(n8"4".toZ) == n8"4")
+                        |assert(S8.fromZ(s8"-1".toZ) == s8"-1")
+                        |assert(U64.fromZ(u32"1".toZ) == u64"1")
+                        |assert(U8.fromZ(u16"1".toZ) == u8"1")""".stripMargin)
+
     * - testWorksheet("""println("Hello World!")""".stripMargin)
 
     * - testWorksheet("""val x = 5 * 5 + 1

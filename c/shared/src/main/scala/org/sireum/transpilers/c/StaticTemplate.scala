@@ -1724,6 +1724,8 @@ object StaticTemplate {
           |#define ${mangledName}_Max ${cTypeUp}_MAX
           |
           |#define ${mangledName}_F "%$hex" $pr """""
+    val toZHeader = st"Z ${mangledName}_toZ_(STACK_FRAME $mangledName this)"
+    val fromZHeader = st"$mangledName ${mangledName}_fromZ(STACK_FRAME Z n)"
     val stringHeader = st"void ${mangledName}_string_(STACK_FRAME String result, $mangledName this)"
     var header = ISZ[ST]()
     var impl = ISZ[ST]()
@@ -1814,6 +1816,8 @@ object StaticTemplate {
           |  return (B) (n1 >= n2);
           |}
           |$shiftHeader
+          |$toZHeader;
+          |$fromZHeader;
           |
           |#ifdef SIREUM_NO_PRINT
           |#define ${mangledName}_cprint(this, isOut)
@@ -1838,6 +1842,17 @@ object StaticTemplate {
           |B ${mangledName}__gt($mangledName n1, $mangledName n2);
           |B ${mangledName}__ge($mangledName n1, $mangledName n2);
           |$shiftImpl
+          |$toZHeader {
+          |  DeclNewStackFrame(caller, "$uri", "${(name, ".")}", "toZ", 0);
+          |  return (Z) this;
+          |}
+          |$fromZHeader {
+          |  DeclNewStackFrame(caller, "$uri", "${(name, ".")}", "fromZ", 0);
+          |  #ifdef SIREUM_RANGE_CHECK
+          |  sfAssert($min <= n && n <= $max, "$mangledName.fromZ range check failed");
+          |  #endif
+          |  return ($mangledName) n;
+          |}
           |
           |$stringHeader {
           |  DeclNewStackFrame(caller, "$uri", "${dotName(name)}", "string", 0);

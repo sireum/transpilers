@@ -458,6 +458,10 @@ import TypeSpecializer._
     m.mode match {
       case AST.MethodMode.Method =>
       case AST.MethodMode.Ext =>
+        th.typeMap.get(m.owner) match {
+          case Some(_: TypeInfo.SubZ) => return
+          case _ =>
+        }
       case _ => return
     }
 
@@ -534,7 +538,7 @@ import TypeSpecializer._
         case AST.MethodMode.Constructor => Some(expType.asInstanceOf[AST.Typed.Name])
         case AST.MethodMode.Copy => Some(expType.asInstanceOf[AST.Typed.Name])
         case AST.MethodMode.Extractor => None()
-        case AST.MethodMode.Ext => None()
+        case AST.MethodMode.Ext => if (m.isInObject) Some(expType.asInstanceOf[AST.Typed.Name]) else None()
         case AST.MethodMode.Just => None()
         case AST.MethodMode.Select =>
           val mFun = m.tpeOpt.get

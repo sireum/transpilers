@@ -1799,30 +1799,30 @@ import StaticTranspiler._
             case _ => halt(s"Unexpected: $res")
           }
         case res: AST.ResolvedInfo.Method =>
-          res.mode match {
-            case AST.MethodMode.Method =>
-              val t = expType(select)
-              if (res.isInObject) {
-                val r =
-                  transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ(), ISZ())
-                return (r, F)
-              } else {
-                val receiver = select.receiverOpt.get
-                val receiverType = expType(receiver).asInstanceOf[AST.Typed.Name]
-                val (rcv, _) = transpileExp(receiver)
-                val r = transInstanceMethodInvoke(
-                  t,
-                  methodNameRes(Some(receiverType), res),
-                  receiverType,
-                  rcv,
-                  res.id,
-                  ISZ(),
-                  ISZ(),
-                  ISZ()
-                )
-                return r
-              }
-            case _ => halt(s"Infeasible: $res")
+          if (res.mode == AST.MethodMode.Method || res.mode == AST.MethodMode.Ext) {
+            val t = expType(select)
+            if (res.isInObject) {
+              val r =
+                transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ(), ISZ())
+              return (r, F)
+            } else {
+              val receiver = select.receiverOpt.get
+              val receiverType = expType(receiver).asInstanceOf[AST.Typed.Name]
+              val (rcv, _) = transpileExp(receiver)
+              val r = transInstanceMethodInvoke(
+                t,
+                methodNameRes(Some(receiverType), res),
+                receiverType,
+                rcv,
+                res.id,
+                ISZ(),
+                ISZ(),
+                ISZ()
+              )
+              return r
+            }
+          } else {
+            halt(s"Infeasible: $res")
           }
         case res: AST.ResolvedInfo.Var =>
           if (res.isInObject) {
