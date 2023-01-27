@@ -731,7 +731,7 @@ object StaticTemplate {
     var equivStmts = ISZ[ST]()
     var eqStmts = ISZ[ST]()
     var stringStmts = ISZ[ST]()
-    var cprintStmts = ISZ[ST]()
+    var cprintStmts = ISZ[ST](st"void *sf = NULL;")
     if (defaultString) {
       cprintStmts = cprintStmts :+ st"""String_cprint(string("${className(className.size - 1)}("), isOut);"""
       stringStmts = stringStmts :+ st"""DeclNewStackFrame(caller, "$uri", "${dotName(className)}", "string", 0);
@@ -901,7 +901,7 @@ object StaticTemplate {
           st"""inline $atH {
               |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
-              |  assert (0 <= idx && idx < this->size);
+              |  sassert (0 <= idx && idx < this->size);
               |  #endif
               |  U8 mask = (U8) (1 << (idx % 8));
               |  return ($elementType) (this->value[idx / 8] & mask ? 1 : 0);
@@ -909,7 +909,7 @@ object StaticTemplate {
           st"""inline $upH {
               |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
-              |  assert (0 <= idx && idx < this->size);
+              |  sassert (0 <= idx && idx < this->size);
               |  #endif
               |  U8 mask = ((U8) (1 << idx % 8));
               |  if (e) {
@@ -923,14 +923,14 @@ object StaticTemplate {
           st"""inline $atH {
               |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
-              |  assert (0 <= idx && idx < this->size);
+              |  sassert (0 <= idx && idx < this->size);
               |  #endif
               |  return this->value[($sizeType) idx];
               |}""",
           st"""inline $upH {
               |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
-              |  assert (0 <= idx && idx < this->size);
+              |  sassert (0 <= idx && idx < this->size);
               |  #endif
               |  this->value[($sizeType) idx] = e;
               |}""")
@@ -939,14 +939,14 @@ object StaticTemplate {
           st"""inline $atH {
               |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
-              |  assert (0 <= idx && idx < this->size);
+              |  sassert (0 <= idx && idx < this->size);
               |  #endif
               |  return ($elementTypePtr) &(this->value[($sizeType) idx]);
               |}""",
           st"""inline $upH {
               |  intmax_t idx = i$offset;
               |  #ifdef SIREUM_BOUND_CHECK
-              |  assert (0 <= idx && idx < this->size);
+              |  sassert (0 <= idx && idx < this->size);
               |  #endif
               |  Type_assign(&this->value[($sizeType) idx], e, sizeof($elementType));
               |}""")
@@ -1733,7 +1733,7 @@ object StaticTemplate {
       header = header :+
         st"""inline $mangledName ${mangledName}_range($mangledName n) {
             |  #ifdef SIREUM_RANGE_CHECK
-            |  assert($min <= n && n <= $max);
+            |  sassert($min <= n && n <= $max);
             |  #endif
             |  return n;
             |}"""

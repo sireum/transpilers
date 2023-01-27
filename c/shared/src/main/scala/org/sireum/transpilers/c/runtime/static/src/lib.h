@@ -18,9 +18,6 @@ extern "C" {
 #include <errno.h>
 //extern int errno;
 
-#include <assert.h>
-//void assert(int expression);
-
 #include <stdio.h>
 /*
 int printf(const char *, ...);
@@ -46,6 +43,8 @@ float fmodf(float x, float y);
 
 void exit(int status);
 void abort(void);
+
+#define sassert(cond) if (!(cond)) { fprintf(stderr, "Assertion failure"); exit(-1); }
 
 #ifdef __cplusplus
 }
