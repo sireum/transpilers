@@ -6,6 +6,16 @@ void sfAbortImpl(STACK_FRAME_SF char *msg) {
   exit(1);
 }
 
+void sassert(int cond) {
+  if (!cond) {
+    #ifndef SIREUM_NO_PRINT
+    fprintf(stderr, "Assertion failure");
+    #endif
+    exit(-1);
+  }
+}
+
+
 void sfDumpImpl(STACK_FRAME_SF bool isOut) {
 #ifdef SIREUM_LOC
   FILE *stream = isOut? stdout : stderr;

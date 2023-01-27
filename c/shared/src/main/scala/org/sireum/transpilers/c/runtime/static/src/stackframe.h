@@ -49,6 +49,8 @@ void sfAbortImpl(STACK_FRAME_SF char *msg);
 
 void sfDumpImpl(STACK_FRAME_SF B isOut);
 
+void sassert(int cond);
+
 #ifdef __cplusplus
 }
 #endif
