@@ -95,6 +95,8 @@ void String__append(STACK_FRAME_SF String dest, String src);
 #endif
 
 void B_string_(STACK_FRAME String result, B this);
+Z C_toZ_(STACK_FRAME C this);
+C C_fromZ(STACK_FRAME Z n);
 void C_string_(STACK_FRAME String result, C this);
 void Z_string_(STACK_FRAME String result, Z this);
 void F32_string_(STACK_FRAME String result, F32 this);

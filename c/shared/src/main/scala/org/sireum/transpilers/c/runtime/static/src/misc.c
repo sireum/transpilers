@@ -31,6 +31,19 @@ void B_string_(STACK_FRAME String result, B this) {
   result->size = newSize;
 }
 
+Z C_toZ_(STACK_FRAME C this) {
+  DeclNewStackFrame(caller, "C.scala", "org.sireum.C", "toZ", 0);
+  return (Z) this;
+}
+
+C C_fromZ(STACK_FRAME Z n) {
+  DeclNewStackFrame(caller, "C.scala", "org.sireum.C", "fromZ", 0);
+  #ifdef SIREUM_RANGE_CHECK
+  sfAssert(0 <= n && n <= 0x110000, "C.fromZ range check failed");
+  #endif
+  return (C) n;
+}
+
 void C_string_(STACK_FRAME String result, C this) {
   DeclNewStackFrame(caller, "C.scala", "org.sireum.C", "string", 0);
   Z size = result->size;
