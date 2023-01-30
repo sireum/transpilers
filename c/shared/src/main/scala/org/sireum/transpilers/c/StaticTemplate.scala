@@ -1720,8 +1720,8 @@ object StaticTemplate {
           |
           |#define ${mangledName}_C(n) ${cTypeUp}_C(n)
           |
-          |#define ${mangledName}_Min ${if (isUnsigned) st"${cTypeUp}_C(0)" else st"${cTypeUp}_MIN"}
-          |#define ${mangledName}_Max ${cTypeUp}_MAX
+          |#define ${mangledName}_Min $min
+          |#define ${mangledName}_Max $max
           |
           |#define ${mangledName}_F "%$hex" $pr """""
     val toZHeader = st"Z ${mangledName}_toZ_(STACK_FRAME $mangledName this)"
