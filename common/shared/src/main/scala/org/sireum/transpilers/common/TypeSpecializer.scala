@@ -521,6 +521,17 @@ import TypeSpecializer._
     expType: AST.Typed
   ): Unit = {
     val rOpt: Option[AST.Typed.Name] = if (m.isInObject || m.owner.isEmpty) {
+      if (m.mode == AST.MethodMode.Ext) {
+        th.typeMap.get(m.owner) match {
+          case Some(_: TypeInfo.Enum) => return
+          case Some(_: TypeInfo.SubZ) => return
+          case _ =>
+        }
+        th.nameMap.get(m.owner) match {
+          case Some(_: Info.Enum) => return
+          case _ =>
+        }
+      }
       None()
     } else if (th.typeMap.get(m.owner).nonEmpty) {
       m.mode match {
@@ -538,7 +549,17 @@ import TypeSpecializer._
         case AST.MethodMode.Constructor => Some(expType.asInstanceOf[AST.Typed.Name])
         case AST.MethodMode.Copy => Some(expType.asInstanceOf[AST.Typed.Name])
         case AST.MethodMode.Extractor => None()
-        case AST.MethodMode.Ext => if (m.isInObject) Some(expType.asInstanceOf[AST.Typed.Name]) else None()
+        case AST.MethodMode.Ext =>
+          th.typeMap.get(m.owner) match {
+            case Some(_: TypeInfo.Enum) => return
+            case Some(_: TypeInfo.SubZ) => return
+            case _ =>
+          }
+          th.nameMap.get(m.owner) match {
+            case Some(_: Info.Enum) => return
+            case _ =>
+          }
+          if (m.isInObject) Some(expType.asInstanceOf[AST.Typed.Name]) else None()
         case AST.MethodMode.Just => None()
         case AST.MethodMode.Select =>
           val mFun = m.tpeOpt.get
@@ -720,24 +741,29 @@ import TypeSpecializer._
         }
       case _: AST.ResolvedInfo.LocalVar => // skip
       case res: AST.ResolvedInfo.Method =>
-        if (res.mode == AST.MethodMode.Constructor && th.typeMap
-            .get(res.owner :+ res.id)
-            .get
-            .isInstanceOf[TypeInfo.SubZ]) {
-          addSomeNone(res.tpeOpt.get.ret.asInstanceOf[AST.Typed.Name].args(0))
-        }
-      case res: AST.ResolvedInfo.BuiltIn =>
         def addEnumOpt(): Unit = {
           o.typedOpt.get match {
             case AST.Typed.Name(AST.Typed.optionName, args) => addSomeNone(args(0))
             case _ =>
           }
         }
-        res.kind match {
-          case AST.ResolvedInfo.BuiltIn.Kind.EnumByName => addEnumOpt()
-          case AST.ResolvedInfo.BuiltIn.Kind.EnumByOrdinal => addEnumOpt()
-          case _ => // skip
+        if (res.mode == AST.MethodMode.Constructor && th.typeMap
+            .get(res.owner :+ res.id)
+            .get
+            .isInstanceOf[TypeInfo.SubZ]) {
+          addSomeNone(res.tpeOpt.get.ret.asInstanceOf[AST.Typed.Name].args(0))
+        } else if (res.mode == AST.MethodMode.Ext) {
+          th.nameMap.get(res.owner) match {
+            case Some(_: Info.Enum) =>
+              res.id.native match {
+                case "byName" => addEnumOpt()
+                case "byOrdinal" => addEnumOpt()
+                case _ => // skip
+              }
+            case _ => // skip
+          }
         }
+      case _: AST.ResolvedInfo.BuiltIn => // skip
       case _: AST.ResolvedInfo.Tuple => // skip
       case _: AST.ResolvedInfo.Enum => // skip
       case _: AST.ResolvedInfo.EnumElement => // skip
@@ -886,10 +912,11 @@ import TypeSpecializer._
     eOpt match {
       case Some(e) =>
         e.typedOpt.get match {
-          case _: AST.Typed.Package => return None()
-          case _: AST.Typed.Object => return None()
           case t: AST.Typed.Name => return Some(t)
           case t: AST.Typed.Method if t.tpe.isByName => Some(t.tpe.ret.asInstanceOf[AST.Typed.Name])
+          case _: AST.Typed.Package => return None()
+          case _: AST.Typed.Object => return None()
+          case _: AST.Typed.Enum => return None()
           case _ => halt(s"Infeasible: $e")
         }
       case _ => return None()

@@ -1753,18 +1753,6 @@ import StaticTranspiler._
           return (elementName(res.owner, res.name), F)
         case res: AST.ResolvedInfo.BuiltIn =>
           res.kind match {
-            case AST.ResolvedInfo.BuiltIn.Kind.EnumElements =>
-              val owner = expType(select.receiverOpt.get).asInstanceOf[AST.Typed.Enum].name
-              val iszType = transpileType(expType(select))
-              val temp = freshTempName()
-              stmts = stmts :+ st"DeclNew$iszType($temp);"
-              stmts = stmts :+ st"${AST.Util.mangleName(owner :+ "Type")}_elements(&$temp);"
-              return (st"(&$temp)", F)
-            case AST.ResolvedInfo.BuiltIn.Kind.EnumNumOfElements =>
-              val owner = expType(select.receiverOpt.get).asInstanceOf[AST.Typed.Enum].name
-              val temp = freshTempName()
-              stmts = stmts :+ st"Z $temp = ${AST.Util.mangleName(owner :+ "Type")}_numOfElements();"
-              return (temp, F)
             case AST.ResolvedInfo.BuiltIn.Kind.AsInstanceOf =>
               val (e, shouldCopy) = transpileExp(select.receiverOpt.get)
               val t = select.targs(0).typedOpt.get
@@ -1783,14 +1771,6 @@ import StaticTranspiler._
               stmts = stmts :+ st"DeclNewString($temp);"
               stmts = stmts :+ st"${transpileType(t)}_string_(SF $temp, $e);"
               return (st"((String) &$temp)", F)
-            case AST.ResolvedInfo.BuiltIn.Kind.EnumName =>
-              val receiver = select.receiverOpt.get
-              val (e, _) = transpileExp(receiver)
-              val t = expType(receiver)
-              val temp = freshTempName()
-              stmts = stmts :+ st"DeclNewString($temp);"
-              stmts = stmts :+ st"${transpileType(t)}_name_((String) &$temp, $e);"
-              return (st"((String) &$temp)", F)
             case AST.ResolvedInfo.BuiltIn.Kind.Min =>
               val t = select.receiverOpt.get.typedOpt.get.asInstanceOf[AST.Typed.Object]
               return (st"${AST.Util.mangleName(t.name)}_Min", F)
@@ -1801,30 +1781,55 @@ import StaticTranspiler._
           }
         case res: AST.ResolvedInfo.Method =>
           if (res.mode == AST.MethodMode.Method || res.mode == AST.MethodMode.Ext) {
-            val t = expType(select)
-            if (res.isInObject) {
-              val r =
-                transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ(), ISZ())
-              return (r, F)
+            if (ts.typeHierarchy.nameMap.get(res.owner).get.isInstanceOf[Info.Enum]) {
+              res.id.native match {
+                case "elements" =>
+                  val owner = expType(select.receiverOpt.get).asInstanceOf[AST.Typed.Enum].name
+                  val iszType = transpileType(expType(select))
+                  val temp = freshTempName()
+                  stmts = stmts :+ st"DeclNew$iszType($temp);"
+                  stmts = stmts :+ st"${AST.Util.mangleName(owner :+ "Type")}_elements(&$temp);"
+                  return (st"(&$temp)", F)
+                case "numOfElements" =>
+                  val owner = expType(select.receiverOpt.get).asInstanceOf[AST.Typed.Enum].name
+                  val temp = freshTempName()
+                  stmts = stmts :+ st"Z $temp = ${AST.Util.mangleName(owner :+ "Type")}_numOfElements();"
+                  return (temp, F)
+                case "name" =>
+                  val receiver = select.receiverOpt.get
+                  val (e, _) = transpileExp(receiver)
+                  val t = expType(receiver)
+                  val temp = freshTempName()
+                  stmts = stmts :+ st"DeclNewString($temp);"
+                  stmts = stmts :+ st"${transpileType(t)}_name_((String) &$temp, $e);"
+                  return (st"((String) &$temp)", F)
+                case _ =>
+              }
             } else {
-              val receiver = select.receiverOpt.get
-              val receiverType = expType(receiver).asInstanceOf[AST.Typed.Name]
-              val (rcv, _) = transpileExp(receiver)
-              val r = transInstanceMethodInvoke(
-                t,
-                methodNameRes(Some(receiverType), res),
-                receiverType,
-                rcv,
-                res.id,
-                ISZ(),
-                ISZ(),
-                ISZ()
-              )
-              return r
+              val t = expType(select)
+              if (res.isInObject) {
+                val r =
+                  transObjectMethodInvoke(res.tpeOpt.get.args, t, methodNameRes(None(), res), ISZ(), ISZ())
+                return (r, F)
+              } else {
+                val receiver = select.receiverOpt.get
+                val receiverType = expType(receiver).asInstanceOf[AST.Typed.Name]
+                val (rcv, _) = transpileExp(receiver)
+                val r = transInstanceMethodInvoke(
+                  t,
+                  methodNameRes(Some(receiverType), res),
+                  receiverType,
+                  rcv,
+                  res.id,
+                  ISZ(),
+                  ISZ(),
+                  ISZ()
+                )
+                return r
+              }
             }
-          } else {
-            halt(s"Infeasible: $res")
           }
+          halt(s"Infeasible: $res")
         case res: AST.ResolvedInfo.Var =>
           if (res.isInObject) {
             val varInfo = ts.typeHierarchy.nameMap.get(res.owner :+ res.id).get.asInstanceOf[Info.Var]
@@ -2098,7 +2103,28 @@ import StaticTranspiler._
               }
             case AST.MethodMode.Spec => halt(s"TODO: $res") // TODO
             case AST.MethodMode.Just => halt(s"TODO: $res") // TODO
-            case AST.MethodMode.Ext => val r = transExt(res, expType(invoke), invoke.args); return (r, F)
+            case AST.MethodMode.Ext =>
+              def enumInvoke(): ST = {
+                val r = transObjectMethodInvoke(
+                  invoke.args.map(e => e.typedOpt.get),
+                  expType(invoke),
+                  methodNameTyped(None(), invoke.ident.attr.typedOpt.get.asInstanceOf[AST.Typed.Method]),
+                  invoke.args,
+                  ISZ()
+                )
+                return r
+              }
+              ts.typeHierarchy.typeMap.get(res.owner) match {
+                case Some(_: TypeInfo.Enum) =>
+                  res.id.native match {
+                    case "byName" => val r = enumInvoke(); return (r, F)
+                    case "byOrdinal" => val r = enumInvoke(); return (r, F)
+                    case _ => halt(s"Infeasible: $res")
+                  }
+                case _ =>
+              }
+              val r = transExt(res, expType(invoke), invoke.args);
+              return (r, F)
             case AST.MethodMode.Constructor =>
               def basicConstructor(name: QName): ST = {
                 val (e, _) = transpileExp(invoke.args(0))
@@ -2183,22 +2209,6 @@ import StaticTranspiler._
             case AST.MethodMode.ObjectConstructor => halt(s"Infeasible: $res")
             case AST.MethodMode.Select => val r = transSSelect(); return r
             case AST.MethodMode.Store => val r = transSStore(); return (r, F)
-          }
-        case res: AST.ResolvedInfo.BuiltIn =>
-          def enumInvoke(): ST = {
-            val r = transObjectMethodInvoke(
-              invoke.args.map(e => e.typedOpt.get),
-              expType(invoke),
-              methodNameTyped(None(), invoke.ident.attr.typedOpt.get.asInstanceOf[AST.Typed.Method]),
-              invoke.args,
-              ISZ()
-            )
-            return r
-          }
-          res.kind match {
-            case AST.ResolvedInfo.BuiltIn.Kind.EnumByName => val r = enumInvoke(); return (r, F)
-            case AST.ResolvedInfo.BuiltIn.Kind.EnumByOrdinal => val r = enumInvoke(); return (r, F)
-            case _ => halt(s"Infeasible: $res")
           }
         case _ => halt("Infeasible")
       }
