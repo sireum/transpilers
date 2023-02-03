@@ -496,6 +496,9 @@ import TypeSpecializer._
           case _ => halt("Infeasible")
         }
       case _ =>
+        if (th.nameMap.get(method.owner :+ method.id).isEmpty) {
+          println("Here")
+        }
         th.nameMap.get(method.owner :+ method.id).get match {
           case info: Info.Method =>
             if (info.ast.sig.typeParams.isEmpty) {
@@ -520,17 +523,28 @@ import TypeSpecializer._
     receiverOpt: Option[AST.Typed.Name],
     expType: AST.Typed
   ): Unit = {
-    val rOpt: Option[AST.Typed.Name] = if (m.isInObject || m.owner.isEmpty) {
-      if (m.mode == AST.MethodMode.Ext) {
-        th.typeMap.get(m.owner) match {
-          case Some(_: TypeInfo.Enum) => return
-          case Some(_: TypeInfo.SubZ) => return
-          case _ =>
-        }
+    def handleEnumOrSubZ(): B = {
+      if (m.isInObject) {
         th.nameMap.get(m.owner) match {
-          case Some(_: Info.Enum) => return
+          case Some(_: Info.Enum) => return T
+          case _ =>
+            th.typeMap.get(m.owner) match {
+              case Some(_: TypeInfo.SubZ) => return T
+              case _ =>
+            }
+        }
+      } else {
+        th.typeMap.get(m.owner) match {
+          case Some(_: TypeInfo.Enum) => return T
+          case Some(_: TypeInfo.SubZ) => return T
           case _ =>
         }
+      }
+      return F
+    }
+    val rOpt: Option[AST.Typed.Name] = if (m.isInObject || m.owner.isEmpty) {
+      if (handleEnumOrSubZ()) {
+        return
       }
       None()
     } else if (th.typeMap.get(m.owner).nonEmpty) {
@@ -550,14 +564,8 @@ import TypeSpecializer._
         case AST.MethodMode.Copy => Some(expType.asInstanceOf[AST.Typed.Name])
         case AST.MethodMode.Extractor => None()
         case AST.MethodMode.Ext =>
-          th.typeMap.get(m.owner) match {
-            case Some(_: TypeInfo.Enum) => return
-            case Some(_: TypeInfo.SubZ) => return
-            case _ =>
-          }
-          th.nameMap.get(m.owner) match {
-            case Some(_: Info.Enum) => return
-            case _ =>
+          if (handleEnumOrSubZ()) {
+            return
           }
           if (m.isInObject) Some(expType.asInstanceOf[AST.Typed.Name]) else None()
         case AST.MethodMode.Just => None()
