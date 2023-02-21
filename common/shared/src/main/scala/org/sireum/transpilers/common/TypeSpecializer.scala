@@ -921,7 +921,7 @@ import TypeSpecializer._
       case Some(e) =>
         e.typedOpt.get match {
           case t: AST.Typed.Name => return Some(t)
-          case t: AST.Typed.Method if t.tpe.isByName => Some(t.tpe.ret.asInstanceOf[AST.Typed.Name])
+          case t: AST.Typed.Method if t.tpe.isByName => return Some(t.tpe.ret.asInstanceOf[AST.Typed.Name])
           case _: AST.Typed.Package => return None()
           case _: AST.Typed.Object => return None()
           case _: AST.Typed.Enum => return None()

@@ -3677,7 +3677,7 @@ import StaticTranspiler._
     t match {
       case AST.Typed.b => return TypeKind.Scalar1
       case AST.Typed.c => return TypeKind.Scalar8
-      case AST.Typed.z => bitWidthKind(config.defaultBitWidth)
+      case AST.Typed.z => return bitWidthKind(config.defaultBitWidth)
       case AST.Typed.f32 => return TypeKind.Scalar32
       case AST.Typed.f64 => return TypeKind.Scalar64
       case AST.Typed.r => return TypeKind.R
