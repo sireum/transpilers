@@ -2426,6 +2426,7 @@ import StaticTranspiler._
       case _: AST.Exp.InfoFlowInvariant => halt("Infeasible")
       case _: AST.Exp.AssumeAgree => halt("Infeasible")
       case _: AST.Exp.AssertAgree => halt("Infeasible")
+      case _: AST.Exp.StrictPureBlock => halt("Infeasible")
     }
   }
 
