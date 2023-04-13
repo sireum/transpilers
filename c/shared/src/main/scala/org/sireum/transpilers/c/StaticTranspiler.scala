@@ -373,7 +373,9 @@ object StaticTranspiler {
     "F64"
   ) ++ (for (i <- z"1" to z"64") yield s"U$i")
 
-  @strictpure def transpiledType(typeNameMap: HashMap[AST.Typed, ST], tpe: AST.Typed): ST = st"${typeNameMap.get(tpe).get}"
+  @pure def transpiledType(typeNameMap: HashMap[AST.Typed, ST], tpe: AST.Typed): ST = {
+    return st"${typeNameMap.get(tpe).get}"
+  }
 }
 
 import StaticTranspiler._
