@@ -2429,6 +2429,7 @@ import StaticTranspiler._
       case _: AST.Exp.AssumeAgree => halt("Infeasible")
       case _: AST.Exp.AssertAgree => halt("Infeasible")
       case _: AST.Exp.StrictPureBlock => halt("Infeasible")
+      case _: AST.Exp.Labeled => halt("Infeasible")
     }
   }
 
