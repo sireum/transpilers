@@ -3526,7 +3526,13 @@ import StaticTranspiler._
       case stmt: AST.Stmt.Var => transVar(stmt)
       case stmt: AST.Stmt.Assign => transAssign(stmt)
       case stmt: AST.Stmt.Expr =>
-        stmt.exp match {
+        val stmtr: AST.Stmt.Expr = stmt.exp match {
+          case exp: AST.Exp.InvokeNamed =>
+            val args: ISZ[AST.Exp] = for (a <- ops.ISZOps(exp.args).sortWith((a: AST.NamedArg, b: AST.NamedArg) => a.index < b.index)) yield a.arg
+            stmt(exp = AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args, exp.attr))
+          case _ => stmt
+        }
+        stmtr.exp match {
           case exp: AST.Exp.Invoke =>
             if (isBuiltInStmt(exp)) {
               exp.attr.resOpt.get.asInstanceOf[AST.ResolvedInfo.BuiltIn].kind match {
