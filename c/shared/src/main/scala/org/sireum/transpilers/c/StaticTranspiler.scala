@@ -1409,7 +1409,6 @@ import StaticTranspiler._
       case lit: AST.Exp.LitF64 => val r = transLitF64(lit); return r
       case lit: AST.Exp.LitR => val r = transLitR(lit); return r
       case lit: AST.Exp.LitString => val r = transLitString(lit); return r
-      case _: AST.Exp.LitStepId => halt("Infeasible")
     }
   }
 
@@ -2665,7 +2664,6 @@ import StaticTranspiler._
           case _: AST.Exp.LitR => stmts = stmts :+ st"if (!R__eq($exp, $e)) return F;"
           case _: AST.Exp.LitString =>
             stmts = stmts :+ st"if (!String__eq((String) $exp, (String) $e)) return F;"
-          case _: AST.Exp.LitStepId => halt("Infeasible")
         }
       case pat: AST.Pattern.LitInterpolate =>
         pat.prefix.native match {
