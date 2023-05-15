@@ -3436,6 +3436,7 @@ import StaticTranspiler._
             case AST.ResolvedInfo.BuiltIn.Kind.Print => return T
             case AST.ResolvedInfo.BuiltIn.Kind.Println => return T
             case AST.ResolvedInfo.BuiltIn.Kind.Halt => return T
+            case AST.ResolvedInfo.BuiltIn.Kind.SetOptions => return T
             case _ => return F
           }
         case _ => return F
@@ -3539,6 +3540,7 @@ import StaticTranspiler._
                 case AST.ResolvedInfo.BuiltIn.Kind.Assume => transAssume(exp)
                 case AST.ResolvedInfo.BuiltIn.Kind.AssumeMsg => transAssume(exp)
                 case AST.ResolvedInfo.BuiltIn.Kind.Halt => transpileHalt(exp)
+                case AST.ResolvedInfo.BuiltIn.Kind.SetOptions => //skip
                 case kind =>
                   stmts = stmts :+ empty
                   stmts = stmts :+ st"#ifndef SIREUM_NO_PRINT"
