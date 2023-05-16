@@ -140,6 +140,7 @@ import TypeSpecializer._
   var descendantsCache: HashSMap[Poset.Index, HashSSet[Poset.Index]] = HashSMap.empty
   var currReceiverOpt: Option[AST.Typed.Name] = None()
   var currSMethodOpt: Option[SMethod] = None()
+  var seenTyped: HashSet[AST.Typed] = HashSet.empty
 
   def specialize(): TypeSpecializer.Result = {
 
@@ -626,6 +627,10 @@ import TypeSpecializer._
   }
 
   def addType(o: AST.Typed): Unit = {
+    if (seenTyped.contains(o)) {
+      return
+    }
+    seenTyped = seenTyped + o
     if (o.hasTypeVars) {
       return
     }
