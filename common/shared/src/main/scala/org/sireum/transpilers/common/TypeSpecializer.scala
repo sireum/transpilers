@@ -497,9 +497,6 @@ import TypeSpecializer._
           case _ => halt("Infeasible")
         }
       case _ =>
-        if (th.nameMap.get(method.owner :+ method.id).isEmpty) {
-          println("Here")
-        }
         th.nameMap.get(method.owner :+ method.id).get match {
           case info: Info.Method =>
             if (info.ast.sig.typeParams.isEmpty) {
