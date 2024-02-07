@@ -205,6 +205,7 @@ import TypeSpecializer._
           case _: AST.Stmt.Return => F
           case _: AST.Stmt.SpecVar => F
           case _: AST.Stmt.SubZ => F
+          case _: AST.Stmt.RsVal => F
         }
         if (shouldTransform) {
           transformStmt(stmt)

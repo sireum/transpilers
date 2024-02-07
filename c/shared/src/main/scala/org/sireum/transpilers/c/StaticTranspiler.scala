@@ -2431,6 +2431,7 @@ import StaticTranspiler._
       case _: AST.Exp.AssertAgree => halt("Infeasible")
       case _: AST.Exp.StrictPureBlock => halt("Infeasible")
       case _: AST.Exp.Labeled => halt("Infeasible")
+      case _: AST.Exp.RS => halt("Infeasible")
     }
   }
 
@@ -3600,6 +3601,7 @@ import StaticTranspiler._
       case _: AST.Stmt.TypeAlias => // skip
       case _: AST.Stmt.Spec => // skip
       case _: AST.Stmt.SubZ => // skip
+      case _: AST.Stmt.RsVal => // skip
     }
   }
 
