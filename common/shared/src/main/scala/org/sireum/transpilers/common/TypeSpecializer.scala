@@ -100,11 +100,11 @@ object TypeSpecializer {
   val tsKind: String = "Type Specializer"
   val emptyCVars: Map[String, (B, B, AST.Typed)] = Map.empty
   val emptyVars: Map[String, (B, AST.Typed, AST.AssignExp)] = Map.empty
-  val objectConstructorType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(), AST.Typed.unit)
-  val atExitType: AST.Typed.Fun = AST.Typed.Fun(F, F, ISZ(), AST.Typed.unit)
+  val objectConstructorType: AST.Typed.Fun = AST.Typed.Fun(AST.Purity.Impure,F, ISZ(), AST.Typed.unit)
+  val atExitType: AST.Typed.Fun = AST.Typed.Fun(AST.Purity.Impure,F, ISZ(), AST.Typed.unit)
 
   val mainTpe: AST.Typed.Fun =
-    AST.Typed.Fun(F, F, ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))), AST.Typed.z)
+    AST.Typed.Fun(AST.Purity.Impure,F, ISZ(AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))), AST.Typed.z)
 
   val preResultExp: AST.MTransformer.PreResult[AST.Exp] = AST.MTransformer.PreResultExpInvoke(continu = F)
 
@@ -871,7 +871,7 @@ import TypeSpecializer._
                 th.typeMap.get(t.ids).get match {
                   case ti: TypeInfo.Adt if ti.methods.contains("string") =>
                     val m = AST.ResolvedInfo.Method(F, AST.MethodMode.Method, ISZ(), t.ids, "string", ISZ(),
-                      Some(AST.Typed.Fun(F, T, ISZ(), AST.Typed.string)), ISZ(), ISZ())
+                      Some(AST.Typed.Fun(AST.Purity.Impure,T, ISZ(), AST.Typed.string)), ISZ(), ISZ())
                     addResolvedMethod(o.posOpt, m, Some(t), o.typedOpt.get)
                   case _ =>
                 }
