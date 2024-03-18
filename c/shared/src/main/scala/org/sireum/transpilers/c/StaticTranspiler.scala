@@ -1982,6 +1982,7 @@ import StaticTranspiler._
 
       def transReceiver(): (ST, B) = {
         invoke.receiverOpt match {
+          case Some(_: AST.Exp.This) => val r = transpileExp(invoke.ident); return r
           case Some(receiver) =>
             invoke.ident.attr.resOpt.get match {
               case res: AST.ResolvedInfo.Var =>

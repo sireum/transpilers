@@ -921,6 +921,7 @@ import TypeSpecializer._
 
   @pure def receiverTypeOpt(eOpt: Option[AST.Exp]): Option[AST.Typed.Name] = {
     eOpt match {
+      case Some(_: AST.Exp.This) => return Some(currReceiverOpt.get)
       case Some(e) =>
         e.typedOpt.get match {
           case t: AST.Typed.Name => return Some(t)
