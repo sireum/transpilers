@@ -3607,6 +3607,7 @@ import StaticTranspiler._
       case _: AST.Stmt.Spec => // skip
       case _: AST.Stmt.SubZ => // skip
       case _: AST.Stmt.RsVal => // skip
+      case _: AST.Stmt.Induct => // skip
     }
   }
 
