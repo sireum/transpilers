@@ -1743,6 +1743,10 @@ import StaticTranspiler._
     }
 
     def transSelect(select: AST.Exp.Select): (ST, B) = {
+      select.receiverOpt match {
+        case Some(_: AST.Exp.This) => return transIdent(AST.Exp.Ident(select.id, select.attr))
+        case _ =>
+      }
       select.attr.resOpt.get match {
         case res: AST.ResolvedInfo.Tuple =>
           val receiver = select.receiverOpt.get
