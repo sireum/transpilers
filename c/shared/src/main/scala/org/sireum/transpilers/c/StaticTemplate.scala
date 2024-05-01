@@ -330,7 +330,15 @@ object StaticTemplate {
     val mains: ISZ[ST] = if (libOnly) ISZ[ST]() else for (f <- mainFilenames) yield target(f)
 
     val r =
-      st"""cmake_minimum_required(VERSION 3.5.1)
+      st"""cmake_minimum_required(VERSION 3.27)
+          |
+          |if(APPLE)
+          |  if($$ENV{CC} MATCHES "^.*ccomp$$")
+          |    execute_process(COMMAND uname -m
+          |      OUTPUT_VARIABLE CMAKE_C_COMPILER_TARGET
+          |      OUTPUT_STRIP_TRAILING_WHITESPACE)
+          |  endif()
+          |endif(APPLE)
           |
           |project($project)
           |
