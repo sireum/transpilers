@@ -41,6 +41,8 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
+    * - testWorksheet("""println("Foo\nBar")""".stripMargin)
+
     * - testWorksheet("""import org.sireum.N8._
                         |import org.sireum.S8._
                         |import org.sireum.S64._
