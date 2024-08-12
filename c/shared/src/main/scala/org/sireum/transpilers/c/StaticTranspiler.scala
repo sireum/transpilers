@@ -33,6 +33,7 @@ import org.sireum.lang.symbol.Resolver.QName
 import org.sireum.transpilers.common.TypeSpecializer
 import StaticTemplate._
 import org.sireum.lang.tipe.TypeChecker
+import org.sireum.U32._
 
 object StaticTranspiler {
 
@@ -375,6 +376,36 @@ object StaticTranspiler {
 
   @pure def transpiledType(typeNameMap: HashMap[AST.Typed, ST], tpe: AST.Typed): ST = {
     return st"${typeNameMap.get(tpe).get}"
+  }
+
+  @pure def escape(s: String): String = {
+    @pure def c2s(c: C): String = {
+      conversions.C.toU32(c) match {
+        case u32"0x07" => return "\\a"
+        case u32"0x08" => return "\\b"
+        case u32"0x1B" => return "\u001B"
+        case u32"0x0C" => return "\\f"
+        case u32"0x0A" => return "\\n"
+        case u32"0x0D" => return "\\r"
+        case u32"0x09" => return "\\t"
+        case u32"0x0B" => return "\\v"
+        case u32"0x5C" => return "\\"
+        case u32"0x27" => return "\\'"
+        case u32"0x22" => return "\\\""
+        case u32"0x3F" => return "\\?"
+        case _ if '\u0020' <= c && c <= '\u007e' => return c.string
+        case _ if c > '\uFFFF' =>
+          var r: String = ""
+          for (cpc <- conversions.C.toCodePoints(c)) {
+            r = s"$r${ops.COps(cpc).escapeString}"
+          }
+          return r
+        case _ =>
+          val q = ops.COps(c).toUnicodeHex
+          return s"\\u${q._1}${q._2}${q._3}${q._4}"
+      }
+    }
+    return st"${(for (c <- conversions.String.toCis(s)) yield c2s(c), "")}".render
   }
 }
 
@@ -1362,11 +1393,11 @@ import StaticTranspiler._
   }
 
   @pure def transpileLitR(n: R): ST = {
-    return st"${n.string}L"
+    return st"8${n.string}L"
   }
 
   def transpileLitString(posOpt: Option[Position], s: String): ST = {
-    return st"""string("$s")"""
+    return st"""string("${escape(s)}")"""
   }
 
   def transpileLit(lit: AST.Lit): ST = {
