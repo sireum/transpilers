@@ -19,6 +19,7 @@ exit /B %errorlevel%
 import org.sireum._
 import org.sireum.project.ProjectUtil._
 import org.sireum.project.Project
+import org.sireum.project.PublishInfo.Developer
 
 val library = "library"
 
@@ -29,6 +30,7 @@ val frontend = "slang-frontend"
 val transpilers = "transpilers"
 val common = "common"
 val c = "c"
+val rust = "rust"
 
 val homeDir = Os.slashDir.up.canon
 
@@ -60,6 +62,23 @@ val (cShared, cJvm) = moduleSharedJvmPub(
   )
 )
 
-val project = Project.empty + commonShared + cShared + cJvm
+val (rustShared, rustJvm) = moduleSharedJvmPub(
+  baseId = s"$transpilers-$rust",
+  baseDir = homeDir / rust,
+  sharedDeps = ISZ(alir),
+  sharedIvyDeps = ISZ(),
+  jvmDeps = ISZ(library, frontend),
+  jvmIvyDeps = ISZ(),
+  pubOpt = pub(
+    desc = "Slang-to-Rust Transpiler",
+    url = "github.com/sireum/transpilers",
+    licenses = bsd2,
+    devs = ISZ(
+      Developer(id = "hallers", name = "Stefan Hallerstede")
+    )
+  )
+)
+
+val project = Project.empty + commonShared + cShared + cJvm + rustShared + rustJvm
 
 projectCli(Os.cliArgs, project)
