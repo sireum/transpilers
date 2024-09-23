@@ -54,9 +54,10 @@ object RustTranspiler {
     var files: HashSMap[QName, ST] = HashSMap.empty
     var extFiles: HashSMap[QName, RustTranspiler.ExtFile] = HashSMap.empty
 
-    // NOTE: When translating AST.Stmt.Expr stmt, use stmt.kind to determine assert, assume, etc. for special handling
-    // NOTE: When translating AST.Exp e, use th.translateToExtendedCoreExp(e) to get a simpler expression tree for translation
-
+    // NOTE: When translating AST.Stmt.Expr stmt, use: stmt.kind, to determine assert, assume, etc. for special handling
+    // NOTE: When translating AST.Exp e, use: th.translateToExtendedCoreExp(e, Stack.empty, HashSMap.empty),
+    //       to get a simpler expression tree (pass the stack and localMap in AST.CoreExp.Extended.StrictPureBlock when
+    //       transpiling it)
     return RustTranspiler.Result(files, extFiles)
   }
 }
