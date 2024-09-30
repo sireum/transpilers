@@ -3630,15 +3630,10 @@ import StaticTranspiler._
       case _: AST.Stmt.Sig => // skip
       case _: AST.Stmt.Enum => // skip
       case _: AST.Stmt.Object => // skip
-      case _: AST.Stmt.SpecMethod => // skip
       case _: AST.Stmt.ExtMethod => // skip
-      case _: AST.Stmt.JustMethod => // skip
-      case _: AST.Stmt.SpecVar => // skip
       case _: AST.Stmt.TypeAlias => // skip
-      case _: AST.Stmt.Spec => // skip
       case _: AST.Stmt.SubZ => // skip
-      case _: AST.Stmt.RsVal => // skip
-      case _: AST.Stmt.Induct => // skip
+      case _: AST.Stmt.Spec => // skip
     }
   }
 

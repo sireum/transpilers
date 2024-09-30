@@ -191,22 +191,17 @@ import TypeSpecializer._
           case _: AST.Stmt.Expr => T
           case _: AST.Stmt.Var => T
           case _: AST.Stmt.VarPattern => T
-          case _: AST.Stmt.Spec => F
           case _: AST.Stmt.TypeAlias => F
-          case _: AST.Stmt.SpecMethod => F
           case _: AST.Stmt.Object => F
           case _: AST.Stmt.Enum => F
           case _: AST.Stmt.Sig => F
           case _: AST.Stmt.Adt => F
           case _: AST.Stmt.ExtMethod => F
-          case _: AST.Stmt.JustMethod => F
           case _: AST.Stmt.Import => F
           case _: AST.Stmt.Method => F
           case _: AST.Stmt.Return => F
-          case _: AST.Stmt.SpecVar => F
           case _: AST.Stmt.SubZ => F
-          case _: AST.Stmt.RsVal => F
-          case _: AST.Stmt.Induct => F
+          case _: AST.Stmt.Spec => F
         }
         if (shouldTransform) {
           transformStmt(stmt)
