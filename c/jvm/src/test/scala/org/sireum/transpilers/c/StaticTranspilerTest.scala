@@ -41,6 +41,23 @@ class StaticTranspilerTest extends TestSuite {
 
   val tests = Tests {
 
+    * - testWorksheet(
+      """@sig trait Foo {
+        |  def foo(): Unit = {
+        |    bar()
+        |  }
+        |  def bar(): Unit
+        |}
+        |
+        |@sig trait Bar extends Foo {
+        |  def bar(): Unit = {
+        |  }
+        |}
+        |
+        |@datatype class Baz extends Bar
+        |
+        |Baz().foo()""".stripMargin)
+
     * - testWorksheet("""println("Foo\nBar")""".stripMargin)
 
     * - testWorksheet("""import org.sireum.N8._

@@ -2484,6 +2484,9 @@ import StaticTranspiler._
   }
 
   def expType(exp: AST.Exp): AST.Typed = {
+    if (exp.isInstanceOf[AST.Exp.This]) {
+      return currReceiverOpt.get
+    }
     exp.typedOpt.get match {
       case t: AST.Typed.Method if t.tpe.isByName => return t.tpe.ret
       case t => return t
