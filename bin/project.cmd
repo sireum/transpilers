@@ -28,29 +28,15 @@ val alir = "alir"
 val frontend = "slang-frontend"
 
 val transpilers = "transpilers"
-val common = "common"
 val c = "c"
 val rust = "rust"
 
 val homeDir = Os.slashDir.up.canon
 
-val commonShared = moduleSharedPub(
-  id = s"$transpilers-$common",
-  baseDir = homeDir / common,
-  sharedDeps = ISZ(alir),
-  sharedIvyDeps = ISZ(),
-  pubOpt = pub(
-    desc = "Slang Transpilers Common Library",
-    url = "github.com/sireum/transpilers",
-    licenses = bsd2,
-    devs = ISZ(robby)
-  )
-)
-
 val (cShared, cJvm) = moduleSharedJvmPub(
   baseId = s"$transpilers-$c",
   baseDir = homeDir / c,
-  sharedDeps = ISZ(commonShared.id),
+  sharedDeps = ISZ(alir),
   sharedIvyDeps = ISZ(),
   jvmDeps = ISZ(library, frontend),
   jvmIvyDeps = ISZ(),
@@ -79,6 +65,6 @@ val (rustShared, rustJvm) = moduleSharedJvmPub(
   )
 )
 
-val project = Project.empty + commonShared + cShared + cJvm + rustShared + rustJvm
+val project = Project.empty + cShared + cJvm + rustShared + rustJvm
 
 projectCli(Os.cliArgs, project)

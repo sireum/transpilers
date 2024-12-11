@@ -32,7 +32,7 @@ import org.sireum.lang.{FrontEnd, ast => AST}
 import org.sireum.message.Reporter
 import org.sireum.test.TestSuite
 import org.sireum.transpilers.c.StaticTranspiler.{NumberConversionsExtMethodPlugin, StringConversionsExtMethodPlugin}
-import org.sireum.transpilers.common.TypeSpecializer
+import org.sireum.alir.TypeSpecializer
 
 class StaticTranspilerRcTest extends TestSuite {
 

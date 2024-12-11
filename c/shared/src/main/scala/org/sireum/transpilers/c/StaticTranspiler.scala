@@ -30,7 +30,7 @@ import org.sireum.message._
 import org.sireum.lang.{ast => AST}
 import org.sireum.lang.symbol._
 import org.sireum.lang.symbol.Resolver.QName
-import org.sireum.transpilers.common.TypeSpecializer
+import org.sireum.alir.TypeSpecializer
 import StaticTemplate._
 import org.sireum.lang.tipe.TypeChecker
 import org.sireum.U32._

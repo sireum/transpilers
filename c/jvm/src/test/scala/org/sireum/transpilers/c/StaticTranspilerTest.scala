@@ -32,7 +32,7 @@ import org.sireum.lang.tipe.{PostTipeAttrChecker, TypeChecker, TypeHierarchy}
 import org.sireum.message.Reporter
 import org.sireum.test.TestSuite
 import org.sireum.transpilers.c.StaticTranspiler.NumberConversionsExtMethodPlugin
-import org.sireum.transpilers.common.TypeSpecializer
+import org.sireum.alir.TypeSpecializer
 
 class StaticTranspilerTest extends TestSuite {
 
