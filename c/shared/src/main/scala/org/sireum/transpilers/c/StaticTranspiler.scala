@@ -3517,20 +3517,6 @@ import StaticTranspiler._
         |}"""
     }
 
-    def transpileDoWhile(stmt: AST.Stmt.DoWhile): Unit = {
-      stmts = stmts ++ transpileLoc(stmt.posOpt)
-      val oldStmts = stmts
-      stmts = ISZ()
-      for (stmt <- stmt.body.stmts) {
-        transpileStmt(stmt)
-      }
-      val (cond, _) = transpileExp(stmt.cond)
-      stmts = oldStmts :+
-        st"""{
-        |  ${(stmts, "\n")}
-        |} while($cond);"""
-    }
-
     def transpileFor(stmt: AST.Stmt.For): Unit = {
       stmts = stmts ++ transpileLoc(stmt.posOpt)
       val oldStmts = stmts
@@ -3621,7 +3607,6 @@ import StaticTranspiler._
         stmts = stmts ++ transpileLoc(stmt.posOpt)
         transpileIf(stmt, None())
       case stmt: AST.Stmt.While => transpileWhile(stmt)
-      case stmt: AST.Stmt.DoWhile => transpileDoWhile(stmt)
       case stmt: AST.Stmt.Match =>
         stmts = stmts ++ transpileLoc(stmt.posOpt)
         transpileMatch(stmt, None())
