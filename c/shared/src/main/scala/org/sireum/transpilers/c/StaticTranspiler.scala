@@ -474,6 +474,14 @@ import StaticTranspiler._
             r = r + ISZ[String](cFilename) ~> main
             cFilenames = cFilenames :+ ISZ(cFilename)
             i = i + 1
+          case ep: TypeSpecializer.EntryPoint.Method =>
+            ts.methods.get(ep.name) match {
+              case Some(ms) =>
+                for (m <- ms.elements) {
+                  transpileMethod(m)
+                }
+              case _ =>
+            }
           case ep: TypeSpecializer.EntryPoint.App =>
             val m = ts.typeHierarchy.nameMap.get(ep.name :+ "main").get.asInstanceOf[Info.Method]
             val atExitOpt: Option[Info.Method] = ts.typeHierarchy.nameMap.get(ep.name :+ "atExit") match {
