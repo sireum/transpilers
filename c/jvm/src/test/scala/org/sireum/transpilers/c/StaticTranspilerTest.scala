@@ -42,6 +42,21 @@ class StaticTranspilerTest extends TestSuite {
   val tests = Tests {
 
     * - testWorksheet(
+      """@datatype class Foo(val x: Z, val y: Z)
+        |
+        |{
+        |  val foo1 = Foo(3, 5)
+        |  println(foo1)
+        |}
+        |
+        |println(Foo(1, 6).x)
+        |
+        |{
+        |  val foo2 = Foo(2, 4)
+        |  println(foo2)
+        |}""".stripMargin)
+
+    * - testWorksheet(
       """@sig trait Foo {
         |  def foo(): Unit = {
         |    bar()
