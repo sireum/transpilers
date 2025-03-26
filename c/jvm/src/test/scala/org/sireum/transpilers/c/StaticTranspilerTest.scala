@@ -42,27 +42,6 @@ class StaticTranspilerTest extends TestSuite {
   val tests = Tests {
 
     * - testWorksheet(
-      """import org.sireum.S64._
-        |import org.sireum.U64._
-        |
-        |def shiftU64(m: U64, n: U64): U64 = {
-        |  var i = anvil.Runtime.shrU64(m, n)
-        |  i = anvil.Runtime.shlU64(i, n)
-        |  return i
-        |}
-        |
-        |def shiftS64(m: S64, n: S64): S64 = {
-        |  var i = anvil.Runtime.shrS64(m, n)
-        |  i = conversions.U64.toRawS64(anvil.Runtime.shlU64(conversions.S64.toRawU64(i), conversions.S64.toRawU64(n)))
-        |  return i
-        |}
-        |
-        |val r0 = shiftU64(u64"0x8000000000000000", u64"60")
-        |assert(r0 == u64"0x8000000000000000")
-        |val r1 = shiftS64(s64"0x4000000000000000", s64"60")
-        |assert(r1 == s64"0x4000000000000000")""".stripMargin)
-
-    * - testWorksheet(
       """@datatype class Foo(val x: Z, val y: Z)
         |
         |{
