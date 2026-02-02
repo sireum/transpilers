@@ -338,7 +338,7 @@ object StaticTemplate {
           |      OUTPUT_STRIP_TRAILING_WHITESPACE)
           |  endif()
           |else()
-          |  cmake_minimum_required(VERSION 3.5.1)
+          |  cmake_minimum_required(VERSION 3.10)
           |endif(APPLE)
           |
           |project($project)
