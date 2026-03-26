@@ -336,8 +336,8 @@ object StaticTranspiler {
   )
 
   val escapeSep: String = """" """"
-  val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.string))
-  val iszU8Type: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, AST.Typed.u8))
+  val iszStringType: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, AST.Typed.noRType, ISZ(AST.Typed.z, AST.Typed.string))
+  val iszU8Type: AST.Typed.Name = AST.Typed.Name(AST.Typed.isName, AST.Typed.noRType, ISZ(AST.Typed.z, AST.Typed.u8))
   val optionName: QName = AST.Typed.optionName
   val someName: QName = AST.Typed.someName
   val noneName: QName = AST.Typed.noneName
@@ -518,7 +518,7 @@ import StaticTranspiler._
             val kind = typeKind(t)
             vs = vs :+ ((kind, id, typeDecl(t), transpileType(t), !stmt.isVal))
             val init: AST.AssignExp = config.customConstants.get(oInfo.name :+ id) match {
-              case Some(e) => AST.Stmt.Expr(e, AST.TypedAttr(e.posOpt, e.typedOpt))
+              case Some(e) => AST.Stmt.Expr(e, ISZ(), AST.TypedAttr(e.posOpt, e.typedOpt))
               case _ => stmt.initOpt.get
             }
             val varMangledName = AST.Util.mangleName(name ++ ISZ[String]("init", id))
@@ -769,8 +769,8 @@ import StaticTranspiler._
         case Some(n) => n
         case _ =>
           val t2: AST.Typed.Name =
-            if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, t.args)
-            else AST.Typed.Name(AST.Typed.isName, t.args)
+            if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, AST.Typed.noRType, t.args)
+            else AST.Typed.Name(AST.Typed.isName, AST.Typed.noRType, t.args)
           config.customArraySizes.get(t2) match {
             case Some(n) => n
             case _ => config.maxArraySize
@@ -864,8 +864,8 @@ import StaticTranspiler._
       val value = getCompiled(key)
       val (minIndex, maxElementSize) = minIndexMaxElementSize(t)
       val otherType: AST.Typed.Name =
-        if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, ISZ(it, et))
-        else AST.Typed.Name(AST.Typed.isName, ISZ(it, et))
+        if (t.ids == AST.Typed.isName) AST.Typed.Name(AST.Typed.msName, AST.Typed.noRType, ISZ(it, et))
+        else AST.Typed.Name(AST.Typed.isName, AST.Typed.noRType, ISZ(it, et))
       val otherTpeOpt: Option[ST] = ts.nameTypes.get(otherType.ids) match {
         case Some(s) if s.contains(TypeSpecializer.NamedType(otherType, Map.empty, Map.empty)) =>
           Some(fingerprint(otherType)._1)
@@ -899,17 +899,17 @@ import StaticTranspiler._
       val info = ts.typeHierarchy.nameMap.get(ops.ISZOps(name).dropRight(1)).get.asInstanceOf[Info.Enum]
       val elements = info.elements.keys
       val elementType = info.elementTypedOpt.get
-      val optionElementType = AST.Typed.Name(optionName, ISZ(elementType))
+      val optionElementType = AST.Typed.Name(optionName, AST.Typed.noRType, ISZ(elementType))
       val optElementTypeOpt: Option[(ST, ST, ST)] = ts.nameTypes.get(optionName) match {
         case Some(s) if s.contains(TypeSpecializer.NamedType(optionElementType, Map.empty, Map.empty)) =>
-          val someElementType = AST.Typed.Name(someName, ISZ(elementType))
-          val noneElementType = AST.Typed.Name(noneName, ISZ(elementType))
+          val someElementType = AST.Typed.Name(someName, AST.Typed.noRType, ISZ(elementType))
+          val noneElementType = AST.Typed.Name(noneName, AST.Typed.noRType, ISZ(elementType))
           genType(someElementType)
           genType(noneElementType)
           Some((fingerprint(optionElementType)._1, fingerprint(someElementType)._1, fingerprint(noneElementType)._1))
         case _ => None()
       }
-      val iszElementType = AST.Typed.Name(AST.Typed.isName, ISZ(AST.Typed.z, elementType))
+      val iszElementType = AST.Typed.Name(AST.Typed.isName, AST.Typed.noRType, ISZ(AST.Typed.z, elementType))
       val iszElementTypeOpt: Option[ST] = ts.nameTypes.get(AST.Typed.isName) match {
         case Some(s) if s.contains(TypeSpecializer.NamedType(iszElementType, Map.empty, Map.empty)) =>
           Some(fingerprint(iszElementType)._1)
@@ -926,11 +926,11 @@ import StaticTranspiler._
       val mangledName = AST.Util.mangleName(name)
       typeNameMap = typeNameMap + t ~> mangledName
       val info = ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.SubZ]
-      val optionType = AST.Typed.Name(optionName, ISZ(t))
+      val optionType = AST.Typed.Name(optionName, AST.Typed.noRType, ISZ(t))
       val optionTypeOpt: Option[(ST, ST, ST)] = ts.nameTypes.get(optionName) match {
         case Some(s) if s.contains(TypeSpecializer.NamedType(optionType, Map.empty, Map.empty)) =>
-          val someType = AST.Typed.Name(someName, ISZ(t))
-          val noneType = AST.Typed.Name(noneName, ISZ(t))
+          val someType = AST.Typed.Name(someName, AST.Typed.noRType, ISZ(t))
+          val noneType = AST.Typed.Name(noneName, AST.Typed.noRType, ISZ(t))
           Some((fingerprint(optionType)._1, fingerprint(someType)._1, fingerprint(noneType)._1))
         case _ => None()
       }
@@ -2210,9 +2210,9 @@ import StaticTranspiler._
                   return (r, F)
                 case AST.Typed.f32Name =>
                   if (!f32Constructor) {
-                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.f32)))
-                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.f32)))
-                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.f32)))
+                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, AST.Typed.noRType, ISZ(AST.Typed.f32)))
+                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, AST.Typed.noRType, ISZ(AST.Typed.f32)))
+                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, AST.Typed.noRType, ISZ(AST.Typed.f32)))
                     genFloatConstructor(AST.Typed.f32Name, optTpe, someTpe, noneTpe, "float", "strtof")
                   }
                   f32Constructor = T
@@ -2220,9 +2220,9 @@ import StaticTranspiler._
                   return (r, F)
                 case AST.Typed.f64Name =>
                   if (!f64Constructor) {
-                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.f64)))
-                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.f64)))
-                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.f64)))
+                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, AST.Typed.noRType, ISZ(AST.Typed.f64)))
+                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, AST.Typed.noRType, ISZ(AST.Typed.f64)))
+                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, AST.Typed.noRType, ISZ(AST.Typed.f64)))
                     genFloatConstructor(AST.Typed.f64Name, optTpe, someTpe, noneTpe, "double", "strtod")
                   }
                   f64Constructor = T
@@ -2230,9 +2230,9 @@ import StaticTranspiler._
                   return (r, F)
                 case AST.Typed.rName =>
                   if (!rConstructor) {
-                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.r)))
-                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.r)))
-                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.r)))
+                    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, AST.Typed.noRType, ISZ(AST.Typed.r)))
+                    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, AST.Typed.noRType, ISZ(AST.Typed.r)))
+                    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, AST.Typed.noRType, ISZ(AST.Typed.r)))
                     genFloatConstructor(AST.Typed.rName, optTpe, someTpe, noneTpe, "long double", "strtold")
                   }
                   rConstructor = T
@@ -2240,9 +2240,9 @@ import StaticTranspiler._
                   return (r, F)
                 case AST.Typed.cName =>
                   val optTpe = transpileType(expType(invoke))
-                  val someT = AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.c))
+                  val someT = AST.Typed.Name(AST.Typed.someName, AST.Typed.noRType, ISZ(AST.Typed.c))
                   val someTpe = transpileType(someT)
-                  val noneT = AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.c))
+                  val noneT = AST.Typed.Name(AST.Typed.noneName, AST.Typed.noRType, ISZ(AST.Typed.c))
                   val noneTpe = transpileType(noneT)
                   val (e, _) = transpileExp(invoke.args(0))
                   val temp = freshTempName()
@@ -2334,7 +2334,7 @@ import StaticTranspiler._
                   args = args :+ arg
               }
             }
-            val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args,
+            val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, AST.Typed.emptyRTypes, exp.targs, args,
               exp.attr(resOpt = Some(constructorRes))))
             return r
           case _ =>
@@ -2342,7 +2342,7 @@ import StaticTranspiler._
               return na1.index < na2.index
             }
             val args = ops.ISZOps(exp.args).sortWith(nasort _).map((na: AST.NamedArg) => na.arg)
-            val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args, exp.attr))
+            val r = transInvoke(AST.Exp.Invoke(exp.receiverOpt, exp.ident, AST.Typed.emptyRTypes, exp.targs, args, exp.attr))
             return r
         }
     }
@@ -3565,7 +3565,7 @@ import StaticTranspiler._
         val stmtr: AST.Stmt.Expr = stmt.exp match {
           case exp: AST.Exp.InvokeNamed =>
             val args: ISZ[AST.Exp] = for (a <- ops.ISZOps(exp.args).sortWith((a: AST.NamedArg, b: AST.NamedArg) => a.index < b.index)) yield a.arg
-            stmt(exp = AST.Exp.Invoke(exp.receiverOpt, exp.ident, exp.targs, args, exp.attr))
+            stmt(exp = AST.Exp.Invoke(exp.receiverOpt, exp.ident, AST.Typed.emptyRTypes, exp.targs, args, exp.attr))
           case _ => stmt
         }
         stmtr.exp match {
@@ -3663,9 +3663,9 @@ import StaticTranspiler._
   }
 
   def genZConstructor(): Unit = {
-    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.z)))
-    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.z)))
-    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.z)))
+    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, AST.Typed.noRType, ISZ(AST.Typed.z)))
+    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, AST.Typed.noRType, ISZ(AST.Typed.z)))
+    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, AST.Typed.noRType, ISZ(AST.Typed.z)))
     val cTypeUp = st"INT${config.defaultBitWidth}"
     val (header, impl) = strToNum(
       AST.Typed.zName,
@@ -3690,9 +3690,9 @@ import StaticTranspiler._
   }
 
   def genBConstructor(): Unit = {
-    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, ISZ(AST.Typed.b)))
-    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, ISZ(AST.Typed.b)))
-    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, ISZ(AST.Typed.b)))
+    val optTpe = transpileType(AST.Typed.Name(AST.Typed.optionName, AST.Typed.noRType, ISZ(AST.Typed.b)))
+    val someTpe = transpileType(AST.Typed.Name(AST.Typed.someName, AST.Typed.noRType, ISZ(AST.Typed.b)))
+    val noneTpe = transpileType(AST.Typed.Name(AST.Typed.noneName, AST.Typed.noRType, ISZ(AST.Typed.b)))
     val (header, impl) = strToB(optTpe, someTpe, noneTpe)
     allHEntries = allHEntries :+ header
     allCEntries = allCEntries :+ impl
