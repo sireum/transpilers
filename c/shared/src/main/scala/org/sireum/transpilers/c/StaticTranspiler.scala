@@ -2297,7 +2297,7 @@ import StaticTranspiler._
                             p.id, ISZ(),
                             AST.ResolvedAttr(
                               exp.posOpt,
-                              Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
+                              Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id, None())),
                               Some(t.subst(sm))
                             )
                           )
@@ -2318,7 +2318,7 @@ import StaticTranspiler._
                             p.id, ISZ(),
                             AST.ResolvedAttr(
                               exp.posOpt,
-                              Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
+                              Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id, None())),
                               Some(t.subst(sm))
                             )
                           )
@@ -2326,7 +2326,7 @@ import StaticTranspiler._
                         AST.Exp.Select(Some(exp.ident), p.id, ISZ(),
                           AST.ResolvedAttr(
                             exp.posOpt,
-                            Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id)),
+                            Some(AST.ResolvedInfo.Var(F, F, p.isVal, owner, id, None())),
                             Some(t.subst(sm))
                           )
                         )
