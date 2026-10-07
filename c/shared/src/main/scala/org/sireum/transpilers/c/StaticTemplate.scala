@@ -348,6 +348,10 @@ object StaticTemplate {
           |add_compile_options(-Werror)
           |if($$ENV{CC} MATCHES "^.*ccomp$$")
           |  add_compile_options(-flongdouble)
+          |else()
+          |  # The generated C casts between struct types (string literals, subtypes, sequence
+          |  # elements), which strict-aliasing-based optimizations can miscompile
+          |  add_compile_options(-fno-strict-aliasing)
           |endif()
           |
           |function(to_hex DEC HEX)
