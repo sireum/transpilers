@@ -927,13 +927,20 @@ import StaticTranspiler._
       typeNameMap = typeNameMap + t ~> mangledName
       val info = ts.typeHierarchy.typeMap.get(name).get.asInstanceOf[TypeInfo.SubZ]
       val optionType = AST.Typed.Name(optionName, AST.Typed.noRType, ISZ(t))
-      val optionTypeOpt: Option[(ST, ST, ST)] = ts.nameTypes.get(optionName) match {
-        case Some(s) if s.contains(TypeSpecializer.NamedType(optionType, Map.empty, Map.empty)) =>
-          val someType = AST.Typed.Name(someName, AST.Typed.noRType, ISZ(t))
-          val noneType = AST.Typed.Name(noneName, AST.Typed.noRType, ISZ(t))
-          Some((fingerprint(optionType)._1, fingerprint(someType)._1, fingerprint(noneType)._1))
-        case _ => None()
+      val someType = AST.Typed.Name(someName, AST.Typed.noRType, ISZ(t))
+      val noneType = AST.Typed.Name(noneName, AST.Typed.noRType, ISZ(t))
+      @pure def isSpecialized(n: ISZ[String], nt: AST.Typed.Name): B = {
+        ts.nameTypes.get(n) match {
+          case Some(s) => return s.contains(TypeSpecializer.NamedType(nt, Map.empty, Map.empty))
+          case _ => return F
+        }
       }
+      // the generated apply(String) constructs Some/None, so it is only emitted when both are
+      // specialized; Option[T] alone is not enough (e.g., a program that only ever uses None[S64]())
+      val optionTypeOpt: Option[(ST, ST, ST)] =
+        if (isSpecialized(optionName, optionType) && isSpecialized(someName, someType) && isSpecialized(noneName, noneType))
+          Some((fingerprint(optionType)._1, fingerprint(someType)._1, fingerprint(noneType)._1))
+        else None()
       val value = getCompiled(name)
       val ast = info.ast
       val bw = ast.bitWidth
